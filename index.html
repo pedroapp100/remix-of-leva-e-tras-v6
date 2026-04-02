@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="pt-BR" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Leva e Traz — Gestão Logística</title>
+    <meta name="description" content="Plataforma completa de gestão logística para operações de entrega last-mile. Solicitações, tarifação, conciliação financeira e controle de frota." />
+    <meta name="author" content="Leva e Traz" />
+
+    <meta property="og:title" content="Leva e Traz — Gestão Logística" />
+    <meta property="og:description" content="Plataforma de gestão logística para operações de entrega last-mile." />
+    <meta property="og:type" content="website" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      (() => {
+        try {
+          const storedTheme = localStorage.getItem("let-theme") || "dark";
+          const resolvedTheme = storedTheme === "system"
+            ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+            : storedTheme;
+
+          document.documentElement.classList.remove("dark", "light");
+          document.documentElement.classList.add(resolvedTheme);
+          document.documentElement.dataset.bootTheme = resolvedTheme;
+          document.documentElement.style.colorScheme = resolvedTheme;
+        } catch {
+          document.documentElement.classList.add("dark");
+          document.documentElement.dataset.bootTheme = "dark";
+          document.documentElement.style.colorScheme = "dark";
+        }
+      })();
+    </script>
+    <style>
+      html {
+        --boot-bg: hsl(230 35% 12%);
+        --boot-fg: hsl(220 20% 95%);
+        --boot-accent: hsl(231 75% 60%);
+        background-color: var(--boot-bg);
+      }
+
+      html[data-boot-theme="light"],
+      html.light {
+        --boot-bg: hsl(220 14% 96%);
+        --boot-fg: hsl(240 30% 10%);
+        --boot-accent: hsl(231 75% 55%);
+      }
+
+      html,
+      body {
+        min-height: 100%;
+      }
+
+      body {
+        margin: 0;
+        background: var(--boot-bg);
+        color: var(--boot-fg);
+      }
+
+      #root {
+        position: relative;
+        z-index: 2;
+        min-height: 100vh;
+      }
+
+      .boot-skip-link {
+        position: fixed;
+        left: -9999px;
+        top: auto;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+      }
+
+      .boot-skip-link:focus {
+        left: 12px;
+        top: 12px;
+        width: auto;
+        height: auto;
+        padding: 10px 14px;
+        border-radius: 12px;
+        background: var(--boot-accent);
+        color: white;
+        z-index: 9999;
+      }
+
+      #app-boot {
+        position: fixed;
+        inset: 0;
+        z-index: 1;
+        pointer-events: none;
+        opacity: 1;
+        transition: opacity 180ms ease;
+        background:
+          radial-gradient(circle at top center, hsl(231 75% 60% / 0.14), transparent 32%),
+          radial-gradient(circle at bottom right, hsl(231 75% 60% / 0.08), transparent 24%),
+          var(--boot-bg);
+      }
+
+      #app-boot::after {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 64px;
+        height: 64px;
+        transform: translate(-50%, -50%);
+        border-radius: 20px;
+        background: linear-gradient(135deg, var(--boot-accent), hsl(231 75% 60% / 0.68));
+        box-shadow: 0 18px 40px hsl(231 75% 60% / 0.2);
+      }
+    </style>
+  </head>
+
+  <body>
+    <a href="#main-content" class="boot-skip-link">Pular para o conteúdo</a>
+    <div id="app-boot" aria-hidden="true"></div>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

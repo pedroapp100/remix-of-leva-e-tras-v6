@@ -1,0 +1,515 @@
+import { useState, useMemo } from "react";
+import type { Rota, PagamentoSolicitacao, Solicitacao } from "@/types/database";
+import { MOCK_FORMAS_PAGAMENTO, MOCK_BAIRROS } from "@/data/mockSettings";
+import { MOCK_CLIENTES } from "@/data/mockClientes";
+import { getClienteName, getEntregadorName } from "@/data/mockSolicitacoes";
+import { useGlobalStore } from "@/contexts/GlobalStore";
+import { useConcluirComCaixa } from "@/hooks/useConcluirComCaixa";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { CurrencyInput } from "@/components/shared/CurrencyInput";
+import {
+  Plus, Trash2, AlertTriangle, CheckCircle, Info,
+  Store, Building2, User, MapPin, Truck, ArrowRight,
+} from "lucide-react";
+import { toast } from "sonner";
+
+interface PagamentoLinha {
+  id: string;
+  forma_pagamento_id: string;
+  valor: number;
+  pertence_a: "operacao" | "loja";
+}
+
+const FATURAR_ID = "__faturar__";
+
+interface AdminConciliacaoDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  solicitacao: Solicitacao;
+  onConfirm: () => void;
+}
+
+const getBairroName = (id: string) => MOCK_BAIRROS.find((b) => b.id === id)?.nome ?? id;
+const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const formasAtivas = MOCK_FORMAS_PAGAMENTO.filter((f) => f.enabled);
+
+export function AdminConciliacaoDialog({
+  open,
+  onOpenChange,
+  solicitacao,
+  onConfirm,
+}: AdminConciliacaoDialogProps) {
+  const {
+    getRotasBySolicitacao,
+    getPagamentosBySolicitacao,
+    addPagamentos,
+  } = useGlobalStore();
+  const concluirComCaixa = useConcluirComCaixa();
+
+  const rotas = getRotasBySolicitacao(solicitacao.id);
+  const driverPagamentos = getPagamentosBySolicitacao(solicitacao.id);
+
+  const cliente = useMemo(
+    () => MOCK_CLIENTES.find((c) => c.id === solicitacao.cliente_id) ?? null,
+    [solicitacao.cliente_id]
+  );
+  const isFaturado = cliente?.modalidade === "faturado";
+  const isPrePago = cliente?.modalidade === "pre_pago";
+
+  // Driver totals
+  const driverTotal = useMemo(
+    () => driverPagamentos.reduce((s, p) => s + p.valor, 0),
+    [driverPagamentos]
+  );
+
+  // Group driver payments by rota
+  const driverByRota = useMemo(() => {
+    const map: Record<string, PagamentoSolicitacao[]> = {};
+    rotas.forEach((r) => { map[r.id] = []; });
+    driverPagamentos.forEach((p) => {
+      if (map[p.rota_id]) map[p.rota_id].push(p);
+    });
+    return map;
+  }, [driverPagamentos, rotas]);
+
+  // Admin pagamentos state — pre-filled from driver data
+  const [pagamentosPorRota, setPagamentosPorRota] = useState<Record<string, PagamentoLinha[]>>(
+    () => {
+      const initial: Record<string, PagamentoLinha[]> = {};
+      rotas.forEach((r) => {
+        const driverPags = driverByRota[r.id] || [];
+        if (driverPags.length > 0) {
+          initial[r.id] = driverPags.map((dp) => ({
+            id: `admin-${dp.id}`,
+            forma_pagamento_id: dp.forma_pagamento_id,
+            valor: dp.valor,
+            pertence_a: dp.pertence_a ?? "operacao",
+          }));
+        } else {
+          initial[r.id] = [];
+        }
+      });
+      return initial;
+    }
+  );
+
+  const addPagamento = (rotaId: string) => {
+    setPagamentosPorRota((prev) => ({
+      ...prev,
+      [rotaId]: [
+        ...(prev[rotaId] || []),
+        {
+          id: `pag-${Date.now()}-${Math.random()}`,
+          forma_pagamento_id: formasAtivas[0]?.id ?? "",
+          valor: 0,
+          pertence_a: "operacao",
+        },
+      ],
+    }));
+  };
+
+  const removePagamento = (rotaId: string, pagId: string) => {
+    setPagamentosPorRota((prev) => ({
+      ...prev,
+      [rotaId]: (prev[rotaId] || []).filter((p) => p.id !== pagId),
+    }));
+  };
+
+  const updatePagamento = (
+    rotaId: string,
+    pagId: string,
+    field: keyof PagamentoLinha,
+    value: string | number
+  ) => {
+    setPagamentosPorRota((prev) => ({
+      ...prev,
+      [rotaId]: (prev[rotaId] || []).map((p) =>
+        p.id === pagId ? { ...p, [field]: value } : p
+      ),
+    }));
+  };
+
+  // Calculations with integer cents
+  const allPagamentos = Object.values(pagamentosPorRota).flat();
+  const totalOperacaoCents = allPagamentos
+    .filter((p) => p.pertence_a === "operacao")
+    .reduce((s, p) => s + Math.round(p.valor * 100), 0);
+  const totalLojaCents = allPagamentos
+    .filter((p) => p.pertence_a === "loja")
+    .reduce((s, p) => s + Math.round(p.valor * 100), 0);
+  const totalFaturarCents = allPagamentos
+    .filter((p) => p.forma_pagamento_id === FATURAR_ID && p.pertence_a === "operacao")
+    .reduce((s, p) => s + Math.round(p.valor * 100), 0);
+  const totalEsperadoTaxasCents = rotas.reduce(
+    (s, r) => s + Math.round((r.taxa_resolvida ?? 0) * 100),
+    0
+  );
+  const totalEsperadoReceberCents = rotas
+    .filter((r) => r.receber_do_cliente)
+    .reduce((s, r) => s + Math.round((r.valor_a_receber ?? 0) * 100), 0);
+
+  const diffOperacaoCents = totalOperacaoCents - totalEsperadoTaxasCents;
+  const diffLojaCents = totalLojaCents - totalEsperadoReceberCents;
+  const isBalanced = diffOperacaoCents === 0 && diffLojaCents === 0;
+
+  const totalOperacao = totalOperacaoCents / 100;
+  const totalLoja = totalLojaCents / 100;
+  const totalFaturar = totalFaturarCents / 100;
+  const totalEsperadoTaxas = totalEsperadoTaxasCents / 100;
+  const totalEsperadoReceber = totalEsperadoReceberCents / 100;
+  const diffOperacao = diffOperacaoCents / 100;
+  const diffLoja = diffLojaCents / 100;
+  const totalAdmin = (totalOperacaoCents + totalLojaCents) / 100;
+
+  const handleConfirm = () => {
+    if (allPagamentos.length === 0) {
+      toast.error("Registre ao menos um pagamento.");
+      return;
+    }
+    if (allPagamentos.some((p) => p.valor <= 0)) {
+      toast.error("Todos os pagamentos devem ter valor positivo.");
+      return;
+    }
+    if (!isBalanced) {
+      toast.error("Os valores não estão balanceados. Verifique os pagamentos.");
+      return;
+    }
+
+    // Save admin-validated payments
+    const now = new Date().toISOString();
+    const persistedPagamentos: PagamentoSolicitacao[] = allPagamentos.map((pag) => ({
+      id: pag.id,
+      solicitacao_id: solicitacao.id,
+      rota_id:
+        Object.entries(pagamentosPorRota).find(([, pags]) =>
+          pags.some((p) => p.id === pag.id)
+        )?.[0] ?? "",
+      forma_pagamento_id: pag.forma_pagamento_id,
+      valor: pag.valor,
+      pertence_a: pag.pertence_a,
+      observacao: "Conferido pelo ADM",
+      created_by: "admin",
+      created_at: now,
+    }));
+    addPagamentos(persistedPagamentos);
+
+    // Generate invoice if not already concluded
+    if (solicitacao.status === "em_andamento") {
+      concluirComCaixa(solicitacao.id);
+    }
+
+    onConfirm();
+    onOpenChange(false);
+    toast.success("Conciliação conferida e fatura gerada! ✅");
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            Conciliação Administrativa
+            <Badge variant="outline" className="text-xs">
+              {solicitacao.codigo}
+            </Badge>
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-6 py-2">
+          {/* Cabeçalho — Solicitação + Cliente + Entregador */}
+          <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+              <div>
+                <span className="text-muted-foreground text-xs">Cliente</span>
+                <p className="font-medium flex items-center gap-1.5">
+                  {getClienteName(solicitacao.cliente_id)}
+                  {isFaturado && (
+                    <Badge variant="default" className="text-[10px] px-1.5 py-0">
+                      Faturado
+                    </Badge>
+                  )}
+                  {isPrePago && (
+                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                      Pré-pago
+                    </Badge>
+                  )}
+                </p>
+              </div>
+              <div>
+                <span className="text-muted-foreground text-xs">Entregador</span>
+                <p className="font-medium flex items-center gap-1.5">
+                  <Truck className="h-3.5 w-3.5 text-muted-foreground" />
+                  {getEntregadorName(solicitacao.entregador_id)}
+                </p>
+              </div>
+              <div>
+                <span className="text-muted-foreground text-xs">Taxas Esperadas</span>
+                <p className="font-semibold tabular-nums">{fmt(totalEsperadoTaxas)}</p>
+              </div>
+            </div>
+
+            {/* Driver report summary */}
+            {driverPagamentos.length > 0 && (
+              <Alert className="border-chart-3/30 bg-chart-3/5">
+                <Truck className="h-4 w-4 text-chart-3" />
+                <AlertDescription className="text-xs">
+                  O entregador registrou <strong>{driverPagamentos.length} recebimento(s)</strong>{" "}
+                  totalizando <strong>{fmt(driverTotal)}</strong>. Confira e classifique abaixo como{" "}
+                  <em>Operação</em> ou <em>Loja</em>.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {driverPagamentos.length === 0 && (
+              <Alert className="border-amber-500/30 bg-amber-500/5">
+                <AlertTriangle className="h-4 w-4 text-amber-500" />
+                <AlertDescription className="text-xs">
+                  O entregador <strong>ainda não registrou</strong> recebimentos para esta solicitação.
+                  Cadastre manualmente os pagamentos abaixo.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {isFaturado && (
+              <Alert className="border-primary/30 bg-primary/5">
+                <Info className="h-4 w-4 text-primary" />
+                <AlertDescription className="text-xs">
+                  Cliente <strong>faturado</strong> — as taxas de operação serão incluídas no
+                  fechamento. Marque como "Faturar" quando a taxa for cobrada via fatura.
+                </AlertDescription>
+              </Alert>
+            )}
+          </div>
+
+          {/* Rotas com pagamentos */}
+          {rotas.map((rota, i) => {
+            const driverRotaPags = driverByRota[rota.id] || [];
+            const driverRotaTotal = driverRotaPags.reduce((s, p) => s + p.valor, 0);
+
+            return (
+              <div key={rota.id} className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-semibold flex items-center gap-2">
+                    <MapPin className="h-3.5 w-3.5 text-primary" />
+                    Rota {i + 1} — {getBairroName(rota.bairro_destino_id)}
+                    <span className="text-muted-foreground font-normal">
+                      ({rota.responsavel})
+                    </span>
+                  </h4>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <Building2 className="h-3 w-3" />
+                      Taxa: {fmt(rota.taxa_resolvida ?? 0)}
+                    </span>
+                    {rota.receber_do_cliente && (
+                      <span className="flex items-center gap-1">
+                        <Store className="h-3 w-3" />
+                        Loja: {fmt(rota.valor_a_receber ?? 0)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* What driver reported */}
+                {driverRotaPags.length > 0 && (
+                  <div className="rounded-md border border-border/60 bg-muted/20 p-2.5 space-y-1">
+                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
+                      Registrado pelo entregador
+                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      {driverRotaPags.map((dp) => {
+                        const forma = MOCK_FORMAS_PAGAMENTO.find(
+                          (f) => f.id === dp.forma_pagamento_id
+                        );
+                        return (
+                          <Badge
+                            key={dp.id}
+                            variant="secondary"
+                            className="text-xs tabular-nums"
+                          >
+                            {forma?.name ?? dp.forma_pagamento_id}: {fmt(dp.valor)}
+                          </Badge>
+                        );
+                      })}
+                      <Badge variant="outline" className="text-xs tabular-nums font-semibold">
+                        Total: {fmt(driverRotaTotal)}
+                      </Badge>
+                    </div>
+                  </div>
+                )}
+
+                {/* Admin payment rows */}
+                <div className="space-y-2">
+                  {(pagamentosPorRota[rota.id] || []).map((pag) => (
+                    <div
+                      key={pag.id}
+                      className="grid grid-cols-[1fr_100px_120px_auto] gap-2 items-end"
+                    >
+                      <div className="space-y-1">
+                        <Label className="text-xs">Meio de Pagamento</Label>
+                        <Select
+                          value={pag.forma_pagamento_id}
+                          onValueChange={(v) =>
+                            updatePagamento(rota.id, pag.id, "forma_pagamento_id", v)
+                          }
+                        >
+                          <SelectTrigger className="h-9">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {formasAtivas.map((f) => (
+                              <SelectItem key={f.id} value={f.id}>
+                                {f.name}
+                              </SelectItem>
+                            ))}
+                            {isFaturado && (
+                              <SelectItem value={FATURAR_ID}>Faturar</SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Valor</Label>
+                        <CurrencyInput
+                          value={pag.valor}
+                          onChange={(v) =>
+                            updatePagamento(rota.id, pag.id, "valor", v)
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Pertence a</Label>
+                        <Select
+                          value={pag.pertence_a}
+                          onValueChange={(v) =>
+                            updatePagamento(rota.id, pag.id, "pertence_a", v)
+                          }
+                        >
+                          <SelectTrigger className="h-9">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="operacao">Operação</SelectItem>
+                            <SelectItem value="loja">Loja</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-9 w-9 text-destructive"
+                        onClick={() => removePagamento(rota.id, pag.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => addPagamento(rota.id)}
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar pagamento
+                </Button>
+
+                {i < rotas.length - 1 && <Separator />}
+              </div>
+            );
+          })}
+
+          {/* Resumo Comparativo */}
+          <div className="rounded-lg border border-border p-4 space-y-3">
+            <h4 className="text-sm font-semibold">Resumo Comparativo</h4>
+
+            {/* Comparação entregador vs admin */}
+            {driverPagamentos.length > 0 && (
+              <div className="grid grid-cols-3 gap-3 text-sm rounded-md bg-muted/30 p-3">
+                <div className="text-center">
+                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground block mb-1">
+                    Entregador
+                  </span>
+                  <span className="tabular-nums font-semibold">{fmt(driverTotal)}</span>
+                </div>
+                <div className="flex items-center justify-center">
+                  <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="text-center">
+                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground block mb-1">
+                    ADM Conferido
+                  </span>
+                  <span className="tabular-nums font-semibold">{fmt(totalAdmin)}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Breakdown */}
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <span className="text-muted-foreground flex items-center gap-1.5">
+                <Building2 className="h-3.5 w-3.5" />
+                Receita Operação
+              </span>
+              <span className="tabular-nums text-right">
+                {fmt(totalOperacao)}{" "}
+                <span className="text-xs text-muted-foreground">
+                  / {fmt(totalEsperadoTaxas)}
+                </span>
+              </span>
+
+              {isFaturado && totalFaturar > 0 && (
+                <>
+                  <span className="text-muted-foreground pl-5">↳ A Faturar</span>
+                  <span className="tabular-nums text-right">{fmt(totalFaturar)}</span>
+                </>
+              )}
+
+              <span className="text-muted-foreground flex items-center gap-1.5">
+                <Store className="h-3.5 w-3.5" />
+                Crédito Loja
+              </span>
+              <span className="tabular-nums text-right">
+                {fmt(totalLoja)}{" "}
+                <span className="text-xs text-muted-foreground">
+                  / {fmt(totalEsperadoReceber)}
+                </span>
+              </span>
+            </div>
+
+            <Separator />
+            <div
+              className={`flex items-center gap-2 text-sm font-medium ${
+                isBalanced ? "text-emerald-500" : "text-amber-500"
+              }`}
+            >
+              {isBalanced ? (
+                <CheckCircle className="h-4 w-4" />
+              ) : (
+                <AlertTriangle className="h-4 w-4" />
+              )}
+              {isBalanced
+                ? "Valores balanceados — pronto para gerar fatura"
+                : `Diferença: Operação ${fmt(diffOperacao)} | Loja ${fmt(diffLoja)}`}
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button onClick={handleConfirm} disabled={!isBalanced}>
+            <CheckCircle className="h-4 w-4 mr-1.5" />
+            Conferir e Gerar Fatura
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

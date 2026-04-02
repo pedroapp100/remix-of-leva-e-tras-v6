@@ -1,0 +1,181 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =============================================================================
+   LEVA E TRAZ v2.0 — MATTE CERAMIC DESIGN SYSTEM
+   Estética: Dark-first, matte surfaces, spring blue accents
+   Tipografia: Poppins (UI) + System Mono (dados/números)
+   All colors MUST be HSL.
+   ============================================================================= */
+
+@layer base {
+  :root {
+    /* ── Light Mode — Spring Blue ── */
+    --background: 220 14% 96%;
+    --foreground: 240 30% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 240 30% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 30% 10%;
+
+    --primary: 231 75% 55%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 14% 92%;
+    --secondary-foreground: 240 30% 10%;
+
+    --muted: 220 14% 95%;
+    --muted-foreground: 220 10% 46%;
+
+    --accent: 231 75% 55%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 14% 90%;
+    --input: 220 14% 90%;
+    --ring: 231 75% 55%;
+
+    --radius: 0.5rem;
+    --radius-inner: 0.5rem;
+    --radius-outer: 1.25rem;
+
+    /* ── Status Colors ── */
+    --status-pending: 38 95% 50%;
+    --status-accepted: 231 75% 55%;
+    --status-in-progress: 270 85% 58%;
+    --status-completed: 152 76% 42%;
+    --status-cancelled: 0 75% 50%;
+    --status-rejected: 350 85% 55%;
+    --status-overdue: 20 90% 50%;
+
+    /* ── Surfaces ── */
+    --surface-elevated: 0 0% 100%;
+    --surface-sunken: 220 14% 96%;
+
+    /* ── Sidebar ── */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 220 25% 18%;
+    --sidebar-primary: 231 75% 55%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 231 75% 96%;
+    --sidebar-accent-foreground: 231 75% 55%;
+    --sidebar-border: 220 14% 92%;
+    --sidebar-ring: 231 75% 55%;
+
+    /* ── Charts ── */
+    --chart-1: 231 75% 55%;
+    --chart-2: 152 76% 42%;
+    --chart-3: 38 95% 50%;
+    --chart-4: 270 85% 58%;
+    --chart-5: 350 85% 55%;
+  }
+
+  .dark {
+    /* ── Dark Mode — Deep Navy + Spring Blue ── */
+    --background: 230 35% 12%;
+    --foreground: 220 20% 95%;
+
+    --card: 230 30% 15%;
+    --card-foreground: 220 20% 95%;
+
+    --popover: 230 30% 15%;
+    --popover-foreground: 220 20% 95%;
+
+    --primary: 231 75% 60%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 230 25% 20%;
+    --secondary-foreground: 220 20% 95%;
+
+    --muted: 230 25% 20%;
+    --muted-foreground: 220 15% 60%;
+
+    --accent: 230 25% 22%;
+    --accent-foreground: 220 20% 95%;
+
+    --destructive: 0 72% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 230 20% 22%;
+    --input: 230 20% 22%;
+    --ring: 231 75% 60%;
+
+    /* ── Status Colors (Dark) — Vibrant tokens ── */
+    --status-pending: 38 95% 55%;
+    --status-accepted: 231 75% 60%;
+    --status-in-progress: 270 85% 62%;
+    --status-completed: 152 76% 48%;
+    --status-cancelled: 0 75% 50%;
+    --status-rejected: 350 85% 58%;
+    --status-overdue: 20 90% 52%;
+
+    /* ── Surfaces (Dark) ── */
+    --surface-elevated: 230 28% 17%;
+    --surface-sunken: 230 35% 10%;
+
+    /* ── Sidebar (Dark) ── */
+    --sidebar-background: 230 40% 9%;
+    --sidebar-foreground: 220 15% 80%;
+    --sidebar-primary: 231 75% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 230 30% 16%;
+    --sidebar-accent-foreground: 220 20% 95%;
+    --sidebar-border: 230 25% 18%;
+    --sidebar-ring: 231 75% 60%;
+
+    /* ── Charts (Dark) ── */
+    --chart-1: 231 75% 60%;
+    --chart-2: 152 76% 48%;
+    --chart-3: 38 95% 55%;
+    --chart-4: 270 85% 62%;
+    --chart-5: 350 85% 58%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Geist-like typography defaults */
+  h1, h2, h3, h4, h5, h6 {
+    @apply tracking-tight font-semibold;
+  }
+
+  /* Tabular nums for monetary values and data */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* ── Transitions ── */
+@layer utilities {
+  .transition-smooth {
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 150ms;
+  }
+
+  .glass-surface {
+    @apply bg-card/80 backdrop-blur-sm border border-border/50;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}

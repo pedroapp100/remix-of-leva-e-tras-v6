@@ -1,0 +1,841 @@
+// =============================================================================
+// PRISMA SCHEMA — SISTEMA LEVA E TRAZ v2.0
+// =============================================================================
+// Gerado com base no PRD Técnico Definitivo v2.0
+//
+// PRINCÍPIO FINANCEIRO CENTRAL:
+// Em cada entrega existem DOIS proprietários de valor distintos:
+//   - 'operacao' → taxa de serviço pertence à transportadora
+//   - 'loja'     → valor coletado pertence ao cliente/loja remetente
+// Confundir esses dois fluxos é o principal risco financeiro do negócio.
+//
+// MODELO DE TARIFAÇÃO:
+// Taxa NÃO é flat por bairro. Cada cliente tem sua tabela de preços.
+// Precedência: (cliente+bairro+tipo) > (cliente+bairro+todos) >
+//              (cliente+região+tipo) > (cliente+região+todos) >
+//              bairros.taxaEntrega (fallback) > BLOQUEIO
+//
+// IMUTABILIDADE:
+// lancamentos_financeiros é imutável após criação.
+// Alterações geram novo lançamento de estorno + registro em auditoria_financeira.
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  // Supabase: usar connection pooler (porta 6543) para serverless
+  // directUrl = env("DIRECT_URL") // para migrations
+}
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+enum Role {
+  admin
+  cliente
+  entregador
+}
+
+enum StatusSolicitacao {
+  pendente      // Criada, aguardando aceite do operador
+  aceita        // Aceita com entregador atribuído
+  em_andamento  // Entregador iniciou a corrida
+  concluida     // Conciliação realizada — gera lançamentos financeiros
+  cancelada     // Cancelada (exige justificativa)
+  rejeitada     // Rejeitada pelo operador (apenas em 'pendente')
+}
+
+enum TipoOperacao {
+  standard  // Entrega padrão
+  express   // Entrega urgente (taxa de urgência aplicada)
+  retorno   // Entrega com retorno ao ponto de coleta
+}
+
+enum Modalidade {
+  pre_pago  // Cliente paga antecipado por saldo
+  faturado  // Fechamento periódico automático
+}
+
+enum FrequenciaFaturamento {
+  diario
+  semanal
+  mensal
+  por_entrega
+}
+
+enum DiaSemana {
+  domingo
+  segunda
+  terca
+  quarta
+  quinta
+  sexta
+  sabado
+}
+
+enum TipoComissao {
+  percentual  // % sobre receita_operacao da entrega
+  fixo        // Valor fixo em R$ por entrega
+}
+
+enum TipoVeiculo {
+  moto
+  carro
+  bicicleta
+  a_pe
+}
+
+enum StatusGeral {
+  Aberta       // Ativa, acumulando entregas
+  Fechada      // Encerrada, aguardando pagamento
+  Paga         // Taxa quitada pelo cliente
+  Finalizada   // Tudo quitado — remove da lista ativa
+  Vencida      // Passou da data de vencimento sem pagamento
+}
+
+enum StatusTaxas {
+  Pendente
+  Paga
+  Vencida
+}
+
+enum StatusRepasse {
+  Pendente
+  Repassado
+}
+
+enum StatusCobranca {
+  Nao_aplicavel  // Saldo zero ou positivo (operação deve à loja)
+  Pendente       // Loja deve à operação, cobrança não iniciada
+  Cobrado        // Cobrança realizada, aguardando pagamento
+  Inadimplente   // Não pagou após cobrança
+}
+
+enum TipoFaturamento {
+  por_entrega
+  semanal
+  mensal
+  diario
+  manual
+}
+
+enum StatusDespesa {
+  Pendente   // vencimento >= hoje
+  Atrasado   // vencimento < hoje AND não pago (calculado em runtime)
+  Pago       // Marcado manualmente pelo operador
+}
+
+enum PertenceA {
+  operacao  // Taxa de entrega — pertence à transportadora
+  loja      // Valor coletado — pertence ao cliente/loja remetente
+}
+
+enum TipoLancamento {
+  receita_operacao  // Taxa recebida pela operação
+  credito_loja      // Valor recebido em nome da loja (deve ser repassado)
+  debito_loja       // Taxa que a loja deve pagar à operação
+  ajuste            // Ajuste manual com permissão elevada e auditoria
+}
+
+enum SinalLancamento {
+  credito
+  debito
+}
+
+enum StatusLiquidacao {
+  pendente
+  liquidado
+  estornado
+}
+
+enum TipoAjuste {
+  credito
+  debito
+}
+
+enum TipoPreco {
+  standard
+  express
+  retorno
+  todos  // Aplica para qualquer tipo de operação
+}
+
+// =============================================================================
+// AUTENTICAÇÃO E PERFIS
+// =============================================================================
+
+/// Perfil do usuário autenticado via Supabase Auth.
+/// id = UUID do auth.users do Supabase (não auto-gerado aqui).
+/// cargo define permissões granulares. Nunca usar permissions[] diretamente
+/// para verificar — sempre consultar o cargo atual via usePermissions().
+model Profile {
+  id          String   @id @db.Uuid
+  nome        String
+  email       String   @unique
+  role        Role
+  avatar      String?
+  cargoId     String?  @map("cargo_id") @db.Uuid
+  permissions String[] // Snapshot das permissões do cargo no último login
+
+  cargo Cargo? @relation(fields: [cargoId], references: [id])
+
+  // Relações de auditoria e ações
+  despesasPagas       Despesa[]             @relation("DespesaPagaPor")
+  lancamentos         LancamentoFinanceiro[]
+  pagamentos          PagamentoSolicitacao[]
+  ajustes             AjusteFinanceiro[]
+  auditoria           AuditoriaFinanceira[]
+  systemSettingsEdits SystemSetting[]
+  preferencias        UserPreference[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("profiles")
+}
+
+/// Cargos com permissões granulares para usuários admin.
+/// O cargo 'admin-master' (id fixo) não pode ser excluído.
+/// Alterar permissões de um cargo afeta TODOS os usuários com aquele cargo instantaneamente.
+///
+/// Mapa de permissões (formato: 'modulo.acao'):
+/// solicitacoes.view | .create | .edit | .cancel | .reject | .assign_driver | .conciliar | .conciliar_edit
+/// clientes.view | .create | .edit | .delete | .view_financeiro
+/// entregadores.view | .create | .edit | .delete
+/// faturas.view | .create | .edit | .delete | .liquidar | .edit_finalizada
+/// financeiro.view | .despesas_create | .despesas_edit | .despesas_pagar
+/// financeiro.ajustes | .auditoria_view | .edit_pos_fechamento
+/// relatorios.view | .export
+/// settings.view | .bairros | .regioes | .formas_pagamento | .cargos | .tabela_precos
+model Cargo {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique
+  description String?
+  permissions String[]
+
+  users Profile[]
+
+  @@map("cargos")
+}
+
+// =============================================================================
+// CLIENTES (LOJAS)
+// =============================================================================
+
+/// Cliente B2B da operação logística (lojas que contratam o serviço de entrega).
+/// REGRA: Cliente inativo NÃO pode ter novas solicitações criadas.
+/// REGRA: Exclusão bloqueada se existir solicitação associada — inativar em vez de excluir.
+/// REGRA: Modalidade 'faturado' com ativarFaturamentoAutomatico=true gera
+///        fechamentos automáticos conforme a frequência configurada.
+model Cliente {
+  id     String     @id @default(uuid()) @db.Uuid
+  nome   String
+  tipo   String     // 'pessoa_fisica' | 'pessoa_juridica'
+  email  String     @unique
+  telefone String
+  endereco String
+  bairro   String
+  cidade   String
+  uf       String   @db.Char(2)
+  chavePix String?
+
+  status     String     @default("ativo")  // 'ativo' | 'inativo'
+  modalidade Modalidade @default(pre_pago)
+
+  // Configuração de faturamento automático (apenas modalidade 'faturado')
+  ativarFaturamentoAutomatico       Boolean                @default(false) @map("ativar_faturamento_automatico")
+  frequenciaFaturamento             FrequenciaFaturamento? @map("frequencia_faturamento")
+  numeroDeEntregasParaFaturamento   Int?                   @map("numero_de_entregas_para_faturamento")
+  diaDaSemanaFaturamento            DiaSemana?             @map("dia_da_semana_faturamento")
+  diaDoMesFaturamento               Int?                   @map("dia_do_mes_faturamento") // 1-28
+
+  // Relações
+  solicitacoes       Solicitacao[]
+  faturas            Fatura[]
+  tabelaPrecos       TabelaPrecoCliente[]
+  lancamentos        LancamentoFinanceiro[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("clientes")
+}
+
+// =============================================================================
+// ENTREGADORES
+// =============================================================================
+
+/// Entregador da frota.
+/// REGRA: Comissão incide SOMENTE sobre receita_operacao — NUNCA sobre credito_loja.
+/// REGRA: Entregador inativo não aparece no AssignDriverDialog.
+/// REGRA: Exclusão bloqueada se existir solicitação ativa (não concluída/cancelada).
+model Entregador {
+  id        String      @id @default(uuid()) @db.Uuid
+  nome      String
+  documento String      // CPF (000.000.000-00) ou CNPJ (00.000.000/0000-00)
+  email     String      @unique
+  telefone  String
+  cidade    String
+  bairro    String
+  veiculo   TipoVeiculo
+  status    String      @default("ativo") // 'ativo' | 'inativo'
+  avatar    String?
+
+  // Configuração de comissão
+  tipoComissao  TipoComissao @map("tipo_comissao")
+  valorComissao Decimal      @map("valor_comissao") @db.Decimal(10, 2)
+  // Se tipoComissao=percentual: 0-100 (%)
+  // Se tipoComissao=fixo: valor em R$ por entrega
+
+  solicitacoes Solicitacao[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("entregadores")
+}
+
+// =============================================================================
+// CONFIGURAÇÕES GEOGRÁFICAS E DE PRECIFICAÇÃO
+// =============================================================================
+
+/// Regiões geográficas que agrupam bairros.
+/// Usadas para regras regionais de tarifa na tabela_precos_cliente.
+/// REGRA: Não pode ser excluída se existir bairro ou regra de preço vinculada.
+model Regiao {
+  id          String  @id @default(uuid()) @db.Uuid
+  name        String  @unique
+  description String?
+
+  bairros      Bairro[]
+  tabelaPrecos TabelaPrecoCliente[]
+
+  @@map("regioes")
+}
+
+/// Bairros de destino disponíveis para as rotas de entrega.
+/// taxaEntrega é o FALLBACK — só usado quando não há regra em tabela_precos_cliente.
+/// AVISO: Sistema SEMPRE deve alertar visualmente quando usando este fallback.
+/// REGRA: Exclusão bloqueada se existir rota ativa com este bairro como destino.
+/// REGRA: Alterar taxaEntrega NÃO afeta solicitações já criadas (snapshot gravado).
+model Bairro {
+  id           String  @id @default(uuid()) @db.Uuid
+  nome         String
+  regionId     String  @map("region_id") @db.Uuid
+  taxaEntrega  Decimal @map("taxa_entrega") @db.Decimal(10, 2)
+  // ⚠️ FALLBACK EXPLÍCITO — só usado quando não há regra em tabela_precos_cliente
+
+  regiao  Regiao  @relation(fields: [regionId], references: [id])
+  rotas   Rota[]
+  precos  TabelaPrecoCliente[]
+
+  @@map("neighborhoods")
+}
+
+/// Formas de pagamento aceitas na operação.
+/// REGRA: enabled=false oculta a forma dos selects de criação e conciliação.
+/// REGRA: Nunca excluir — apenas desabilitar. Histórico deve permanecer válido.
+/// SEED obrigatório: Dinheiro, PIX, Cartão de Crédito, Cartão de Débito.
+model FormaPagamento {
+  id          String  @id @default(uuid()) @db.Uuid
+  name        String  @unique
+  description String?
+  enabled     Boolean @default(true)
+  order       Int     @default(100) // Ordem de exibição nos selects
+
+  pagamentos PagamentoSolicitacao[]
+  rotas      RotaFormaPagamento[]
+
+  @@map("formas_pagamento")
+}
+
+/// Taxas extras que podem ser adicionadas às rotas de entrega.
+/// Ex: "Retorno ao local", "Taxa de espera", "Entrega no andar".
+model TaxaExtra {
+  id    String  @id @default(uuid()) @db.Uuid
+  nome  String
+  valor Decimal @db.Decimal(10, 2)
+
+  rotasTaxasExtras RotaTaxaExtra[]
+
+  @@map("extra_fees")
+}
+
+// =============================================================================
+// TABELA DE PREÇOS POR CLIENTE — MÓDULO CRÍTICO NOVO
+// =============================================================================
+
+/// Tarifas personalizadas por cliente + bairro de destino.
+///
+/// RESOLVE O PROBLEMA: Taxa flat por bairro ignorava distância real da
+/// loja de origem. Loja a 3km e loja a 15km do mesmo bairro pagavam igual.
+///
+/// ALGORITMO DE RESOLUÇÃO (precedência, menor prioridade = mais específica):
+///   1. cliente + bairro + tipo_operacao (mais específica)
+///   2. cliente + bairro + 'todos'
+///   3. cliente + região + tipo_operacao (regional específica)
+///   4. cliente + região + 'todos' (regional geral)
+///   5. bairros.taxaEntrega (FALLBACK — exibir aviso visual obrigatório)
+///   6. Sem nenhuma regra → BLOQUEAR criação da solicitação
+///
+/// SNAPSHOT: ao criar a rota, gravar taxaResolvida e regraPrecoId para
+/// rastreabilidade. Alterações futuras NÃO afetam solicitações já criadas.
+model TabelaPrecoCliente {
+  id String @id @default(uuid()) @db.Uuid
+
+  clienteId       String @map("cliente_id") @db.Uuid
+  bairroDestinoId String? @map("bairro_destino_id") @db.Uuid
+  // NULL = regra regional (aplica para todos os bairros da região)
+
+  regiaoId String? @map("regiao_id") @db.Uuid
+  // NULL = regra de bairro específico
+
+  tipoOperacao TipoPreco @default(todos) @map("tipo_operacao")
+
+  taxaBase     Decimal @map("taxa_base") @db.Decimal(10, 2)
+  taxaRetorno  Decimal @default(0) @map("taxa_retorno") @db.Decimal(10, 2)
+  taxaEspera   Decimal @default(0) @map("taxa_espera") @db.Decimal(10, 2)
+  // Por hora de espera do entregador no destino
+  taxaUrgencia Decimal @default(0) @map("taxa_urgencia") @db.Decimal(10, 2)
+
+  ativo      Boolean @default(true)
+  prioridade Int     @default(100)
+  // Menor número = maior prioridade de aplicação.
+  // Desempate por createdAt DESC quando mesma prioridade.
+
+  observacao String?
+  // Justificativa comercial para uso interno
+
+  cliente Cliente  @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  bairro  Bairro?  @relation(fields: [bairroDestinoId], references: [id])
+  regiao  Regiao?  @relation(fields: [regiaoId], references: [id])
+
+  // Rotas que usaram esta regra (snapshot)
+  rotas Rota[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([clienteId, bairroDestinoId, tipoOperacao], name: "uq_cliente_bairro_tipo")
+  @@index([clienteId, bairroDestinoId, tipoOperacao, ativo, prioridade], name: "idx_tabela_precos_lookup")
+  @@map("tabela_precos_cliente")
+}
+
+// =============================================================================
+// SOLICITAÇÕES DE ENTREGA — NÚCLEO OPERACIONAL
+// =============================================================================
+
+/// Solicitação de entrega — entidade central da operação.
+/// Ciclo de vida: pendente → aceita → em_andamento → concluida
+/// Desvios: → cancelada (qualquer etapa com justificativa) | → rejeitada (só pendente)
+///
+/// REGRA: Ao finalizar (status → concluida), executa RPC concluir_conciliacao:
+///        INSERT pagamentos_solicitacao + INSERT lancamentos_financeiros +
+///        UPDATE fechamento_cliente + UPDATE status + INSERT historico
+///
+/// REGRA: codigo gerado automaticamente no formato LT-YYYYMMDD-NNNNN
+model Solicitacao {
+  id     String @id @default(uuid()) @db.Uuid
+  codigo String @unique
+  // Formato: LT-YYYYMMDD-NNNNN. Gerado no momento da criação.
+
+  clienteId    String @map("cliente_id") @db.Uuid
+  entregadorId String? @map("entregador_id") @db.Uuid
+  // Opcional na criação, obrigatório antes de iniciar
+
+  status          StatusSolicitacao @default(pendente)
+  tipoOperacao    TipoOperacao      @map("tipo_operacao")
+  pontoColeta     String            @map("ponto_coleta")
+  dataSolicitacao DateTime          @default(now()) @map("data_solicitacao")
+  dataInicio      DateTime?         @map("data_inicio")
+  dataConclusao   DateTime?         @map("data_conclusao")
+
+  // Campos legados mantidos para compatibilidade
+  // Valores reais devem ser calculados dos lancamentos_financeiros
+  valorTotalTaxas   Decimal? @map("valor_total_taxas") @db.Decimal(10, 2)
+  valorTotalRepasse Decimal? @map("valor_total_repasse") @db.Decimal(10, 2)
+
+  justificativa String?
+  // Obrigatória para cancelamento (mín. 10 chars) e rejeição
+
+  historico Json[] @default([])
+  // Array de eventos: { tipo, status_anterior, status_novo, usuarioId, timestamp, descricao }
+
+  // Relações
+  cliente    Cliente     @relation(fields: [clienteId], references: [id])
+  entregador Entregador? @relation(fields: [entregadorId], references: [id])
+  rotas      Rota[]
+  pagamentos PagamentoSolicitacao[]
+  lancamentos LancamentoFinanceiro[]
+  ajustes    AjusteFinanceiro[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([clienteId])
+  @@index([entregadorId])
+  @@index([dataSolicitacao])
+  @@index([dataConclusao])
+  @@map("solicitacoes")
+}
+
+/// Rota individual dentro de uma solicitação.
+/// Uma solicitação pode ter N rotas (N destinos diferentes).
+///
+/// SNAPSHOT DE TARIFA: taxaResolvida e regraPrecoId são gravados no momento
+/// da criação da rota. Alterações posteriores na tabela de preços NÃO afetam
+/// esta rota. Se regraPrecoId for null, foi usado o fallback do bairro.
+model Rota {
+  id              String  @id @default(uuid()) @db.Uuid
+  solicitacaoId   String  @map("solicitacao_id") @db.Uuid
+  bairroDestinoId String  @map("bairro_destino_id") @db.Uuid
+  responsavel     String
+  // Nome do destinatário no local de entrega
+  telefone        String
+  observacoes     String?
+
+  receberDoCliente Boolean @default(false) @map("receber_do_cliente")
+  // true = entregador irá coletar valor em nome da loja
+  valorAReceber   Decimal? @map("valor_a_receber") @db.Decimal(10, 2)
+  // Valor do produto/serviço a ser coletado para a loja
+
+  // Snapshot da tarifa no momento da criação (imutável pós-criação)
+  taxaResolvida Decimal? @map("taxa_resolvida") @db.Decimal(10, 2)
+  // Valor final da taxa aplicada nesta rota
+  regraPrecoId  String? @map("regra_preco_id") @db.Uuid
+  // FK para tabela_precos_cliente. NULL = usou fallback de bairro
+
+  status String @default("ativa") // 'ativa' | 'concluida' | 'cancelada'
+
+  // Relações
+  solicitacao Solicitacao        @relation(fields: [solicitacaoId], references: [id])
+  bairro      Bairro             @relation(fields: [bairroDestinoId], references: [id])
+  regraPreco  TabelaPrecoCliente? @relation(fields: [regraPrecoId], references: [id])
+
+  meiosPagamentoAceitos RotaFormaPagamento[]
+  taxasExtras           RotaTaxaExtra[]
+  pagamentos            PagamentoSolicitacao[]
+
+  @@index([solicitacaoId])
+  @@map("rotas")
+}
+
+/// Tabela de junção: formas de pagamento aceitas por rota
+model RotaFormaPagamento {
+  rotaId           String @map("rota_id") @db.Uuid
+  formaPagamentoId String @map("forma_pagamento_id") @db.Uuid
+
+  rota  Rota           @relation(fields: [rotaId], references: [id])
+  forma FormaPagamento @relation(fields: [formaPagamentoId], references: [id])
+
+  @@id([rotaId, formaPagamentoId])
+  @@map("rota_forma_pagamento")
+}
+
+/// Tabela de junção: taxas extras aplicadas por rota
+model RotaTaxaExtra {
+  rotaId      String @map("rota_id") @db.Uuid
+  taxaExtraId String @map("taxa_extra_id") @db.Uuid
+
+  rota  Rota      @relation(fields: [rotaId], references: [id])
+  taxa  TaxaExtra @relation(fields: [taxaExtraId], references: [id])
+
+  @@id([rotaId, taxaExtraId])
+  @@map("rota_taxa_extra")
+}
+
+// =============================================================================
+// CONCILIAÇÃO FINANCEIRA — NÚCLEO DO MODELO FINANCEIRO
+// =============================================================================
+
+/// Registra CADA pagamento recebido na conciliação, por rota.
+/// pertenceA é OBRIGATÓRIO e distingue os dois fluxos de valor:
+///   'operacao' → taxa de entrega, pertence à transportadora
+///   'loja'     → valor do produto/serviço, pertence ao cliente remetente
+///
+/// REGRA: Diferença entre total registrado e valor esperado > R$ 0,01
+///        BLOQUEIA a conclusão ou exige justificativa em auditoria_financeira.
+///
+/// Esta tabela substitui o campo conciliacao JSON das solicitações.
+model PagamentoSolicitacao {
+  id               String    @id @default(uuid()) @db.Uuid
+  solicitacaoId    String    @map("solicitacao_id") @db.Uuid
+  rotaId           String    @map("rota_id") @db.Uuid
+  formaPagamentoId String    @map("forma_pagamento_id") @db.Uuid
+  valor            Decimal   @db.Decimal(10, 2)
+  pertenceA        PertenceA @map("pertence_a")
+  // 'operacao': taxa pertence à transportadora
+  // 'loja': valor coletado pertence ao cliente/loja remetente
+  observacao String?
+  createdBy  String?  @map("created_by") @db.Uuid
+
+  solicitacao  Solicitacao    @relation(fields: [solicitacaoId], references: [id])
+  rota         Rota           @relation(fields: [rotaId], references: [id])
+  formaPagamento FormaPagamento @relation(fields: [formaPagamentoId], references: [id])
+  criador      Profile?       @relation(fields: [createdBy], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([solicitacaoId])
+  @@map("pagamentos_solicitacao")
+}
+
+// =============================================================================
+// LANÇAMENTOS FINANCEIROS — RAZÃO CONTÁBIL IMUTÁVEL
+// =============================================================================
+
+/// Razão financeiro normalizado por solicitação.
+/// IMUTÁVEL após criação — é a origem de verdade contábil do sistema.
+/// Alterações geram novo lançamento de estorno + registro em auditoria_financeira.
+///
+/// TIPOS:
+///   receita_operacao → taxa recebida pela operação (base de cálculo de comissão)
+///   credito_loja     → valor recebido em nome da loja (deve ser repassado ao cliente)
+///   debito_loja      → taxa que a loja deve pagar à operação
+///   ajuste           → correção manual com permissão elevada + auditoria obrigatória
+///
+/// SALDO LÍQUIDO DO FECHAMENTO:
+///   SUM(credito_loja) - SUM(debito_loja) - SUM(ajustes desfavoráveis)
+///   Positivo → operação deve repassar à loja
+///   Negativo → loja deve pagar à operação
+///   Zero     → quitado
+model LancamentoFinanceiro {
+  id String @id @default(uuid()) @db.Uuid
+
+  solicitacaoId String? @map("solicitacao_id") @db.Uuid
+  clienteId     String  @map("cliente_id") @db.Uuid
+  faturaId      String? @map("fatura_id") @db.Uuid
+
+  tipo             TipoLancamento
+  valor            Decimal          @db.Decimal(10, 2)
+  sinal            SinalLancamento
+  statusLiquidacao StatusLiquidacao @default(pendente) @map("status_liquidacao")
+
+  descricao        String?
+  referenciaOrigem String? @map("referencia_origem")
+  // Código da solicitação, número da fatura, etc.
+
+  usuarioId String? @map("usuario_id") @db.Uuid
+
+  solicitacao Solicitacao? @relation(fields: [solicitacaoId], references: [id])
+  cliente     Cliente      @relation(fields: [clienteId], references: [id])
+  fatura      Fatura?      @relation(fields: [faturaId], references: [id])
+  usuario     Profile?     @relation(fields: [usuarioId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([clienteId])
+  @@index([solicitacaoId])
+  @@index([faturaId])
+  @@index([tipo])
+  @@map("lancamentos_financeiros")
+}
+
+// =============================================================================
+// FATURAS E FECHAMENTOS
+// =============================================================================
+
+/// Fechamento financeiro por cliente por período.
+/// Consolida lançamentos já apurados na conciliação.
+/// NÃO é o ponto de cálculo — é o CONSOLIDADOR de lançamentos.
+///
+/// GERAÇÃO AUTOMÁTICA disparada após conciliação conforme frequenciaFaturamento:
+///   por_entrega → ao atingir numeroDeEntregasParaFaturamento
+///   semanal     → todo diaDaSemanaFaturamento às 00:00 (Edge Function)
+///   mensal      → todo diaDoMesFaturamento às 00:00 (Edge Function)
+///
+/// statusGeral='Finalizada' → remove da lista ativa → vai para /faturas/finalizadas
+/// Fechamento finalizado é IMUTÁVEL sem permissão faturas.edit_finalizada + auditoria
+model Fatura {
+  id          String @id @default(uuid()) @db.Uuid
+  numero      String @unique
+  // Gerado automaticamente no formato FAT-YYYYMM-NNNNN
+  clienteId   String @map("cliente_id") @db.Uuid
+  clienteNome String @map("cliente_nome")
+  // Snapshot do nome no momento da criação
+
+  tipoFaturamento TipoFaturamento @map("tipo_faturamento")
+  totalEntregas   Int             @default(0) @map("total_entregas")
+  dataEmissao     DateTime        @map("data_emissao")
+  dataVencimento  DateTime        @map("data_vencimento")
+
+  // Campos legados (mantidos para compatibilidade)
+  valorTaxas    Decimal? @map("valor_taxas") @db.Decimal(10, 2)
+  valorRepasse  Decimal? @map("valor_repasse") @db.Decimal(10, 2)
+
+  // Campos novos — calculados dos lancamentos_financeiros
+  totalCreditosLoja Decimal? @default(0) @map("total_creditos_loja") @db.Decimal(10, 2)
+  totalDebitosLoja  Decimal? @default(0) @map("total_debitos_loja") @db.Decimal(10, 2)
+  saldoLiquido      Decimal? @default(0) @map("saldo_liquido") @db.Decimal(10, 2)
+  // Positivo → operação deve repassar à loja
+  // Negativo → loja deve pagar à operação
+  // Zero     → quitado
+
+  // Dimensões de status (3 dimensões independentes)
+  statusGeral    StatusGeral    @default(Aberta) @map("status_geral")
+  statusTaxas    StatusTaxas    @default(Pendente) @map("status_taxas")
+  statusRepasse  StatusRepasse  @default(Pendente) @map("status_repasse")
+  statusCobranca StatusCobranca @default(Nao_aplicavel) @map("status_cobranca")
+
+  observacoes String?
+  historico   Json[] @default([])
+  // Array de eventos: { tipo, data, usuarioId, descricao, valorAnterior?, valorNovo? }
+
+  // Relações
+  cliente     Cliente                @relation(fields: [clienteId], references: [id])
+  lancamentos LancamentoFinanceiro[]
+  ajustes     AjusteFinanceiro[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([clienteId])
+  @@index([statusGeral])
+  @@index([dataVencimento])
+  @@map("faturas")
+}
+
+// =============================================================================
+// FINANCEIRO OPERACIONAL
+// =============================================================================
+
+/// Despesas operacionais da empresa.
+/// Status calculado em runtime:
+///   Pendente  → vencimento >= hoje AND status != 'Pago'
+///   Atrasado  → vencimento < hoje AND status != 'Pago'
+///   Pago      → marcação manual via ação "Marcar como Paga"
+///               Registra dataPagamento + usuarioPagouId
+model Despesa {
+  id          String        @id @default(uuid()) @db.Uuid
+  descricao   String
+  categoria   String
+  // Lista de categorias gerenciada em /configuracoes aba Sistema
+  fornecedor  String
+  vencimento  DateTime
+  valor       Decimal       @db.Decimal(10, 2)
+  status      StatusDespesa @default(Pendente)
+
+  dataPagamento  DateTime? @map("data_pagamento")
+  usuarioPagouId String?   @map("usuario_pagou_id") @db.Uuid
+  observacao     String?
+
+  usuarioPagou Profile? @relation("DespesaPagaPor", fields: [usuarioPagouId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([vencimento])
+  @@map("despesas")
+}
+
+/// Receitas manuais além das taxas de faturas.
+/// Ex: serviços avulsos, consultorias, cobranças diversas.
+/// Receitas da operação de entrega são calculadas dos lancamentos_financeiros
+/// (tipo = 'receita_operacao') — não entram nesta tabela.
+model Receita {
+  id              String   @id @default(uuid()) @db.Uuid
+  descricao       String
+  categoria       String
+  clienteId       String?  @map("cliente_id") @db.Uuid
+  dataRecebimento DateTime @map("data_recebimento")
+  valor           Decimal  @db.Decimal(10, 2)
+  observacao      String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([dataRecebimento])
+  @@map("receitas")
+}
+
+// =============================================================================
+// AUDITORIA E AJUSTES FINANCEIROS
+// =============================================================================
+
+/// Ajustes manuais em fechamentos com rastreabilidade completa.
+/// Requer permissão 'financeiro.ajustes'.
+/// Cada ajuste é registrado também em AuditoriaFinanceira.
+model AjusteFinanceiro {
+  id            String    @id @default(uuid()) @db.Uuid
+  faturaId      String    @map("fatura_id") @db.Uuid
+  solicitacaoId String?   @map("solicitacao_id") @db.Uuid
+  tipo          TipoAjuste
+  valor         Decimal   @db.Decimal(10, 2)
+  motivo        String
+  usuarioId     String    @map("usuario_id") @db.Uuid
+
+  fatura      Fatura      @relation(fields: [faturaId], references: [id])
+  solicitacao Solicitacao? @relation(fields: [solicitacaoId], references: [id])
+  usuario     Profile      @relation(fields: [usuarioId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([faturaId])
+  @@map("ajustes_financeiros")
+}
+
+/// Trilha de auditoria imutável de todas as alterações em dados financeiros pós-fechamento.
+/// NUNCA deletar registros desta tabela.
+/// Requer permissão 'financeiro.auditoria_view' para visualizar.
+model AuditoriaFinanceira {
+  id         String  @id @default(uuid()) @db.Uuid
+  entidade   String
+  // 'fatura' | 'lancamento_financeiro' | 'solicitacao' | 'ajuste'
+  entidadeId String  @map("entidade_id") @db.Uuid
+  campo      String?
+  // Campo alterado. NULL para eventos de mudança de status.
+
+  valorAnterior Json? @map("valor_anterior")
+  valorNovo     Json? @map("valor_novo")
+  motivo        String
+  // Justificativa obrigatória para toda alteração pós-fechamento
+
+  usuarioId String  @map("usuario_id") @db.Uuid
+  usuario   Profile @relation(fields: [usuarioId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([entidade, entidadeId])
+  @@map("auditoria_financeira")
+}
+
+// =============================================================================
+// CONFIGURAÇÕES DO SISTEMA
+// =============================================================================
+
+/// Configurações globais do sistema.
+/// Usada para armazenar chaves de integração (Stripe, Google Maps, WhatsApp).
+/// Chaves sensíveis devem ser criptografadas ou gerenciadas via Supabase Vault.
+/// Keys definidas: 'stripe_public_key', 'stripe_secret_key',
+///                 'google_maps_key', 'whatsapp_token', 'whatsapp_phone_id'
+model SystemSetting {
+  key       String  @id
+  value     String?
+  updatedBy String? @map("updated_by") @db.Uuid
+
+  usuario Profile? @relation(fields: [updatedBy], references: [id])
+
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("system_settings")
+}
+
+/// Preferências de notificação por usuário.
+/// Salvas no banco — não apenas em localStorage.
+/// Keys definidas: 'notif_vencimentos', 'notif_entregas',
+///                 'notif_faturas', 'notif_solicitacoes'
+model UserPreference {
+  userId String @map("user_id") @db.Uuid
+  key    String
+  value  Json
+
+  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, key])
+  @@map("user_preferences")
+}
