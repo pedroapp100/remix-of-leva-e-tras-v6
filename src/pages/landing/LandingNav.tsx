@@ -12,7 +12,7 @@ export function LandingNav() {
           <img
             src={logoLevaTraz}
             alt="Leva e Traz"
-            className="h-20 w-20 rounded-full object-contain ring-2 ring-primary/20"
+            className="h-20 w-20 rounded-full object-contain"
           />
           <div>
             <span className="text-sm font-bold tracking-tight block">Leva e Traz</span>
