@@ -65,7 +65,7 @@ export function AppHeader() {
             <Menu className="h-5 w-5" />
           </Button>
         )}
-        <img src={logoLevaTraz} alt="Leva e Traz" className="h-7 w-7 md:h-8 md:w-8 shrink-0 rounded-lg object-contain" />
+        <img src={logoLevaTraz} alt="Leva e Traz" className="h-10 md:h-12 w-auto shrink-0 object-contain" />
         <span className="text-sm font-semibold tracking-tight hidden sm:inline">Leva e Traz</span>
       </div>
 
