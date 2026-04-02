@@ -7,13 +7,13 @@ export function LandingFooter() {
         <div className="flex items-center gap-3">
           <img src={logoLevaTraz} alt="Leva e Traz" className="h-16 w-16 rounded-full object-contain" />
           <div>
-            <span className="text-xs font-semibold">Leva e Traz</span>
-            <span className="text-[10px] text-muted-foreground block">
+            <span className="font-semibold text-2xl">Leva e Traz</span>
+            <span className="text-muted-foreground block text-sm">
               Onde e quando você precisar!
             </span>
           </div>
         </div>
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-muted-foreground text-base">
           © {new Date().getFullYear()} Leva e Traz — Entregas para o varejo
         </p>
       </div>
