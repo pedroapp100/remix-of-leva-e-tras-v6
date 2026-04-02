@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import logoLevaTraz from "@/assets/logo-leva-e-traz.png";
 import heroDelivery from "@/assets/hero-delivery.jpg";
+import footerDelivery from "@/assets/footer-delivery.jpg";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { motion } from "framer-motion";
