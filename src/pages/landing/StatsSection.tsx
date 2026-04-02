@@ -14,7 +14,7 @@ const scaleIn = {
 const stats = [
   { label: "Lojas atendidas", value: "+130", icon: Store },
   { label: "Cidades cobertas", value: "Anápolis e Região", icon: MapPin },
-  { label: "Entrega média", value: "45min", icon: Clock },
+  { label: "Entrega média", value: "20 Min", icon: Clock },
   { label: "Satisfação", value: "98%", icon: Star },
 ];
 
