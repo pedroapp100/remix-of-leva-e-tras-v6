@@ -318,7 +318,7 @@ const Index = () => {
       </section>
 
       {/* ── Footer Image Banner ── */}
-      <section className="relative z-10 w-full h-[420px] sm:h-[520px] overflow-hidden">
+      <section className="relative z-10 w-full h-[550px] sm:h-[700px] overflow-hidden">
         <img
           src={footerDelivery}
           alt="Entregador Leva e Traz"
