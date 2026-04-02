@@ -317,6 +317,20 @@ const Index = () => {
         </motion.div>
       </section>
 
+      {/* ── Footer Image Banner ── */}
+      <section className="relative z-10 w-full h-[320px] sm:h-[400px] overflow-hidden">
+        <img
+          src={footerDelivery}
+          alt="Entregador Leva e Traz"
+          className="w-full h-full object-cover object-center"
+          loading="lazy"
+          width={1920}
+          height={640}
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-b from-background/60 via-transparent to-transparent" />
+      </section>
+
       {/* ── Footer ── */}
       <footer className="relative z-10 border-t border-border/30 py-10 backdrop-blur-sm">
         <div className="container mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
