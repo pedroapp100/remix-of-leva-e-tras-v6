@@ -52,7 +52,7 @@ const features = [
 
 export function FeaturesSection() {
   return (
-    <section className="relative z-10 container mx-auto px-4 sm:px-6 py-20 sm:py-28">
+    <section id="funcionalidades" className="relative z-10 container mx-auto px-4 sm:px-6 py-20 sm:py-28">
       {/* Section ambient glow */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] bg-primary/4 rounded-full blur-[120px] pointer-events-none" />
 

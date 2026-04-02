@@ -12,7 +12,7 @@ const segments = [
 
 export function SegmentsSection() {
   return (
-    <section className="relative z-10 py-12 sm:py-16">
+    <section id="segmentos" className="relative z-10 py-12 sm:py-16">
       <div className="container mx-auto px-4 sm:px-6">
         <motion.div
           initial={{ opacity: 0, y: 16 }}
