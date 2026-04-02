@@ -95,131 +95,109 @@ const Index = () => {
         </div>
       </nav>
 
-      {/* ── Hero — Split Layout ── */}
-      <section className="relative z-10">
-        <div className="container mx-auto px-4 sm:px-6 py-10 sm:py-16 lg:py-24">
-          <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-center">
-            {/* Left — Copy */}
-            <motion.div initial="hidden" animate="visible" className="max-w-xl">
-              <motion.div variants={fadeUp} custom={0}>
-                <Badge
-                  variant="secondary"
-                  className="mb-6 rounded-full px-4 py-1.5 text-[10px] font-semibold tracking-[0.15em] uppercase border border-primary/20 bg-primary/5 text-primary"
-                >
-                  <Zap className="mr-1.5 h-3 w-3" />
-                  Leva e Traz v2.0
-                </Badge>
-              </motion.div>
+      {/* ── Hero — Full-width immersive ── */}
+      <section className="relative z-10 min-h-[85vh] sm:min-h-[90vh] flex items-center overflow-hidden">
+        {/* Full background image */}
+        <div className="absolute inset-0">
+          <img
+            src={heroDelivery}
+            alt="Entregador Leva e Traz em ação"
+            className="w-full h-full object-cover object-center"
+            width={1920}
+            height={1080}
+          />
+          {/* Cinematic overlays */}
+          <div className="absolute inset-0 bg-gradient-to-r from-background via-background/85 to-background/20" />
+          <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-background/40" />
+          <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-background to-transparent" />
+        </div>
 
-              <motion.h1
-                variants={fadeUp}
-                custom={1}
-                className="text-4xl sm:text-5xl lg:text-[3.5rem] font-bold tracking-tight leading-[1.1]"
+        {/* Content overlay */}
+        <div className="relative z-10 container mx-auto px-4 sm:px-6 py-16 sm:py-20">
+          <motion.div initial="hidden" animate="visible" className="max-w-xl">
+            <motion.div variants={fadeUp} custom={0}>
+              <Badge
+                variant="secondary"
+                className="mb-6 rounded-full px-4 py-1.5 text-[10px] font-semibold tracking-[0.15em] uppercase border border-primary/30 bg-primary/10 text-primary backdrop-blur-sm"
               >
-                Logística last-mile{" "}
-                <span className="bg-gradient-to-r from-primary via-primary/80 to-primary/60 bg-clip-text text-transparent">
-                  inteligente
-                </span>
-              </motion.h1>
-
-              <motion.p
-                variants={fadeUp}
-                custom={2}
-                className="mt-6 text-base sm:text-lg text-muted-foreground leading-relaxed max-w-md"
-              >
-                Plataforma completa para operações de entrega. Solicitações,
-                tarifação por cliente, conciliação financeira e controle de frota
-                em um único sistema.
-              </motion.p>
-
-              <motion.div variants={fadeUp} custom={3} className="mt-8 flex flex-wrap gap-3">
-                <Button
-                  size="lg"
-                  className="rounded-full gap-2 px-8 shadow-xl shadow-primary/25 hover:shadow-primary/40 transition-all duration-300 font-semibold text-sm"
-                  onClick={() => navigate("/login")}
-                >
-                  Acessar Painel
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-                <Button
-                  size="lg"
-                  variant="ghost"
-                  className="rounded-full font-semibold text-sm text-muted-foreground hover:text-foreground px-6"
-                >
-                  Documentação
-                </Button>
-              </motion.div>
-
-              {/* Trust indicators */}
-              <motion.div variants={fadeUp} custom={4} className="mt-10 flex items-center gap-6">
-                <div className="flex -space-x-2">
-                  {[1, 2, 3, 4].map((i) => (
-                    <div
-                      key={i}
-                      className="h-8 w-8 rounded-full bg-gradient-to-br from-primary/40 to-primary/20 border-2 border-background flex items-center justify-center text-[9px] font-bold text-primary-foreground"
-                    >
-                      {String.fromCharCode(64 + i)}
-                    </div>
-                  ))}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  <span className="font-semibold text-foreground">+340</span> empresas confiam
-                </p>
-              </motion.div>
+                <Zap className="mr-1.5 h-3 w-3" />
+                Leva e Traz v2.0
+              </Badge>
             </motion.div>
 
-            {/* Right — Hero Image */}
-            <motion.div
-              initial={{ opacity: 0, x: 40, scale: 0.95 }}
-              animate={{ opacity: 1, x: 0, scale: 1 }}
-              transition={{ delay: 0.3, duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-              className="relative hidden lg:block"
+            <motion.h1
+              variants={fadeUp}
+              custom={1}
+              className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.08]"
             >
-              {/* Glow behind image */}
-              <div className="absolute -inset-4 bg-gradient-to-br from-primary/20 via-primary/5 to-transparent rounded-3xl blur-2xl" />
-              
-              <div className="relative rounded-2xl overflow-hidden border border-border/30 shadow-2xl shadow-primary/10">
-                <img
-                  src={heroDelivery}
-                  alt="Entregador Leva e Traz em ação"
-                  className="w-full h-[500px] object-cover"
-                  width={1280}
-                  height={960}
-                />
-                {/* Gradient overlay */}
-                <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-transparent to-transparent" />
-                
-                {/* Floating badge on image */}
-                <div className="absolute bottom-6 left-6 right-6 flex items-center gap-3 bg-card/80 backdrop-blur-md rounded-xl p-4 border border-border/30">
-                  <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                    <Zap className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold">Entregas em tempo real</p>
-                    <p className="text-[10px] text-muted-foreground">Rastreamento completo do pedido à entrega</p>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          </div>
+              Logística last-mile{" "}
+              <span className="bg-gradient-to-r from-primary via-primary/80 to-primary/60 bg-clip-text text-transparent">
+                inteligente
+              </span>
+            </motion.h1>
 
-          {/* Mobile hero image */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5, duration: 0.6 }}
-            className="mt-10 lg:hidden rounded-2xl overflow-hidden border border-border/30 shadow-xl"
-          >
-            <img
-              src={heroDelivery}
-              alt="Entregador Leva e Traz em ação"
-              className="w-full h-[280px] sm:h-[360px] object-cover"
-              width={1280}
-              height={960}
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-background/60 via-transparent to-transparent pointer-events-none" />
+            <motion.p
+              variants={fadeUp}
+              custom={2}
+              className="mt-6 text-base sm:text-lg text-muted-foreground leading-relaxed max-w-md"
+            >
+              Plataforma completa para operações de entrega. Solicitações,
+              tarifação por cliente, conciliação financeira e controle de frota
+              em um único sistema.
+            </motion.p>
+
+            <motion.div variants={fadeUp} custom={3} className="mt-8 flex flex-wrap gap-3">
+              <Button
+                size="lg"
+                className="rounded-full gap-2 px-8 shadow-2xl shadow-primary/30 hover:shadow-primary/50 transition-all duration-300 font-semibold text-sm"
+                onClick={() => navigate("/login")}
+              >
+                Acessar Painel
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+              <Button
+                size="lg"
+                variant="outline"
+                className="rounded-full font-semibold text-sm border-border/50 bg-background/20 backdrop-blur-sm hover:bg-background/40 px-6"
+              >
+                Documentação
+              </Button>
+            </motion.div>
+
+            {/* Trust indicators */}
+            <motion.div variants={fadeUp} custom={4} className="mt-10 flex items-center gap-6">
+              <div className="flex -space-x-2">
+                {[1, 2, 3, 4].map((i) => (
+                  <div
+                    key={i}
+                    className="h-8 w-8 rounded-full bg-gradient-to-br from-primary/40 to-primary/20 border-2 border-background flex items-center justify-center text-[9px] font-bold text-primary-foreground"
+                  >
+                    {String.fromCharCode(64 + i)}
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                <span className="font-semibold text-foreground">+340</span> empresas confiam
+              </p>
+            </motion.div>
           </motion.div>
         </div>
+
+        {/* Floating badge — bottom right over image */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.8, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+          className="absolute bottom-20 right-8 lg:right-16 z-10 hidden sm:flex items-center gap-3 bg-card/70 backdrop-blur-xl rounded-2xl p-4 pr-6 border border-border/30 shadow-2xl shadow-primary/10"
+        >
+          <div className="h-11 w-11 rounded-xl bg-primary/15 flex items-center justify-center shrink-0">
+            <Zap className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <p className="text-xs font-semibold">Entregas em tempo real</p>
+            <p className="text-[10px] text-muted-foreground">Rastreamento completo do pedido à entrega</p>
+          </div>
+        </motion.div>
       </section>
 
       {/* ── Stats ── */}
