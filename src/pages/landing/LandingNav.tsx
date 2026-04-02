@@ -17,7 +17,7 @@ export function LandingNav() {
           <div>
             <span className="font-bold tracking-tight block text-lg"> </span>
             <span className="text-[10px] text-muted-foreground hidden sm:block uppercase tracking-widest">
-              Entregas para o seu negócio
+              {" "}
             </span>
           </div>
         </div>
