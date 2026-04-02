@@ -22,7 +22,7 @@ export function LandingNav() {
           <img
             src="/45b310cd-c7a9-4a8e-90e6-79884be4ceb3.png"
             alt="Leva e Traz"
-            className="h-20 w-20 rounded-full object-contain cursor-pointer"
+            className="h-16 w-auto object-contain cursor-pointer"
             onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
           />
         </div>
