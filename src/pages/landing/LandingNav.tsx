@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import logoLevaTraz from "@/assets/logo-leva-e-traz.png";
+
 import { Button } from "@/components/ui/button";
 
 export function LandingNav() {
