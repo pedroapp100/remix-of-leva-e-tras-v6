@@ -201,7 +201,11 @@ export function AdminConciliacaoDialog({
 
     // Generate invoice if not already concluded
     if (solicitacao.status === "em_andamento") {
-      concluirComCaixa(solicitacao.id);
+      const result = concluirComCaixa(solicitacao.id);
+      if (!result.success) {
+        toast.error(result.error ?? "Erro ao concluir solicitação.");
+        return;
+      }
     }
 
     onConfirm();

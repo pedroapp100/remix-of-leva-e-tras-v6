@@ -230,7 +230,11 @@ export default function SolicitacoesPage() {
   };
 
   const handleConcluir = (sol: Solicitacao) => {
-    concluirComCaixa(sol.id);
+    const result = concluirComCaixa(sol.id);
+    if (!result.success) {
+      toast.error(result.error ?? "Erro ao concluir solicitação.");
+      return;
+    }
     toast.success("Solicitação concluída!");
   };
 

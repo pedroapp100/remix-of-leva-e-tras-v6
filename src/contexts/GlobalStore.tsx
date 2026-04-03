@@ -63,7 +63,10 @@ interface GlobalStoreContextType {
   addEntregaToFatura: (faturaId: string, entrega: EntregaFatura) => void;
 
   // High-level actions
-  concluirSolicitacaoComFatura: (solId: string) => void;
+  concluirSolicitacaoComFatura: (solId: string) => { success: boolean; error?: string };
+
+  // Validação pré-pago
+  verificarSaldoPrePago: (solId: string) => { ok: boolean; saldo: number; taxas: number };
 
   // Helpers
   getClienteSaldo: (clienteId: string) => number;
@@ -237,11 +240,43 @@ export function GlobalStoreProvider({ children }: { children: ReactNode }) {
     [recargas]
   );
 
+  // Verifica se cliente pré-pago tem saldo suficiente para concluir
+  const verificarSaldoPrePago = useCallback(
+    (solId: string): { ok: boolean; saldo: number; taxas: number } => {
+      const sol = solicitacoes.find((s) => s.id === solId);
+      if (!sol) return { ok: false, saldo: 0, taxas: 0 };
+
+      const cliente = MOCK_CLIENTES.find((c) => c.id === sol.cliente_id);
+      if (!cliente || cliente.modalidade !== "pre_pago") return { ok: true, saldo: 0, taxas: 0 };
+
+      const solRotas = rotas.filter((r) => r.solicitacao_id === solId);
+      const totalTaxas = solRotas.reduce((s, r) => s + (r.taxa_resolvida ?? 0), 0);
+      const saldo = getClienteSaldo(sol.cliente_id);
+
+      return { ok: saldo >= totalTaxas, saldo, taxas: totalTaxas };
+    },
+    [solicitacoes, rotas, getClienteSaldo]
+  );
+
   // Conclude solicitação and auto-link to fatura for faturado clients
   const concluirSolicitacaoComFatura = useCallback(
-    (solId: string) => {
+    (solId: string): { success: boolean; error?: string } => {
       const sol = solicitacoes.find((s) => s.id === solId);
-      if (!sol) return;
+      if (!sol) return { success: false, error: "Solicitação não encontrada." };
+
+      // ── Validação de saldo pré-pago ──
+      const cliente = MOCK_CLIENTES.find((c) => c.id === sol.cliente_id);
+      if (cliente?.modalidade === "pre_pago") {
+        const { ok, saldo, taxas } = verificarSaldoPrePago(solId);
+        if (!ok) {
+          const faltante = (taxas - saldo).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+          const saldoFmt = saldo.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+          return {
+            success: false,
+            error: `Saldo insuficiente. Saldo atual: ${saldoFmt} — faltam ${faltante}. Solicite uma recarga antes de concluir.`,
+          };
+        }
+      }
 
       const now = new Date().toISOString();
       // Update solicitação status
@@ -255,8 +290,7 @@ export function GlobalStoreProvider({ children }: { children: ReactNode }) {
         ],
       }));
 
-      const cliente = MOCK_CLIENTES.find((c) => c.id === sol.cliente_id);
-      if (!cliente || cliente.modalidade !== "faturado") return;
+      if (!cliente || cliente.modalidade !== "faturado") return { success: true };
 
       // Find or create active fatura for this client
       const solRotas = rotas.filter((r) => r.solicitacao_id === solId);
@@ -323,8 +357,10 @@ export function GlobalStoreProvider({ children }: { children: ReactNode }) {
         addFatura(novaFatura);
         setEntregasFatura((prev) => ({ ...prev, [fatId]: [entrega] }));
       }
+
+      return { success: true };
     },
-    [solicitacoes, rotas, faturas, updateSolicitacao, addEntregaToFatura, addFatura]
+    [solicitacoes, rotas, faturas, updateSolicitacao, addEntregaToFatura, addFatura, verificarSaldoPrePago, getClienteSaldo]
   );
 
   const value = useMemo<GlobalStoreContextType>(
@@ -345,11 +381,12 @@ export function GlobalStoreProvider({ children }: { children: ReactNode }) {
       addFatura,
       addEntregaToFatura,
       concluirSolicitacaoComFatura,
+      verificarSaldoPrePago,
       getClienteSaldo,
       addRecarga,
       getRecargasByCliente,
     }),
-    [solicitacoes, rotas, pagamentos, faturas, entregasFatura, recargas, addSolicitacao, updateSolicitacao, addPagamentos, getPagamentosByRota, getPagamentosBySolicitacao, getRotasBySolicitacao, updateFatura, addFatura, addEntregaToFatura, concluirSolicitacaoComFatura, getClienteSaldo, addRecarga, getRecargasByCliente]
+    [solicitacoes, rotas, pagamentos, faturas, entregasFatura, recargas, addSolicitacao, updateSolicitacao, addPagamentos, getPagamentosByRota, getPagamentosBySolicitacao, getRotasBySolicitacao, updateFatura, addFatura, addEntregaToFatura, concluirSolicitacaoComFatura, verificarSaldoPrePago, getClienteSaldo, addRecarga, getRecargasByCliente]
   );
 
   return <GlobalStoreContext.Provider value={value}>{children}</GlobalStoreContext.Provider>;
