@@ -3,9 +3,12 @@ import { MetricCard, DataTable } from "@/components/shared";
 import type { Column } from "@/components/shared/DataTable";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { getClientesPorModalidade } from "@/data/mockRelatorios";
 import { formatCurrency } from "@/lib/formatters";
-import { Users, CreditCard, Receipt, TrendingUp } from "lucide-react";
+import { useGlobalStore } from "@/contexts/GlobalStore";
+import { useSettingsStore } from "@/contexts/SettingsStore";
+import { Users, CreditCard, Receipt, TrendingUp, AlertTriangle } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Legend } from "recharts";
 
 const chartTooltipStyle = {
