@@ -262,9 +262,17 @@ export default function ClientesPage() {
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground tabular-nums">{r.telefone}</span>
-                  <Badge variant={r.modalidade === "faturado" ? "default" : "secondary"}>
-                    {MODALIDADE_LABELS[r.modalidade]}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={r.modalidade === "faturado" ? "default" : "secondary"}>
+                      {MODALIDADE_LABELS[r.modalidade]}
+                    </Badge>
+                    {r.modalidade === "pre_pago" && getClienteSaldo(r.id) < limiteMinimo && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
+                        <AlertTriangle className="h-3 w-3" />
+                        {formatCurrency(getClienteSaldo(r.id))}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center justify-end gap-1 border-t border-border pt-2">
                   <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-primary hover:bg-primary/10" onClick={(e) => { e.stopPropagation(); setProfileClient(r); }}><Eye className="h-4 w-4" /></Button>
