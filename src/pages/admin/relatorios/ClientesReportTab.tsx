@@ -48,7 +48,7 @@ export function ClientesReportTab() {
             </Badge>
             {saldoBaixo && (
               <TooltipProvider delayDuration={200}>
-                <Tooltip>
+                <UiTooltip>
                   <TooltipTrigger asChild>
                     <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
                       <AlertTriangle className="h-3 w-3" />
@@ -58,7 +58,7 @@ export function ClientesReportTab() {
                   <TooltipContent>
                     Saldo abaixo do limite mínimo de {formatCurrency(limiteMinimo)}
                   </TooltipContent>
-                </Tooltip>
+                </UiTooltip>
               </TooltipProvider>
             )}
           </div>
@@ -144,7 +144,7 @@ export function ClientesReportTab() {
                     <Cell key={`cell-${index}`} fill={entry.fill} />
                   ))}
                 </Pie>
-                <Tooltip contentStyle={chartTooltipStyle} />
+                <RechartsTooltip contentStyle={chartTooltipStyle} />
                 <Legend />
               </PieChart>
             </ResponsiveContainer>
@@ -162,7 +162,7 @@ export function ClientesReportTab() {
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="name" tick={axisTickStyle} />
                 <YAxis tick={axisTickStyle} tickFormatter={(v) => `${(v / 1000).toFixed(1)}k`} />
-                <Tooltip contentStyle={chartTooltipStyle} formatter={(value: number) => formatCurrency(value)} />
+                <RechartsTooltip contentStyle={chartTooltipStyle} formatter={(value: number) => formatCurrency(value)} />
                 <Legend />
                 <Bar dataKey="value" name="Receita" radius={[4, 4, 0, 0]}>
                   {data.receitaPorModalidade.map((entry, index) => (
