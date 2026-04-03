@@ -40,10 +40,18 @@ const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", curren
 const formasAtivas = MOCK_FORMAS_PAGAMENTO.filter((f) => f.enabled);
 
 export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clienteId, solicitacaoId, isEditing = false, isConcluding = false, isDriverView = false }: ConciliacaoDialogProps) {
-  const { addPagamentos } = useGlobalStore();
+  const { addPagamentos, getClienteSaldo } = useGlobalStore();
   const cliente = useMemo(() => clienteId ? MOCK_CLIENTES.find((c) => c.id === clienteId) : null, [clienteId]);
   const isPrePago = cliente?.modalidade === "pre_pago";
   const isFaturado = cliente?.modalidade === "faturado";
+
+  // Saldo pré-pago e suficiência
+  const saldoPrePago = useMemo(() => {
+    if (!isPrePago || !clienteId) return null;
+    const saldo = getClienteSaldo(clienteId);
+    const totalTaxas = rotas.reduce((s, r) => s + (r.taxa_resolvida ?? 0), 0);
+    return { saldo, totalTaxas, suficiente: saldo >= totalTaxas, diferenca: totalTaxas - saldo };
+  }, [isPrePago, clienteId, getClienteSaldo, rotas]);
   const [pagamentosPorRota, setPagamentosPorRota] = useState<Record<string, PagamentoLinha[]>>(() => {
     const initial: Record<string, PagamentoLinha[]> = {};
     rotas.forEach((r) => { initial[r.id] = []; });
@@ -145,6 +153,33 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
                   <Info className="h-4 w-4 text-status-pending" />
                   <AlertDescription className="text-xs">
                     Cliente <strong>pré-pago</strong> — o pagamento das taxas deve ser cobrado no ato da entrega. Registre os pagamentos recebidos abaixo.
+                  </AlertDescription>
+                </Alert>
+              )}
+              {isPrePago && saldoPrePago && (
+                <Alert className={saldoPrePago.suficiente ? "border-primary/30 bg-primary/5" : "border-destructive/30 bg-destructive/5"}>
+                  {saldoPrePago.suficiente ? (
+                    <CheckCircle className="h-4 w-4 text-primary" />
+                  ) : (
+                    <AlertTriangle className="h-4 w-4 text-destructive" />
+                  )}
+                  <AlertDescription className="text-xs">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span>
+                        Saldo atual: <strong className={saldoPrePago.suficiente ? "text-primary" : "text-destructive"}>{fmt(saldoPrePago.saldo)}</strong>
+                        {" · "}Taxas desta solicitação: <strong>{fmt(saldoPrePago.totalTaxas)}</strong>
+                      </span>
+                      {!saldoPrePago.suficiente && (
+                        <Badge variant="destructive" className="text-xs shrink-0">
+                          Faltam {fmt(saldoPrePago.diferenca)}
+                        </Badge>
+                      )}
+                    </div>
+                    {!saldoPrePago.suficiente && (
+                      <p className="mt-1 text-destructive font-medium">
+                        Saldo insuficiente — a conclusão será bloqueada. Solicite uma recarga ao administrador.
+                      </p>
+                    )}
                   </AlertDescription>
                 </Alert>
               )}
