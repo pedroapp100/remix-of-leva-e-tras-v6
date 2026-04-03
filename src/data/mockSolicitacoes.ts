@@ -144,6 +144,18 @@ export const MOCK_SOLICITACOES: Solicitacao[] = [
     ],
     created_at: "2026-03-14T11:00:00Z", updated_at: "2026-03-14T11:15:00Z",
   },
+  {
+    id: "sol-012", codigo: "LT-20260403-00012", cliente_id: "cli-001", entregador_id: "ent-003",
+    status: "em_andamento", tipo_operacao: "tipo-comercial", ponto_coleta: "Rua das Flores, 123 - Centro",
+    data_solicitacao: "2026-04-03T08:00:00Z", data_inicio: "2026-04-03T08:30:00Z", data_conclusao: null,
+    valor_total_taxas: 18.00, valor_total_repasse: null, justificativa: null,
+    historico: [
+      { tipo: "criacao", timestamp: "2026-04-03T08:00:00Z", descricao: "Solicitação criada" },
+      { tipo: "aceita", status_anterior: "pendente", status_novo: "aceita", timestamp: "2026-04-03T08:15:00Z", descricao: "Aceita e atribuída a Fernando Santos" },
+      { tipo: "em_andamento", status_anterior: "aceita", status_novo: "em_andamento", timestamp: "2026-04-03T08:30:00Z", descricao: "Entregador iniciou coleta" },
+    ],
+    created_at: "2026-04-03T08:00:00Z", updated_at: "2026-04-03T08:30:00Z",
+  },
 ];
 
 // ── Helpers ──
