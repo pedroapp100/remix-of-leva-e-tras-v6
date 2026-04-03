@@ -6,6 +6,7 @@ import { MOCK_CLIENTES } from "@/data/mockClientes";
 import type { EntregaFatura } from "@/data/mockFaturas";
 import { formatCurrency } from "@/lib/formatters";
 import { useLogStore } from "@/contexts/LogStore";
+import { useSettingsStore } from "@/contexts/SettingsStore";
 
 // Fix inconsistent historico for sol-005 and sol-010
 function fixMockHistorico(sols: Solicitacao[]): Solicitacao[] {

@@ -61,6 +61,7 @@ export default function SettingsPage() {
               </TabsList>
             </div>
 
+            <TabsContent value="geral" className="mt-4"><GeralTab /></TabsContent>
             <TabsContent value="bairros" className="mt-4"><BairrosTab /></TabsContent>
             <TabsContent value="regioes" className="mt-4"><RegioesTab /></TabsContent>
             <TabsContent value="pagamento" className="mt-4"><FormasPagamentoTab /></TabsContent>
