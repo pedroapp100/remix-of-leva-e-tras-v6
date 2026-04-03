@@ -1,7 +1,8 @@
 import { PageContainer } from "@/components/shared";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
-import { MapPin, Globe, CreditCard, Shield, DollarSign, Receipt, Calculator, Clock, Users, Webhook, Plug, Bell } from "lucide-react";
+import { MapPin, Globe, CreditCard, Shield, DollarSign, Receipt, Calculator, Clock, Users, Webhook, Plug, Bell, Settings } from "lucide-react";
+import { GeralTab } from "./settings/GeralTab";
 import { BairrosTab } from "./settings/BairrosTab";
 import { RegioesTab } from "./settings/RegioesTab";
 import { FormasPagamentoTab } from "./settings/FormasPagamentoTab";
@@ -17,6 +18,7 @@ import { SimuladorOperacoes } from "@/components/shared/SimuladorOperacoes";
 import { useSearchParams } from "react-router-dom";
 
 const tabs = [
+  { value: "geral", label: "Geral", icon: Settings },
   { value: "bairros", label: "Bairros", icon: MapPin },
   { value: "regioes", label: "Regiões", icon: Globe },
   { value: "pagamento", label: "Pagamentos", icon: CreditCard },
@@ -34,7 +36,7 @@ const tabs = [
 export default function SettingsPage() {
   const [searchParams] = useSearchParams();
   const clienteId = searchParams.get("cliente") ?? undefined;
-  const defaultTab = clienteId ? "precos" : "bairros";
+  const defaultTab = clienteId ? "precos" : "geral";
 
   return (
     <PageContainer
@@ -59,6 +61,7 @@ export default function SettingsPage() {
               </TabsList>
             </div>
 
+            <TabsContent value="geral" className="mt-4"><GeralTab /></TabsContent>
             <TabsContent value="bairros" className="mt-4"><BairrosTab /></TabsContent>
             <TabsContent value="regioes" className="mt-4"><RegioesTab /></TabsContent>
             <TabsContent value="pagamento" className="mt-4"><FormasPagamentoTab /></TabsContent>

@@ -6,7 +6,10 @@ import type { Cliente } from "@/types/database";
 import { MOCK_CLIENTES, MOCK_CLIENTES_METRICS } from "@/data/mockClientes";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Users, UserCheck, CreditCard, Wallet, Pencil, Trash2, Eye, X } from "lucide-react";
+import { Plus, Users, UserCheck, CreditCard, Wallet, Pencil, Trash2, Eye, X, AlertTriangle } from "lucide-react";
+import { useGlobalStore } from "@/contexts/GlobalStore";
+import { useSettingsStore } from "@/contexts/SettingsStore";
+import { formatCurrency } from "@/lib/formatters";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -23,6 +26,8 @@ const MODALIDADE_LABELS: Record<string, string> = {
 export default function ClientesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [clientes, setClientes] = useState<Cliente[]>(MOCK_CLIENTES);
+  const { getClienteSaldo } = useGlobalStore();
+  const limiteMinimo = useSettingsStore((s) => s.limite_saldo_pre_pago);
   const [search, setSearch] = useState(searchParams.get("q") ?? "");
   const [statusFilter, setStatusFilter] = useState<string>(searchParams.get("status") ?? "todos");
   const [modalidadeFilter, setModalidadeFilter] = useState<string>(searchParams.get("modalidade") ?? "todos");
@@ -119,11 +124,33 @@ export default function ClientesPage() {
     },
     {
       key: "modalidade", header: "Modalidade",
-      cell: (r) => (
-        <Badge variant={r.modalidade === "faturado" ? "default" : "secondary"}>
-          {MODALIDADE_LABELS[r.modalidade]}
-        </Badge>
-      ),
+      cell: (r) => {
+        const isPrePago = r.modalidade === "pre_pago";
+        const saldo = isPrePago ? getClienteSaldo(r.id) : null;
+        const saldoBaixo = isPrePago && saldo !== null && saldo < limiteMinimo;
+        return (
+          <div className="flex items-center gap-2">
+            <Badge variant={r.modalidade === "faturado" ? "default" : "secondary"}>
+              {MODALIDADE_LABELS[r.modalidade]}
+            </Badge>
+            {saldoBaixo && (
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
+                      <AlertTriangle className="h-3 w-3" />
+                      {formatCurrency(saldo!)}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Saldo abaixo do limite mínimo de {formatCurrency(limiteMinimo)}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: "status", header: "Status",
@@ -235,9 +262,17 @@ export default function ClientesPage() {
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground tabular-nums">{r.telefone}</span>
-                  <Badge variant={r.modalidade === "faturado" ? "default" : "secondary"}>
-                    {MODALIDADE_LABELS[r.modalidade]}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={r.modalidade === "faturado" ? "default" : "secondary"}>
+                      {MODALIDADE_LABELS[r.modalidade]}
+                    </Badge>
+                    {r.modalidade === "pre_pago" && getClienteSaldo(r.id) < limiteMinimo && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
+                        <AlertTriangle className="h-3 w-3" />
+                        {formatCurrency(getClienteSaldo(r.id))}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center justify-end gap-1 border-t border-border pt-2">
                   <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-primary hover:bg-primary/10" onClick={(e) => { e.stopPropagation(); setProfileClient(r); }}><Eye className="h-4 w-4" /></Button>
