@@ -26,6 +26,8 @@ const MODALIDADE_LABELS: Record<string, string> = {
 export default function ClientesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [clientes, setClientes] = useState<Cliente[]>(MOCK_CLIENTES);
+  const { getClienteSaldo } = useGlobalStore();
+  const limiteMinimo = useSettingsStore((s) => s.limite_saldo_pre_pago);
   const [search, setSearch] = useState(searchParams.get("q") ?? "");
   const [statusFilter, setStatusFilter] = useState<string>(searchParams.get("status") ?? "todos");
   const [modalidadeFilter, setModalidadeFilter] = useState<string>(searchParams.get("modalidade") ?? "todos");
