@@ -63,7 +63,10 @@ interface GlobalStoreContextType {
   addEntregaToFatura: (faturaId: string, entrega: EntregaFatura) => void;
 
   // High-level actions
-  concluirSolicitacaoComFatura: (solId: string) => void;
+  concluirSolicitacaoComFatura: (solId: string) => { success: boolean; error?: string };
+
+  // Validação pré-pago
+  verificarSaldoPrePago: (solId: string) => { ok: boolean; saldo: number; taxas: number };
 
   // Helpers
   getClienteSaldo: (clienteId: string) => number;
