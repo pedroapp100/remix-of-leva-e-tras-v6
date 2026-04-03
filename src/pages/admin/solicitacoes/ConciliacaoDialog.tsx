@@ -156,6 +156,33 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
                   </AlertDescription>
                 </Alert>
               )}
+              {isPrePago && saldoPrePago && (
+                <Alert className={saldoPrePago.suficiente ? "border-primary/30 bg-primary/5" : "border-destructive/30 bg-destructive/5"}>
+                  {saldoPrePago.suficiente ? (
+                    <CheckCircle className="h-4 w-4 text-primary" />
+                  ) : (
+                    <AlertTriangle className="h-4 w-4 text-destructive" />
+                  )}
+                  <AlertDescription className="text-xs">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span>
+                        Saldo atual: <strong className={saldoPrePago.suficiente ? "text-primary" : "text-destructive"}>{fmt(saldoPrePago.saldo)}</strong>
+                        {" · "}Taxas desta solicitação: <strong>{fmt(saldoPrePago.totalTaxas)}</strong>
+                      </span>
+                      {!saldoPrePago.suficiente && (
+                        <Badge variant="destructive" className="text-xs shrink-0">
+                          Faltam {fmt(saldoPrePago.diferenca)}
+                        </Badge>
+                      )}
+                    </div>
+                    {!saldoPrePago.suficiente && (
+                      <p className="mt-1 text-destructive font-medium">
+                        Saldo insuficiente — a conclusão será bloqueada. Solicite uma recarga ao administrador.
+                      </p>
+                    )}
+                  </AlertDescription>
+                </Alert>
+              )}
               {isFaturado && (
                 <Alert className="border-primary/30 bg-primary/5">
                   <Info className="h-4 w-4 text-primary" />
