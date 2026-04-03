@@ -89,7 +89,8 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
   
   const diffOperacaoCents = totalOperacaoCents - totalEsperadoTaxasCents;
   const diffLojaCents = totalLojaCents - totalEsperadoReceberCents;
-  const isBalanced = diffOperacaoCents === 0 && diffLojaCents === 0;
+  // For pre-paid and invoiced clients, operation fees are not collected in cash by the driver
+  const isBalanced = (isPrePago || isFaturado ? true : diffOperacaoCents === 0) && diffLojaCents === 0;
 
   const totalOperacao = totalOperacaoCents / 100;
   const totalLoja = totalLojaCents / 100;
