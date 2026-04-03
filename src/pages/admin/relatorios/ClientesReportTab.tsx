@@ -81,9 +81,20 @@ export function ClientesReportTab() {
     <Card className="p-4 space-y-2">
       <div className="flex items-center justify-between">
         <span className="font-medium text-sm">{c.nome}</span>
-        <Badge variant={c.modalidade === "faturado" ? "default" : "secondary"} className="text-xs">
-          {c.modalidade === "faturado" ? "Faturado" : "Pré-pago"}
-        </Badge>
+        <div className="flex items-center gap-1.5">
+          <Badge variant={c.modalidade === "faturado" ? "default" : "secondary"} className="text-xs">
+            {c.modalidade === "faturado" ? "Faturado" : "Pré-pago"}
+          </Badge>
+          {c.modalidade === "pre_pago" && (() => {
+            const saldo = getClienteSaldo(c.id);
+            return saldo !== null && saldo < limiteMinimo ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
+                <AlertTriangle className="h-3 w-3" />
+                {formatCurrency(saldo)}
+              </span>
+            ) : null;
+          })()}
+        </div>
       </div>
       <div className="flex justify-between text-sm text-muted-foreground">
         <span>{c.entregas} entregas</span>
