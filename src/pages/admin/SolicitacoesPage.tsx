@@ -47,6 +47,24 @@ export default function SolicitacoesPage() {
   const concluirComCaixa = useConcluirComCaixa();
   const { addNotification } = useNotifications();
 
+  // Listener para saldo baixo pré-pago → notifica admin
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      addNotification({
+        title: "Saldo baixo — Pré-pago",
+        message: detail.message,
+        type: "warning",
+        link: `/admin/clientes?perfil=${detail.clienteId}`,
+      });
+      toast.warning(`Saldo baixo: ${detail.clienteNome}`, {
+        description: `Saldo restante: ${detail.saldoApos.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`,
+      });
+    };
+    window.addEventListener("saldo-baixo-pre-pago", handler);
+    return () => window.removeEventListener("saldo-baixo-pre-pago", handler);
+  }, [addNotification]);
+
   // Initialize state from URL params
   const [search, setSearch] = useState(searchParams.get("q") ?? "");
   const [activeTab, setActiveTab] = useState<string>(searchParams.get("tab") ?? "todas");
