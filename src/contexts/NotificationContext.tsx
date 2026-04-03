@@ -112,6 +112,27 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     setBadgesState({ solicitacoesPendentes: 0, faturasVencidas: 0, notificacoesGerais: 0 });
   }, []);
 
+  // Listen for low prepaid balance events from GlobalStore
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as {
+        clienteNome: string;
+        saldoApos: number;
+        limite: number;
+        message: string;
+        clienteId: string;
+      };
+      addNotification({
+        title: "Saldo pré-pago baixo",
+        message: detail.message,
+        type: "warning",
+        link: "/admin/clientes",
+      });
+    };
+    window.addEventListener("saldo-baixo-pre-pago", handler);
+    return () => window.removeEventListener("saldo-baixo-pre-pago", handler);
+  }, [addNotification]);
+
   const unreadCount = notifications.filter((n) => !n.read).length;
   const totalUnread = badges.solicitacoesPendentes + badges.faturasVencidas + badges.notificacoesGerais;
 
