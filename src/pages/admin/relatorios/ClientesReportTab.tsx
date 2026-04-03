@@ -30,6 +30,8 @@ interface ClienteRow {
 
 export function ClientesReportTab() {
   const data = useMemo(() => getClientesPorModalidade(), []);
+  const { getClienteSaldo } = useGlobalStore();
+  const limiteMinimo = useSettingsStore((s) => s.limite_saldo_pre_pago);
 
   const columns: Column<ClienteRow>[] = [
     { key: "nome", header: "Cliente", sortable: true, cell: (c) => <span className="font-medium">{c.nome}</span> },
