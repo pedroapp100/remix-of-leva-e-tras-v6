@@ -18,6 +18,7 @@ import { SimuladorOperacoes } from "@/components/shared/SimuladorOperacoes";
 import { useSearchParams } from "react-router-dom";
 
 const tabs = [
+  { value: "geral", label: "Geral", icon: Settings },
   { value: "bairros", label: "Bairros", icon: MapPin },
   { value: "regioes", label: "Regiões", icon: Globe },
   { value: "pagamento", label: "Pagamentos", icon: CreditCard },
