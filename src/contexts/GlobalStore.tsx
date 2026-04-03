@@ -278,6 +278,29 @@ export function GlobalStoreProvider({ children }: { children: ReactNode }) {
         }
       }
 
+      // ── Notificação de saldo baixo pré-pago ──
+      if (cliente?.modalidade === "pre_pago") {
+        const { saldo, taxas } = verificarSaldoPrePago(solId);
+        const saldoApos = saldo - taxas;
+        const LIMITE_MINIMO = 100; // TODO: tornar configurável via settings
+        if (saldoApos < LIMITE_MINIMO && saldoApos >= 0) {
+          // Dispara após o state update para não bloquear
+          setTimeout(() => {
+            const saldoFmt = saldoApos.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+            const limiteFmt = LIMITE_MINIMO.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+            window.dispatchEvent(new CustomEvent("saldo-baixo-pre-pago", {
+              detail: {
+                clienteId: sol.cliente_id,
+                clienteNome: cliente.nome,
+                saldoApos,
+                limite: LIMITE_MINIMO,
+                message: `⚠️ Saldo baixo: ${cliente.nome} ficará com ${saldoFmt} (limite: ${limiteFmt}). Solicite uma recarga.`,
+              },
+            }));
+          }, 0);
+        }
+      }
+
       const now = new Date().toISOString();
       // Update solicitação status
       updateSolicitacao(solId, (s) => ({

@@ -40,10 +40,18 @@ const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", curren
 const formasAtivas = MOCK_FORMAS_PAGAMENTO.filter((f) => f.enabled);
 
 export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clienteId, solicitacaoId, isEditing = false, isConcluding = false, isDriverView = false }: ConciliacaoDialogProps) {
-  const { addPagamentos } = useGlobalStore();
+  const { addPagamentos, getClienteSaldo } = useGlobalStore();
   const cliente = useMemo(() => clienteId ? MOCK_CLIENTES.find((c) => c.id === clienteId) : null, [clienteId]);
   const isPrePago = cliente?.modalidade === "pre_pago";
   const isFaturado = cliente?.modalidade === "faturado";
+
+  // Saldo pré-pago e suficiência
+  const saldoPrePago = useMemo(() => {
+    if (!isPrePago || !clienteId) return null;
+    const saldo = getClienteSaldo(clienteId);
+    const totalTaxas = rotas.reduce((s, r) => s + (r.taxa_resolvida ?? 0), 0);
+    return { saldo, totalTaxas, suficiente: saldo >= totalTaxas, diferenca: totalTaxas - saldo };
+  }, [isPrePago, clienteId, getClienteSaldo, rotas]);
   const [pagamentosPorRota, setPagamentosPorRota] = useState<Record<string, PagamentoLinha[]>>(() => {
     const initial: Record<string, PagamentoLinha[]> = {};
     rotas.forEach((r) => { initial[r.id] = []; });
