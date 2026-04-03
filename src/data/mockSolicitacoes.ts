@@ -14,6 +14,8 @@ export const MOCK_ROTAS: Rota[] = [
   { id: "rota-010", solicitacao_id: "sol-008", bairro_destino_id: "bairro-10", responsavel: "Thiago Souza", telefone: "(85) 98889-0000", observacoes: null, receber_do_cliente: false, valor_a_receber: null, taxa_resolvida: 9.00, regra_preco_id: "tp-1", status: "ativa" },
   { id: "rota-011", solicitacao_id: "sol-009", bairro_destino_id: "bairro-1", responsavel: "Patrícia Lopes", telefone: "(85) 98889-1111", observacoes: "Urgente", receber_do_cliente: true, valor_a_receber: 50.00, taxa_resolvida: 8.00, regra_preco_id: "tp-1", status: "ativa" },
   { id: "rota-012", solicitacao_id: "sol-010", bairro_destino_id: "bairro-5", responsavel: "Diego Nunes", telefone: "(85) 98889-2222", observacoes: null, receber_do_cliente: true, valor_a_receber: 70.00, taxa_resolvida: 12.00, regra_preco_id: "tp-3", status: "concluida" },
+  { id: "rota-013", solicitacao_id: "sol-012", bairro_destino_id: "bairro-3", responsavel: "Amanda Souza", telefone: "(85) 98889-3333", observacoes: null, receber_do_cliente: true, valor_a_receber: 40.00, taxa_resolvida: 10.00, regra_preco_id: "tp-1", status: "ativa" },
+  { id: "rota-014", solicitacao_id: "sol-012", bairro_destino_id: "bairro-6", responsavel: "Bruno Martins", telefone: "(85) 98889-4444", observacoes: "Entregar no balcão", receber_do_cliente: false, valor_a_receber: null, taxa_resolvida: 8.00, regra_preco_id: "tp-1", status: "ativa" },
 ];
 
 // ── Solicitações Mock ──
@@ -141,6 +143,18 @@ export const MOCK_SOLICITACOES: Solicitacao[] = [
       { tipo: "rejeitada", status_anterior: "pendente", status_novo: "rejeitada", timestamp: "2026-03-14T11:15:00Z", descricao: "Rejeitada: Endereço fora da área de cobertura" },
     ],
     created_at: "2026-03-14T11:00:00Z", updated_at: "2026-03-14T11:15:00Z",
+  },
+  {
+    id: "sol-012", codigo: "LT-20260403-00012", cliente_id: "cli-001", entregador_id: "ent-003",
+    status: "em_andamento", tipo_operacao: "tipo-comercial", ponto_coleta: "Rua das Flores, 123 - Centro",
+    data_solicitacao: "2026-04-03T08:00:00Z", data_inicio: "2026-04-03T08:30:00Z", data_conclusao: null,
+    valor_total_taxas: 18.00, valor_total_repasse: null, justificativa: null,
+    historico: [
+      { tipo: "criacao", timestamp: "2026-04-03T08:00:00Z", descricao: "Solicitação criada" },
+      { tipo: "aceita", status_anterior: "pendente", status_novo: "aceita", timestamp: "2026-04-03T08:15:00Z", descricao: "Aceita e atribuída a Fernando Santos" },
+      { tipo: "em_andamento", status_anterior: "aceita", status_novo: "em_andamento", timestamp: "2026-04-03T08:30:00Z", descricao: "Entregador iniciou coleta" },
+    ],
+    created_at: "2026-04-03T08:00:00Z", updated_at: "2026-04-03T08:30:00Z",
   },
 ];
 
