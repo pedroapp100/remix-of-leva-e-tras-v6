@@ -36,7 +36,7 @@ const tabs = [
 export default function SettingsPage() {
   const [searchParams] = useSearchParams();
   const clienteId = searchParams.get("cliente") ?? undefined;
-  const defaultTab = clienteId ? "precos" : "bairros";
+  const defaultTab = clienteId ? "precos" : "geral";
 
   return (
     <PageContainer
