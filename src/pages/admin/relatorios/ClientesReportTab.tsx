@@ -3,10 +3,13 @@ import { MetricCard, DataTable } from "@/components/shared";
 import type { Column } from "@/components/shared/DataTable";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip as UiTooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { getClientesPorModalidade } from "@/data/mockRelatorios";
 import { formatCurrency } from "@/lib/formatters";
-import { Users, CreditCard, Receipt, TrendingUp } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Legend } from "recharts";
+import { useGlobalStore } from "@/contexts/GlobalStore";
+import { useSettingsStore } from "@/contexts/SettingsStore";
+import { Users, CreditCard, Receipt, TrendingUp, AlertTriangle } from "lucide-react";
+import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis, Legend } from "recharts";
 
 const chartTooltipStyle = {
   background: "hsl(var(--card))",
@@ -27,16 +30,40 @@ interface ClienteRow {
 
 export function ClientesReportTab() {
   const data = useMemo(() => getClientesPorModalidade(), []);
+  const { getClienteSaldo } = useGlobalStore();
+  const limiteMinimo = useSettingsStore((s) => s.limite_saldo_pre_pago);
 
   const columns: Column<ClienteRow>[] = [
     { key: "nome", header: "Cliente", sortable: true, cell: (c) => <span className="font-medium">{c.nome}</span> },
     {
       key: "modalidade", header: "Modalidade",
-      cell: (c) => (
-        <Badge variant={c.modalidade === "faturado" ? "default" : "secondary"} className="text-xs">
-          {c.modalidade === "faturado" ? "Faturado" : "Pré-pago"}
-        </Badge>
-      ),
+      cell: (c) => {
+        const isPrePago = c.modalidade === "pre_pago";
+        const saldo = isPrePago ? getClienteSaldo(c.id) : null;
+        const saldoBaixo = isPrePago && saldo !== null && saldo < limiteMinimo;
+        return (
+          <div className="flex items-center gap-2">
+            <Badge variant={c.modalidade === "faturado" ? "default" : "secondary"} className="text-xs">
+              {c.modalidade === "faturado" ? "Faturado" : "Pré-pago"}
+            </Badge>
+            {saldoBaixo && (
+              <TooltipProvider delayDuration={200}>
+                <UiTooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
+                      <AlertTriangle className="h-3 w-3" />
+                      {formatCurrency(saldo!)}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Saldo abaixo do limite mínimo de {formatCurrency(limiteMinimo)}
+                  </TooltipContent>
+                </UiTooltip>
+              </TooltipProvider>
+            )}
+          </div>
+        );
+      },
     },
     { key: "entregas", header: "Entregas", sortable: true, cell: (c) => <span className="tabular-nums">{c.entregas}</span> },
     { key: "receita", header: "Receita Gerada", sortable: true, cell: (c) => <span className="font-semibold tabular-nums">{formatCurrency(c.receita)}</span> },
@@ -54,9 +81,20 @@ export function ClientesReportTab() {
     <Card className="p-4 space-y-2">
       <div className="flex items-center justify-between">
         <span className="font-medium text-sm">{c.nome}</span>
-        <Badge variant={c.modalidade === "faturado" ? "default" : "secondary"} className="text-xs">
-          {c.modalidade === "faturado" ? "Faturado" : "Pré-pago"}
-        </Badge>
+        <div className="flex items-center gap-1.5">
+          <Badge variant={c.modalidade === "faturado" ? "default" : "secondary"} className="text-xs">
+            {c.modalidade === "faturado" ? "Faturado" : "Pré-pago"}
+          </Badge>
+          {c.modalidade === "pre_pago" && (() => {
+            const saldo = getClienteSaldo(c.id);
+            return saldo !== null && saldo < limiteMinimo ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
+                <AlertTriangle className="h-3 w-3" />
+                {formatCurrency(saldo)}
+              </span>
+            ) : null;
+          })()}
+        </div>
       </div>
       <div className="flex justify-between text-sm text-muted-foreground">
         <span>{c.entregas} entregas</span>
@@ -106,7 +144,7 @@ export function ClientesReportTab() {
                     <Cell key={`cell-${index}`} fill={entry.fill} />
                   ))}
                 </Pie>
-                <Tooltip contentStyle={chartTooltipStyle} />
+                <RechartsTooltip contentStyle={chartTooltipStyle} />
                 <Legend />
               </PieChart>
             </ResponsiveContainer>
@@ -124,7 +162,7 @@ export function ClientesReportTab() {
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="name" tick={axisTickStyle} />
                 <YAxis tick={axisTickStyle} tickFormatter={(v) => `${(v / 1000).toFixed(1)}k`} />
-                <Tooltip contentStyle={chartTooltipStyle} formatter={(value: number) => formatCurrency(value)} />
+                <RechartsTooltip contentStyle={chartTooltipStyle} formatter={(value: number) => formatCurrency(value)} />
                 <Legend />
                 <Bar dataKey="value" name="Receita" radius={[4, 4, 0, 0]}>
                   {data.receitaPorModalidade.map((entry, index) => (
