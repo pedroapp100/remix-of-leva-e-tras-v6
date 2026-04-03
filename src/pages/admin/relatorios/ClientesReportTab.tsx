@@ -37,11 +37,33 @@ export function ClientesReportTab() {
     { key: "nome", header: "Cliente", sortable: true, cell: (c) => <span className="font-medium">{c.nome}</span> },
     {
       key: "modalidade", header: "Modalidade",
-      cell: (c) => (
-        <Badge variant={c.modalidade === "faturado" ? "default" : "secondary"} className="text-xs">
-          {c.modalidade === "faturado" ? "Faturado" : "Pré-pago"}
-        </Badge>
-      ),
+      cell: (c) => {
+        const isPrePago = c.modalidade === "pre_pago";
+        const saldo = isPrePago ? getClienteSaldo(c.id) : null;
+        const saldoBaixo = isPrePago && saldo !== null && saldo < limiteMinimo;
+        return (
+          <div className="flex items-center gap-2">
+            <Badge variant={c.modalidade === "faturado" ? "default" : "secondary"} className="text-xs">
+              {c.modalidade === "faturado" ? "Faturado" : "Pré-pago"}
+            </Badge>
+            {saldoBaixo && (
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
+                      <AlertTriangle className="h-3 w-3" />
+                      {formatCurrency(saldo!)}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Saldo abaixo do limite mínimo de {formatCurrency(limiteMinimo)}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+          </div>
+        );
+      },
     },
     { key: "entregas", header: "Entregas", sortable: true, cell: (c) => <span className="tabular-nums">{c.entregas}</span> },
     { key: "receita", header: "Receita Gerada", sortable: true, cell: (c) => <span className="font-semibold tabular-nums">{formatCurrency(c.receita)}</span> },
