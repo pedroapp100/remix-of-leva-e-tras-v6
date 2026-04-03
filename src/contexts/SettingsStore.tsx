@@ -9,6 +9,6 @@ interface SettingsStore extends SystemSettings {
 }
 
 export const useSettingsStore = create<SettingsStore>((set) => ({
-  limite_saldo_pre_pago: 100,
+  limite_saldo_pre_pago: 600,
   updateSetting: (key, value) => set({ [key]: value }),
 }));
