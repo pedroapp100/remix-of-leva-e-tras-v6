@@ -282,7 +282,7 @@ export function GlobalStoreProvider({ children }: { children: ReactNode }) {
       if (cliente?.modalidade === "pre_pago") {
         const { saldo, taxas } = verificarSaldoPrePago(solId);
         const saldoApos = saldo - taxas;
-        const LIMITE_MINIMO = 100; // TODO: tornar configurável via settings
+        const LIMITE_MINIMO = useSettingsStore.getState().limite_saldo_pre_pago;
         if (saldoApos < LIMITE_MINIMO && saldoApos >= 0) {
           // Dispara após o state update para não bloquear
           setTimeout(() => {
