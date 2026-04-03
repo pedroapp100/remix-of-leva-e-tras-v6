@@ -14,6 +14,8 @@ export const MOCK_ROTAS: Rota[] = [
   { id: "rota-010", solicitacao_id: "sol-008", bairro_destino_id: "bairro-10", responsavel: "Thiago Souza", telefone: "(85) 98889-0000", observacoes: null, receber_do_cliente: false, valor_a_receber: null, taxa_resolvida: 9.00, regra_preco_id: "tp-1", status: "ativa" },
   { id: "rota-011", solicitacao_id: "sol-009", bairro_destino_id: "bairro-1", responsavel: "Patrícia Lopes", telefone: "(85) 98889-1111", observacoes: "Urgente", receber_do_cliente: true, valor_a_receber: 50.00, taxa_resolvida: 8.00, regra_preco_id: "tp-1", status: "ativa" },
   { id: "rota-012", solicitacao_id: "sol-010", bairro_destino_id: "bairro-5", responsavel: "Diego Nunes", telefone: "(85) 98889-2222", observacoes: null, receber_do_cliente: true, valor_a_receber: 70.00, taxa_resolvida: 12.00, regra_preco_id: "tp-3", status: "concluida" },
+  { id: "rota-013", solicitacao_id: "sol-012", bairro_destino_id: "bairro-3", responsavel: "Amanda Souza", telefone: "(85) 98889-3333", observacoes: null, receber_do_cliente: true, valor_a_receber: 40.00, taxa_resolvida: 10.00, regra_preco_id: "tp-1", status: "ativa" },
+  { id: "rota-014", solicitacao_id: "sol-012", bairro_destino_id: "bairro-6", responsavel: "Bruno Martins", telefone: "(85) 98889-4444", observacoes: "Entregar no balcão", receber_do_cliente: false, valor_a_receber: null, taxa_resolvida: 8.00, regra_preco_id: "tp-1", status: "ativa" },
 ];
 
 // ── Solicitações Mock ──
