@@ -381,6 +381,7 @@ export function GlobalStoreProvider({ children }: { children: ReactNode }) {
       addFatura,
       addEntregaToFatura,
       concluirSolicitacaoComFatura,
+      verificarSaldoPrePago,
       getClienteSaldo,
       addRecarga,
       getRecargasByCliente,
