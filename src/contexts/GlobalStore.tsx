@@ -386,7 +386,7 @@ export function GlobalStoreProvider({ children }: { children: ReactNode }) {
       addRecarga,
       getRecargasByCliente,
     }),
-    [solicitacoes, rotas, pagamentos, faturas, entregasFatura, recargas, addSolicitacao, updateSolicitacao, addPagamentos, getPagamentosByRota, getPagamentosBySolicitacao, getRotasBySolicitacao, updateFatura, addFatura, addEntregaToFatura, concluirSolicitacaoComFatura, getClienteSaldo, addRecarga, getRecargasByCliente]
+    [solicitacoes, rotas, pagamentos, faturas, entregasFatura, recargas, addSolicitacao, updateSolicitacao, addPagamentos, getPagamentosByRota, getPagamentosBySolicitacao, getRotasBySolicitacao, updateFatura, addFatura, addEntregaToFatura, concluirSolicitacaoComFatura, verificarSaldoPrePago, getClienteSaldo, addRecarga, getRecargasByCliente]
   );
 
   return <GlobalStoreContext.Provider value={value}>{children}</GlobalStoreContext.Provider>;
