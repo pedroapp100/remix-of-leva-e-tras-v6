@@ -380,6 +380,17 @@ export function GlobalStoreProvider({ children }: { children: ReactNode }) {
         };
         addFatura(novaFatura);
         setEntregasFatura((prev) => ({ ...prev, [fatId]: [entrega] }));
+
+        // Dispatch event for notification system
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent("nova-fatura-gerada", {
+            detail: {
+              faturaNumero: novaFatura.numero,
+              clienteNome: cliente.nome,
+              message: `Fatura ${novaFatura.numero} gerada para ${cliente.nome}.`,
+            },
+          }));
+        }, 0);
       }
 
       return { success: true };
