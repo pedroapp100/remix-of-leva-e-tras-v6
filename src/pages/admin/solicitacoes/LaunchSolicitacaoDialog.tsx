@@ -2,7 +2,7 @@ import { useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { MOCK_CLIENTES } from "@/data/mockClientes";
-import { MOCK_BAIRROS, MOCK_TAXAS_EXTRAS, MOCK_FORMAS_PAGAMENTO, MOCK_TIPOS_OPERACAO } from "@/data/mockSettings";
+import { MOCK_BAIRROS, MOCK_TAXAS_EXTRAS, MOCK_FORMAS_PAGAMENTO, MOCK_TIPOS_OPERACAO, MOCK_TABELA_PRECOS } from "@/data/mockSettings";
 import { useGlobalStore } from "@/contexts/GlobalStore";
 import { MOCK_ENTREGADORES } from "@/data/mockEntregadores";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
