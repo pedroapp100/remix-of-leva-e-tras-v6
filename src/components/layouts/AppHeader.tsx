@@ -23,7 +23,7 @@ import { useSidebar } from "@/components/ui/sidebar";
 export function AppHeader() {
   const { user, logout, changeCargo } = useAuth();
   const { theme, setTheme } = useTheme();
-  const { totalUnread, notifications, markAsRead, markAllAsRead, unreadCount } = useNotifications();
+  const { notifications, markAsRead, markAllAsRead, unreadCount } = useNotifications();
   const navigate = useNavigate();
   const { isMobile, toggleSidebar } = useSidebar();
 
