@@ -15,9 +15,9 @@ import {
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
-import { useNotifications } from "@/contexts/NotificationContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useGlobalStore } from "@/contexts/GlobalStore";
 
 import {
   Sidebar,
@@ -48,8 +48,11 @@ export function AdminSidebar() {
   const { state, toggleSidebar, isMobile } = useSidebar();
   const collapsed = state === "collapsed";
   const location = useLocation();
-  const { badges } = useNotifications();
   const { logout } = useAuth();
+  const { solicitacoes, faturas } = useGlobalStore();
+
+  const solicitacoesPendentes = solicitacoes.filter(s => s.status === "pendente").length;
+  const faturasVencidas = faturas.filter(f => f.status_geral === "Vencida" || (f.data_vencimento && new Date(f.data_vencimento) < new Date() && f.status_geral !== "Paga")).length;
   const { canAccessSidebarItem, hasPermission } = usePermissions();
 
   const visibleNavItems = navItems.filter(item => canAccessSidebarItem(item.title));
@@ -78,8 +81,8 @@ export function AdminSidebar() {
             <SidebarMenu className={`gap-2 md:gap-3 pt-6 md:pt-10 ${collapsed ? "items-center px-1" : "px-2"}`}>
               {visibleNavItems.map((item) => {
                 const active = isActive(item.url);
-                const badgeCount = item.title === "Solicitações" ? badges.solicitacoesPendentes
-                  : item.title === "Faturas" ? badges.faturasVencidas
+                const badgeCount = item.title === "Solicitações" ? solicitacoesPendentes
+                  : item.title === "Faturas" ? faturasVencidas
                   : 0;
                 return (
                   <SidebarMenuItem key={item.title} className={collapsed ? "flex justify-center" : ""}>

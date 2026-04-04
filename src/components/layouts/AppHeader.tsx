@@ -23,7 +23,7 @@ import { useSidebar } from "@/components/ui/sidebar";
 export function AppHeader() {
   const { user, logout, changeCargo } = useAuth();
   const { theme, setTheme } = useTheme();
-  const { totalUnread, notifications, markAsRead, markAllAsRead, unreadCount } = useNotifications();
+  const { notifications, markAsRead, markAllAsRead, unreadCount } = useNotifications();
   const navigate = useNavigate();
   const { isMobile, toggleSidebar } = useSidebar();
 
@@ -109,12 +109,12 @@ export function AppHeader() {
               variant="ghost" 
               size="icon" 
               className="h-8 w-8 md:h-9 md:w-9 relative rounded-lg hover:bg-muted/60 hover:text-foreground transition-all duration-200"
-              aria-label={`Notificações${totalUnread > 0 ? `, ${totalUnread} não lidas` : ""}`}
+              aria-label={`Notificações${unreadCount > 0 ? `, ${unreadCount} não lidas` : ""}`}
             >
               <Bell className="h-4 w-4" />
-              {totalUnread > 0 && (
+              {unreadCount > 0 && (
                 <span className="absolute -top-1 -right-1 h-[18px] min-w-[18px] px-1 rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground flex items-center justify-center ring-2 ring-background">
-                  {totalUnread > 9 ? "9+" : totalUnread}
+                  {unreadCount > 9 ? "9+" : unreadCount}
                 </span>
               )}
             </Button>

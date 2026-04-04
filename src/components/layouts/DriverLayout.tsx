@@ -1,7 +1,6 @@
 import { Outlet } from "react-router-dom";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppHeader } from "./AppHeader";
-import { NotificationProvider } from "@/contexts/NotificationContext";
 import { OnboardingRoleSync } from "@/onboarding/OnboardingRoleSync";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -122,7 +121,7 @@ function DriverSidebar() {
 
 export function DriverLayout() {
   return (
-    <NotificationProvider>
+    <>
       <OnboardingRoleSync />
       <SidebarProvider>
         <div className="min-h-screen flex flex-col w-full">
@@ -135,6 +134,6 @@ export function DriverLayout() {
           </div>
         </div>
       </SidebarProvider>
-    </NotificationProvider>
+    </>
   );
 }

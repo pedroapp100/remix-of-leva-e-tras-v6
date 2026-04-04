@@ -3,6 +3,7 @@ import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { CaixaStoreProvider } from "@/contexts/CaixaStore";
 import { GlobalStoreProvider } from "@/contexts/GlobalStore";
 import { LogStoreProvider } from "@/contexts/LogStore";
+import { NotificationProvider } from "@/contexts/NotificationContext";
 import { OnboardingOverlay, OnboardingProvider, OnboardingTooltip, WelcomeModal } from "@/onboarding";
 import type { Role } from "@/types/database";
 
@@ -17,12 +18,14 @@ export function ProtectedAppShell({ allowedRoles, children }: ProtectedAppShellP
       <LogStoreProvider>
         <GlobalStoreProvider>
           <CaixaStoreProvider>
-            <OnboardingProvider>
-              <WelcomeModal />
-              <OnboardingOverlay />
-              <OnboardingTooltip />
-              {children}
-            </OnboardingProvider>
+            <NotificationProvider>
+              <OnboardingProvider>
+                <WelcomeModal />
+                <OnboardingOverlay />
+                <OnboardingTooltip />
+                {children}
+              </OnboardingProvider>
+            </NotificationProvider>
           </CaixaStoreProvider>
         </GlobalStoreProvider>
       </LogStoreProvider>
