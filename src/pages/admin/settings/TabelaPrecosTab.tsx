@@ -103,6 +103,20 @@ export function TabelaPrecosTab({ initialClienteId }: TabelaPrecosTabProps) {
     setDialogOpen(false);
   };
 
+  const movePriority = (id: string, direction: "up" | "down") => {
+    const sorted = [...clientePrecos].sort((a, b) => a.prioridade - b.prioridade);
+    const idx = sorted.findIndex((p) => p.id === id);
+    if ((direction === "up" && idx <= 0) || (direction === "down" && idx >= sorted.length - 1)) return;
+    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+    const tempPriority = sorted[idx].prioridade;
+    setPrecos((prev) => prev.map((p) => {
+      if (p.id === sorted[idx].id) return { ...p, prioridade: sorted[swapIdx].prioridade };
+      if (p.id === sorted[swapIdx].id) return { ...p, prioridade: tempPriority };
+      return p;
+    }));
+    toast.success("Prioridade atualizada!");
+  };
+
   const handleDelete = () => {
     if (!deleteTarget) return;
     setPrecos((prev) => prev.filter((p) => p.id !== deleteTarget.id));
