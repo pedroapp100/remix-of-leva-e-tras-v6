@@ -27,9 +27,25 @@ const entregadoresAtivos = MOCK_ENTREGADORES.filter((e) => e.status === "ativo")
 const tiposAtivos = MOCK_TIPOS_OPERACAO.filter((t) => t.ativo);
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-function resolverTarifaMock(bairroId: string): { taxa: number; fallback: boolean } {
+function resolverTarifaMock(bairroId: string, clienteId?: string, tipoOp?: string): { taxa: number; fallback: boolean } {
   const bairro = MOCK_BAIRROS.find((b) => b.id === bairroId);
   if (!bairro) return { taxa: 0, fallback: false };
+
+  // Check TabelaPrecos first (client-specific pricing)
+  if (clienteId) {
+    const { MOCK_TABELA_PRECOS } = require("@/data/mockSettings");
+    const regra = (MOCK_TABELA_PRECOS as any[])
+      .filter((p: any) => p.cliente_id === clienteId && p.ativo)
+      .sort((a: any, b: any) => a.prioridade - b.prioridade)
+      .find((p: any) => {
+        const matchBairro = !p.bairro_destino_id || p.bairro_destino_id === bairroId;
+        const matchTipo = !tipoOp || p.tipo_operacao === "todos" || p.tipo_operacao === tipoOp;
+        return matchBairro && matchTipo;
+      });
+    if (regra) return { taxa: regra.taxa_base, fallback: false };
+  }
+
+  // Fallback to bairro default
   return { taxa: bairro.taxa_entrega, fallback: true };
 }
 
