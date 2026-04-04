@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { MOCK_CLIENTES } from "@/data/mockClientes";
 import type { Cliente, Modalidade, FrequenciaFaturamento, DiaSemana } from "@/types/database";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
