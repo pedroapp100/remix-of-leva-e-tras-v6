@@ -35,6 +35,7 @@ export interface RotaForm {
   valor_a_receber: number;
   meios_pagamento: string[];
   taxa_resolvida: number | null;
+  is_fallback?: boolean;
   taxas_extras: TaxaExtra[];
   pagamento_operacao: PagamentoOperacaoMode;
   meios_pagamento_operacao: string[];
