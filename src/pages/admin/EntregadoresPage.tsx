@@ -42,11 +42,18 @@ export default function EntregadoresPage() {
     return matchSearch && matchStatus && matchVeiculo;
   });
 
+  const { solicitacoes } = useGlobalStore();
+  const today = new Date().toISOString().slice(0, 10);
+
   const metrics = {
     total: entregadores.length,
     ativos: entregadores.filter((e) => e.status === "ativo").length,
-    entregasHoje: entregadores.filter((e) => e.status === "ativo").length * 3, // dynamic placeholder
-    horasTrabalhadas: entregadores.filter((e) => e.status === "ativo").length * 8, // dynamic placeholder
+    entregasHoje: solicitacoes.filter(
+      (s) => s.status === "concluida" && s.data_conclusao?.slice(0, 10) === today && entregadores.some((e) => e.id === s.entregador_id)
+    ).length,
+    horasTrabalhadas: solicitacoes.filter(
+      (s) => ["em_andamento", "concluida"].includes(s.status) && s.data_conclusao?.slice(0, 10) === today && entregadores.some((e) => e.id === s.entregador_id)
+    ).length * 1.5, // ~1.5h média por entrega
   };
 
   const openCreate = () => { setEditing(null); setFormOpen(true); };
