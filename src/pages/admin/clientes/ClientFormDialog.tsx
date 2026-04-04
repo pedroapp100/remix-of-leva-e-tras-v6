@@ -245,7 +245,21 @@ export function ClientFormDialog({ open, onOpenChange, editing, onSave }: Client
               </div>
               <div className="space-y-2">
                 <Label>Email *</Label>
-                <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@exemplo.com" />
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={(e) => { setEmail(e.target.value); setEmailError(""); }}
+                  onBlur={() => {
+                    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+                      setEmailError("Email inválido");
+                    } else if (email.trim() && MOCK_CLIENTES.some((c) => c.email.toLowerCase() === email.trim().toLowerCase() && c.id !== editing?.id)) {
+                      setEmailError("Email já cadastrado");
+                    }
+                  }}
+                  placeholder="email@exemplo.com"
+                  className={emailError ? "border-destructive" : ""}
+                />
+                {emailError && <p className="text-xs text-destructive">{emailError}</p>}
               </div>
               <div className="space-y-2">
                 <Label>Telefone *</Label>
