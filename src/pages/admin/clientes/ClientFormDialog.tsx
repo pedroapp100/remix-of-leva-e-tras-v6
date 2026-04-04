@@ -25,6 +25,7 @@ export function ClientFormDialog({ open, onOpenChange, editing, onSave }: Client
   const [nome, setNome] = useState("");
   const [tipo, setTipo] = useState<"pessoa_fisica" | "pessoa_juridica">("pessoa_fisica");
   const [email, setEmail] = useState("");
+  const [emailError, setEmailError] = useState("");
   const [telefone, setTelefone] = useState("");
   const [endereco, setEndereco] = useState("");
   const [bairro, setBairro] = useState("");
