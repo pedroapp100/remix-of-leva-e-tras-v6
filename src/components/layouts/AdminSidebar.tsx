@@ -48,8 +48,11 @@ export function AdminSidebar() {
   const { state, toggleSidebar, isMobile } = useSidebar();
   const collapsed = state === "collapsed";
   const location = useLocation();
-  const { badges } = useNotifications();
   const { logout } = useAuth();
+  const { solicitacoes, faturas } = useGlobalStore();
+
+  const solicitacoesPendentes = solicitacoes.filter(s => s.status === "pendente").length;
+  const faturasVencidas = faturas.filter(f => f.status_geral === "Vencida" || (f.data_vencimento && new Date(f.data_vencimento) < new Date() && f.status_geral !== "Paga")).length;
   const { canAccessSidebarItem, hasPermission } = usePermissions();
 
   const visibleNavItems = navItems.filter(item => canAccessSidebarItem(item.title));
