@@ -175,6 +175,10 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate 
     setPagamentoOpen(false);
     toast.success(`Pagamento de ${formatCurrency(valor)} registrado com sucesso`);
   };
+  const handleGerarPDF = () => {
+    generateFaturaPDF(fatura, entregasFatura);
+    toast.success(`PDF da fatura ${fatura.numero} gerado com sucesso`);
+  };
 
   return (
     <>
