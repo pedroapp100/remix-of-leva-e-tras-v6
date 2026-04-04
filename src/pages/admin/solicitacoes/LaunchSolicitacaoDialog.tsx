@@ -139,8 +139,9 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit }: Launch
       if (r.id !== id) return r;
       const updated = { ...r, [field]: value };
       if (field === "bairro_destino_id" && typeof value === "string") {
-        const tarifa = resolverTarifaMock(value);
+        const tarifa = resolverTarifaMock(value, clienteId || undefined, tipoOperacao || undefined);
         updated.taxa_resolvida = tarifa.taxa;
+        updated.is_fallback = tarifa.fallback;
       }
       return updated;
     }));
