@@ -126,7 +126,13 @@ export function TabelaPrecosTab({ initialClienteId }: TabelaPrecosTabProps) {
   };
 
   const columns: Column<TabelaPrecoCliente>[] = [
-    { key: "prioridade", header: "#", className: "w-12", sortable: true, cell: (r) => <span className="tabular-nums text-muted-foreground">{r.prioridade}</span> },
+    { key: "prioridade", header: "#", className: "w-20", sortable: true, cell: (r) => (
+      <div className="flex items-center gap-1">
+        <span className="tabular-nums text-muted-foreground w-4">{r.prioridade}</span>
+        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); movePriority(r.id, "up"); }}><ArrowUp className="h-3 w-3" /></Button>
+        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); movePriority(r.id, "down"); }}><ArrowDown className="h-3 w-3" /></Button>
+      </div>
+    )},
     { key: "bairro_destino_id", header: "Bairro", cell: (r) => <span className="font-medium">{getBairroName(r.bairro_destino_id)}</span> },
     { key: "regiao_id", header: "Região", cell: (r) => <span className="text-muted-foreground">{getRegiaoName(r.regiao_id)}</span> },
     { key: "tipo_operacao", header: "Tipo", cell: (r) => {

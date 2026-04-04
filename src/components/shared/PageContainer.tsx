@@ -1,5 +1,35 @@
 import { ReactNode } from "react";
+import { useLocation, Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import {
+  Breadcrumb,
+  BreadcrumbList,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+
+const ROUTE_LABELS: Record<string, string> = {
+  "": "Dashboard",
+  solicitacoes: "Solicitações",
+  entregas: "Entregas",
+  clientes: "Clientes",
+  entregadores: "Entregadores",
+  faturas: "Faturas",
+  financeiro: "Financeiro",
+  relatorios: "Relatórios",
+  configuracoes: "Configurações",
+  logs: "Logs",
+  caixas: "Caixas",
+  cliente: "Portal Cliente",
+  entregador: "Portal Entregador",
+  perfil: "Perfil",
+  corridas: "Corridas",
+  historico: "Histórico",
+  simulador: "Simulador",
+  dashboard: "Dashboard",
+};
 
 interface PageContainerProps {
   title: string;
@@ -7,6 +37,7 @@ interface PageContainerProps {
   actions?: ReactNode;
   children: ReactNode;
   className?: string;
+  hideBreadcrumb?: boolean;
 }
 
 export function PageContainer({
@@ -15,9 +46,38 @@ export function PageContainer({
   actions,
   children,
   className,
+  hideBreadcrumb = false,
 }: PageContainerProps) {
+  const location = useLocation();
+  const segments = location.pathname.split("/").filter(Boolean);
+
+  const breadcrumbs = segments.map((seg, i) => ({
+    label: ROUTE_LABELS[seg] ?? seg.charAt(0).toUpperCase() + seg.slice(1),
+    path: "/" + segments.slice(0, i + 1).join("/"),
+  }));
+
   return (
     <main id="main-content" className={cn("space-y-6", className)}>
+      {!hideBreadcrumb && breadcrumbs.length > 1 && (
+        <Breadcrumb>
+          <BreadcrumbList>
+            {breadcrumbs.map((crumb, i) => (
+              <BreadcrumbItem key={crumb.path}>
+                {i < breadcrumbs.length - 1 ? (
+                  <>
+                    <BreadcrumbLink asChild>
+                      <Link to={crumb.path}>{crumb.label}</Link>
+                    </BreadcrumbLink>
+                    <BreadcrumbSeparator />
+                  </>
+                ) : (
+                  <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
+                )}
+              </BreadcrumbItem>
+            ))}
+          </BreadcrumbList>
+        </Breadcrumb>
+      )}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
