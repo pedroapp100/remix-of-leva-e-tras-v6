@@ -420,7 +420,7 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate 
                     <Button variant="outline" onClick={() => setAjusteOpen(true)}>
                       <Pencil className="h-4 w-4 mr-1.5" /> Adicionar Ajuste
                     </Button>
-                    <Button variant="outline" onClick={() => toast.info("Geração de PDF será implementada na próxima iteração")}>
+                    <Button variant="outline" onClick={handleGerarPDF}>
                       <Download className="h-4 w-4 mr-1.5" /> Gerar PDF
                     </Button>
                     {fatura.status_geral === "Aberta" || fatura.status_geral === "Vencida" ? (
