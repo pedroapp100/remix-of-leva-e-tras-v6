@@ -2,12 +2,11 @@ import { Outlet } from "react-router-dom";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AdminSidebar } from "./AdminSidebar";
 import { AppHeader } from "./AppHeader";
-import { NotificationProvider } from "@/contexts/NotificationContext";
 import { OnboardingRoleSync } from "@/onboarding/OnboardingRoleSync";
 
 export function AdminLayout() {
   return (
-    <NotificationProvider>
+    <>
       <OnboardingRoleSync />
       <SidebarProvider>
         <div className="min-h-screen flex flex-col w-full">
@@ -20,6 +19,6 @@ export function AdminLayout() {
           </div>
         </div>
       </SidebarProvider>
-    </NotificationProvider>
+    </>
   );
 }

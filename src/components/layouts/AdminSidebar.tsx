@@ -81,8 +81,8 @@ export function AdminSidebar() {
             <SidebarMenu className={`gap-2 md:gap-3 pt-6 md:pt-10 ${collapsed ? "items-center px-1" : "px-2"}`}>
               {visibleNavItems.map((item) => {
                 const active = isActive(item.url);
-                const badgeCount = item.title === "Solicitações" ? badges.solicitacoesPendentes
-                  : item.title === "Faturas" ? badges.faturasVencidas
+                const badgeCount = item.title === "Solicitações" ? solicitacoesPendentes
+                  : item.title === "Faturas" ? faturasVencidas
                   : 0;
                 return (
                   <SidebarMenuItem key={item.title} className={collapsed ? "flex justify-center" : ""}>

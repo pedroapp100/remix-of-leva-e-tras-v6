@@ -10,16 +10,7 @@ export interface Notification {
   link?: string;
 }
 
-interface NotificationBadges {
-  solicitacoesPendentes: number;
-  faturasVencidas: number;
-  notificacoesGerais: number;
-}
-
 interface NotificationContextType {
-  badges: NotificationBadges;
-  setBadges: (badges: Partial<NotificationBadges>) => void;
-  totalUnread: number;
   notifications: Notification[];
   addNotification: (notification: Omit<Notification, "id" | "read" | "createdAt">) => void;
   markAsRead: (id: string) => void;
@@ -28,6 +19,8 @@ interface NotificationContextType {
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
+
+const STORAGE_KEY = "leva-traz-notifications";
 
 const MOCK_NOTIFICATIONS: Notification[] = [
   {
@@ -76,19 +69,34 @@ const MOCK_NOTIFICATIONS: Notification[] = [
   },
 ];
 
-const MOCK_BADGES: NotificationBadges = {
-  solicitacoesPendentes: 12,
-  faturasVencidas: 3,
-  notificacoesGerais: 5,
-};
+function loadFromStorage(): Notification[] | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Array<Notification & { createdAt: string }>;
+    return parsed.map((n) => ({ ...n, createdAt: new Date(n.createdAt) }));
+  } catch {
+    return null;
+  }
+}
+
+function saveToStorage(notifications: Notification[]) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(notifications));
+  } catch {
+    // quota exceeded — silently ignore
+  }
+}
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
-  const [badges, setBadgesState] = useState<NotificationBadges>(MOCK_BADGES);
-  const [notifications, setNotifications] = useState<Notification[]>(MOCK_NOTIFICATIONS);
+  const [notifications, setNotifications] = useState<Notification[]>(
+    () => loadFromStorage() ?? MOCK_NOTIFICATIONS
+  );
 
-  const setBadges = (partial: Partial<NotificationBadges>) => {
-    setBadgesState((prev) => ({ ...prev, ...partial }));
-  };
+  // Persist on every change
+  useEffect(() => {
+    saveToStorage(notifications);
+  }, [notifications]);
 
   const addNotification = useCallback((notification: Omit<Notification, "id" | "read" | "createdAt">) => {
     const newNotif: Notification = {
@@ -98,7 +106,6 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       createdAt: new Date(),
     };
     setNotifications((prev) => [newNotif, ...prev]);
-    setBadgesState((prev) => ({ ...prev, notificacoesGerais: prev.notificacoesGerais + 1 }));
   }, []);
 
   const markAsRead = useCallback((id: string) => {
@@ -109,7 +116,6 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   const markAllAsRead = useCallback(() => {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-    setBadgesState({ solicitacoesPendentes: 0, faturasVencidas: 0, notificacoesGerais: 0 });
   }, []);
 
   // Listen for low prepaid balance events from GlobalStore
@@ -133,11 +139,29 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("saldo-baixo-pre-pago", handler);
   }, [addNotification]);
 
+  // Listen for new invoice generation
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as {
+        faturaNumero: string;
+        clienteNome: string;
+        message: string;
+      };
+      addNotification({
+        title: "Nova fatura gerada",
+        message: detail.message,
+        type: "info",
+        link: "/admin/faturas",
+      });
+    };
+    window.addEventListener("nova-fatura-gerada", handler);
+    return () => window.removeEventListener("nova-fatura-gerada", handler);
+  }, [addNotification]);
+
   const unreadCount = notifications.filter((n) => !n.read).length;
-  const totalUnread = badges.solicitacoesPendentes + badges.faturasVencidas + badges.notificacoesGerais;
 
   return (
-    <NotificationContext.Provider value={{ badges, setBadges, totalUnread, notifications, addNotification, markAsRead, markAllAsRead, unreadCount }}>
+    <NotificationContext.Provider value={{ notifications, addNotification, markAsRead, markAllAsRead, unreadCount }}>
       {children}
     </NotificationContext.Provider>
   );
