@@ -24,6 +24,7 @@ import {
   Lock, Trash2, Save, X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { generateFaturaPDF } from "@/lib/generateFaturaPDF";
 import { RegistrarRepasseDialog } from "./RegistrarRepasseDialog";
 import { RegistrarPagamentoDialog } from "./RegistrarPagamentoDialog";
 import { AdicionarAjusteDialog } from "./AdicionarAjusteDialog";
@@ -173,6 +174,10 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate 
     onFaturaUpdate?.(updated);
     setPagamentoOpen(false);
     toast.success(`Pagamento de ${formatCurrency(valor)} registrado com sucesso`);
+  };
+  const handleGerarPDF = () => {
+    generateFaturaPDF(fatura, entregasFatura);
+    toast.success(`PDF da fatura ${fatura.numero} gerado com sucesso`);
   };
 
   return (
@@ -420,7 +425,7 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate 
                     <Button variant="outline" onClick={() => setAjusteOpen(true)}>
                       <Pencil className="h-4 w-4 mr-1.5" /> Adicionar Ajuste
                     </Button>
-                    <Button variant="outline" onClick={() => toast.info("Geração de PDF será implementada na próxima iteração")}>
+                    <Button variant="outline" onClick={handleGerarPDF}>
                       <Download className="h-4 w-4 mr-1.5" /> Gerar PDF
                     </Button>
                     {fatura.status_geral === "Aberta" || fatura.status_geral === "Vencida" ? (
