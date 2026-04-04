@@ -97,7 +97,7 @@ export function generateFaturaPDF(
       head: [["Código", "Data", "Rotas", "Taxas", "Recebido Cliente"]],
       body: entregas.map((e) => [
         e.codigo,
-        formatDateBR(e.data),
+        formatDateBR(e.data_conclusao),
         String(e.total_rotas),
         formatCurrency(e.valor_taxas),
         formatCurrency(e.valor_recebido_cliente),

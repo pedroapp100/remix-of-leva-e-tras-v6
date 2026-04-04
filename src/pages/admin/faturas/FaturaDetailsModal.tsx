@@ -24,6 +24,7 @@ import {
   Lock, Trash2, Save, X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { generateFaturaPDF } from "@/lib/generateFaturaPDF";
 import { RegistrarRepasseDialog } from "./RegistrarRepasseDialog";
 import { RegistrarPagamentoDialog } from "./RegistrarPagamentoDialog";
 import { AdicionarAjusteDialog } from "./AdicionarAjusteDialog";
