@@ -7,8 +7,9 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency, formatDateBR } from "@/lib/formatters";
-import { MOCK_SOLICITACOES, getClienteName } from "@/data/mockSolicitacoes";
+import { useGlobalStore } from "@/contexts/GlobalStore";
 import { MOCK_COMISSOES } from "@/data/mockFinanceiro";
+import { getClienteName } from "@/data/mockSolicitacoes";
 
 const ENTREGADOR_ID = "ent-001";
 
@@ -19,8 +20,10 @@ const fadeUp = {
 };
 
 export default function EntregadorDashboard() {
+  const { solicitacoes } = useGlobalStore();
+
   const metrics = useMemo(() => {
-    const minhas = MOCK_SOLICITACOES.filter((s) => s.entregador_id === ENTREGADOR_ID);
+    const minhas = solicitacoes.filter((s) => s.entregador_id === ENTREGADOR_ID);
     const today = new Date().toISOString().slice(0, 10);
 
     const corridasAtivas = minhas.filter((s) => s.status === "em_andamento" || s.status === "aceita").length;
@@ -28,18 +31,17 @@ export default function EntregadorDashboard() {
 
     const comissaoData = MOCK_COMISSOES.find((c) => c.entregador_id === ENTREGADOR_ID);
     const comissaoMes = comissaoData?.comissao ?? 0;
-    // Mock: comissão do dia ~ comissão mês / 22 dias úteis
     const comissaoDia = comissaoMes > 0 ? Math.round((comissaoMes / 22) * 100) / 100 : 0;
 
     return { corridasAtivas, concluidasHoje, comissaoDia, comissaoMes };
-  }, []);
+  }, [solicitacoes]);
 
   const recentEntregas = useMemo(() => {
-    return MOCK_SOLICITACOES
+    return solicitacoes
       .filter((s) => s.entregador_id === ENTREGADOR_ID && s.status === "concluida")
       .sort((a, b) => new Date(b.data_conclusao!).getTime() - new Date(a.data_conclusao!).getTime())
       .slice(0, 5);
-  }, []);
+  }, [solicitacoes]);
 
   return (
     <PageContainer title="Dashboard" subtitle="Suas corridas e comissões de hoje.">

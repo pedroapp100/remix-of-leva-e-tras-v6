@@ -59,6 +59,7 @@ const emptyRota = (): RotaForm => ({
   valor_a_receber: 0,
   meios_pagamento: [],
   taxa_resolvida: null,
+  is_fallback: false,
   taxas_extras: [],
   pagamento_operacao: "faturar",
   meios_pagamento_operacao: [],

@@ -112,12 +112,25 @@ export function RotaCard({
 
         {/* Taxa de entrega (auto) */}
         {rota.bairro_destino_id && rota.taxa_resolvida != null ? (
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-xs">
-              <AlertTriangle className="h-3 w-3 text-amber-500" />
-              <span className="text-muted-foreground">Taxa de Entrega (fallback)</span>
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-xs">
+                {rota.is_fallback ? (
+                  <AlertTriangle className="h-3 w-3 text-amber-500" />
+                ) : null}
+                <span className="text-muted-foreground">
+                  Taxa de Entrega{rota.is_fallback ? " (fallback bairro)" : " (tabela cliente)"}
+                </span>
+              </div>
+              <span className="text-sm font-semibold tabular-nums">{fmt(rota.taxa_resolvida)}</span>
             </div>
-            <span className="text-sm font-semibold tabular-nums">{fmt(rota.taxa_resolvida)}</span>
+            {rota.is_fallback && (
+              <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-2.5 py-1.5">
+                <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                  ⚠ Usando taxa padrão do bairro. Configure uma regra na Tabela de Preços do cliente para tarifa personalizada.
+                </p>
+              </div>
+            )}
           </div>
         ) : rota.bairro_destino_id ? (
           <div className="text-xs text-destructive">Sem tarifa para este bairro</div>

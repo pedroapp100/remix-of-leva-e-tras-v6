@@ -13,6 +13,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Plus, Users, UserCheck, Package, Clock, Pencil, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { useUserStore } from "@/data/mockUsers";
+import { useGlobalStore } from "@/contexts/GlobalStore";
 import { EntregadorFormDialog } from "./entregadores/EntregadorFormDialog";
 
 export default function EntregadoresPage() {
