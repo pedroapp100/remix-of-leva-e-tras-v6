@@ -33,11 +33,10 @@ function resolverTarifaMock(bairroId: string, clienteId?: string, tipoOp?: strin
 
   // Check TabelaPrecos first (client-specific pricing)
   if (clienteId) {
-    const { MOCK_TABELA_PRECOS } = require("@/data/mockSettings");
-    const regra = (MOCK_TABELA_PRECOS as any[])
-      .filter((p: any) => p.cliente_id === clienteId && p.ativo)
-      .sort((a: any, b: any) => a.prioridade - b.prioridade)
-      .find((p: any) => {
+    const regra = MOCK_TABELA_PRECOS
+      .filter((p) => p.cliente_id === clienteId && p.ativo)
+      .sort((a, b) => a.prioridade - b.prioridade)
+      .find((p) => {
         const matchBairro = !p.bairro_destino_id || p.bairro_destino_id === bairroId;
         const matchTipo = !tipoOp || p.tipo_operacao === "todos" || p.tipo_operacao === tipoOp;
         return matchBairro && matchTipo;
