@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { MOCK_CLIENTES } from "@/data/mockClientes";
 import type { Cliente, Modalidade, FrequenciaFaturamento, DiaSemana } from "@/types/database";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ export function ClientFormDialog({ open, onOpenChange, editing, onSave }: Client
   const [nome, setNome] = useState("");
   const [tipo, setTipo] = useState<"pessoa_fisica" | "pessoa_juridica">("pessoa_fisica");
   const [email, setEmail] = useState("");
+  const [emailError, setEmailError] = useState("");
   const [telefone, setTelefone] = useState("");
   const [endereco, setEndereco] = useState("");
   const [bairro, setBairro] = useState("");
@@ -69,6 +71,10 @@ export function ClientFormDialog({ open, onOpenChange, editing, onSave }: Client
   const handleSubmit = () => {
     if (!nome.trim() || !email.trim() || !telefone.trim()) {
       toast.error("Preencha todos os campos obrigatórios.");
+      return;
+    }
+    if (emailError) {
+      toast.error(emailError);
       return;
     }
     if (!editing && !senha.trim()) {
@@ -243,7 +249,21 @@ export function ClientFormDialog({ open, onOpenChange, editing, onSave }: Client
               </div>
               <div className="space-y-2">
                 <Label>Email *</Label>
-                <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@exemplo.com" />
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={(e) => { setEmail(e.target.value); setEmailError(""); }}
+                  onBlur={() => {
+                    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+                      setEmailError("Email inválido");
+                    } else if (email.trim() && MOCK_CLIENTES.some((c) => c.email.toLowerCase() === email.trim().toLowerCase() && c.id !== editing?.id)) {
+                      setEmailError("Email já cadastrado");
+                    }
+                  }}
+                  placeholder="email@exemplo.com"
+                  className={emailError ? "border-destructive" : ""}
+                />
+                {emailError && <p className="text-xs text-destructive">{emailError}</p>}
               </div>
               <div className="space-y-2">
                 <Label>Telefone *</Label>

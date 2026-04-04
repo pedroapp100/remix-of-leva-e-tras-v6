@@ -5,7 +5,7 @@ import type { Column } from "@/components/shared/DataTable";
 import type { TabelaPrecoCliente } from "@/types/database";
 import { MOCK_TABELA_PRECOS, MOCK_BAIRROS, MOCK_REGIOES, MOCK_CLIENTES_SELECT, MOCK_TIPOS_OPERACAO } from "@/data/mockSettings";
 import { Button } from "@/components/ui/button";
-import { Plus, Pencil, Trash2, CircleDot } from "lucide-react";
+import { Plus, Pencil, Trash2, CircleDot, ArrowUp, ArrowDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -103,6 +103,20 @@ export function TabelaPrecosTab({ initialClienteId }: TabelaPrecosTabProps) {
     setDialogOpen(false);
   };
 
+  const movePriority = (id: string, direction: "up" | "down") => {
+    const sorted = [...clientePrecos].sort((a, b) => a.prioridade - b.prioridade);
+    const idx = sorted.findIndex((p) => p.id === id);
+    if ((direction === "up" && idx <= 0) || (direction === "down" && idx >= sorted.length - 1)) return;
+    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+    const tempPriority = sorted[idx].prioridade;
+    setPrecos((prev) => prev.map((p) => {
+      if (p.id === sorted[idx].id) return { ...p, prioridade: sorted[swapIdx].prioridade };
+      if (p.id === sorted[swapIdx].id) return { ...p, prioridade: tempPriority };
+      return p;
+    }));
+    toast.success("Prioridade atualizada!");
+  };
+
   const handleDelete = () => {
     if (!deleteTarget) return;
     setPrecos((prev) => prev.filter((p) => p.id !== deleteTarget.id));
@@ -112,7 +126,13 @@ export function TabelaPrecosTab({ initialClienteId }: TabelaPrecosTabProps) {
   };
 
   const columns: Column<TabelaPrecoCliente>[] = [
-    { key: "prioridade", header: "#", className: "w-12", sortable: true, cell: (r) => <span className="tabular-nums text-muted-foreground">{r.prioridade}</span> },
+    { key: "prioridade", header: "#", className: "w-20", sortable: true, cell: (r) => (
+      <div className="flex items-center gap-1">
+        <span className="tabular-nums text-muted-foreground w-4">{r.prioridade}</span>
+        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); movePriority(r.id, "up"); }}><ArrowUp className="h-3 w-3" /></Button>
+        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); movePriority(r.id, "down"); }}><ArrowDown className="h-3 w-3" /></Button>
+      </div>
+    )},
     { key: "bairro_destino_id", header: "Bairro", cell: (r) => <span className="font-medium">{getBairroName(r.bairro_destino_id)}</span> },
     { key: "regiao_id", header: "Região", cell: (r) => <span className="text-muted-foreground">{getRegiaoName(r.regiao_id)}</span> },
     { key: "tipo_operacao", header: "Tipo", cell: (r) => {

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { MOCK_CLIENTES } from "@/data/mockClientes";
-import { MOCK_BAIRROS, MOCK_TAXAS_EXTRAS, MOCK_FORMAS_PAGAMENTO, MOCK_TIPOS_OPERACAO } from "@/data/mockSettings";
+import { MOCK_BAIRROS, MOCK_TAXAS_EXTRAS, MOCK_FORMAS_PAGAMENTO, MOCK_TIPOS_OPERACAO, MOCK_TABELA_PRECOS } from "@/data/mockSettings";
 import { useGlobalStore } from "@/contexts/GlobalStore";
 import { MOCK_ENTREGADORES } from "@/data/mockEntregadores";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -27,9 +27,24 @@ const entregadoresAtivos = MOCK_ENTREGADORES.filter((e) => e.status === "ativo")
 const tiposAtivos = MOCK_TIPOS_OPERACAO.filter((t) => t.ativo);
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-function resolverTarifaMock(bairroId: string): { taxa: number; fallback: boolean } {
+function resolverTarifaMock(bairroId: string, clienteId?: string, tipoOp?: string): { taxa: number; fallback: boolean } {
   const bairro = MOCK_BAIRROS.find((b) => b.id === bairroId);
   if (!bairro) return { taxa: 0, fallback: false };
+
+  // Check TabelaPrecos first (client-specific pricing)
+  if (clienteId) {
+    const regra = MOCK_TABELA_PRECOS
+      .filter((p) => p.cliente_id === clienteId && p.ativo)
+      .sort((a, b) => a.prioridade - b.prioridade)
+      .find((p) => {
+        const matchBairro = !p.bairro_destino_id || p.bairro_destino_id === bairroId;
+        const matchTipo = !tipoOp || p.tipo_operacao === "todos" || p.tipo_operacao === tipoOp;
+        return matchBairro && matchTipo;
+      });
+    if (regra) return { taxa: regra.taxa_base, fallback: false };
+  }
+
+  // Fallback to bairro default
   return { taxa: bairro.taxa_entrega, fallback: true };
 }
 
@@ -43,6 +58,7 @@ const emptyRota = (): RotaForm => ({
   valor_a_receber: 0,
   meios_pagamento: [],
   taxa_resolvida: null,
+  is_fallback: false,
   taxas_extras: [],
   pagamento_operacao: "faturar",
   meios_pagamento_operacao: [],
@@ -123,8 +139,9 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit }: Launch
       if (r.id !== id) return r;
       const updated = { ...r, [field]: value };
       if (field === "bairro_destino_id" && typeof value === "string") {
-        const tarifa = resolverTarifaMock(value);
+        const tarifa = resolverTarifaMock(value, clienteId || undefined, tipoOperacao || undefined);
         updated.taxa_resolvida = tarifa.taxa;
+        updated.is_fallback = tarifa.fallback;
       }
       return updated;
     }));

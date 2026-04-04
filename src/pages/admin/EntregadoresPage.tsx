@@ -13,6 +13,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Plus, Users, UserCheck, Package, Clock, Pencil, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { useUserStore } from "@/data/mockUsers";
+import { useGlobalStore } from "@/contexts/GlobalStore";
 import { EntregadorFormDialog } from "./entregadores/EntregadorFormDialog";
 
 export default function EntregadoresPage() {
@@ -42,11 +43,18 @@ export default function EntregadoresPage() {
     return matchSearch && matchStatus && matchVeiculo;
   });
 
+  const { solicitacoes } = useGlobalStore();
+  const today = new Date().toISOString().slice(0, 10);
+
   const metrics = {
     total: entregadores.length,
     ativos: entregadores.filter((e) => e.status === "ativo").length,
-    entregasHoje: entregadores.filter((e) => e.status === "ativo").length * 3, // dynamic placeholder
-    horasTrabalhadas: entregadores.filter((e) => e.status === "ativo").length * 8, // dynamic placeholder
+    entregasHoje: solicitacoes.filter(
+      (s) => s.status === "concluida" && s.data_conclusao?.slice(0, 10) === today && entregadores.some((e) => e.id === s.entregador_id)
+    ).length,
+    horasTrabalhadas: solicitacoes.filter(
+      (s) => ["em_andamento", "concluida"].includes(s.status) && s.data_conclusao?.slice(0, 10) === today && entregadores.some((e) => e.id === s.entregador_id)
+    ).length * 1.5, // ~1.5h média por entrega
   };
 
   const openCreate = () => { setEditing(null); setFormOpen(true); };
