@@ -5,7 +5,7 @@ import type { Column } from "@/components/shared/DataTable";
 import type { TabelaPrecoCliente } from "@/types/database";
 import { MOCK_TABELA_PRECOS, MOCK_BAIRROS, MOCK_REGIOES, MOCK_CLIENTES_SELECT, MOCK_TIPOS_OPERACAO } from "@/data/mockSettings";
 import { Button } from "@/components/ui/button";
-import { Plus, Pencil, Trash2, CircleDot } from "lucide-react";
+import { Plus, Pencil, Trash2, CircleDot, ArrowUp, ArrowDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
