@@ -105,6 +105,7 @@ export function AdminSidebar() {
                         end={item.url === "/admin"}
                         className={`${collapsed ? "flex items-center justify-center" : ""} relative`}
                         activeClassName=""
+                        onClick={handleNavClick}
                       >
                         <item.icon className="shrink-0 !h-5 !w-5" />
                         {!collapsed && <span className="text-lg font-medium">{item.title}</span>}
@@ -137,7 +138,7 @@ export function AdminSidebar() {
                   : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
               } rounded-lg ${collapsed ? "h-10 w-10 justify-center p-0" : "h-10"}`}
             >
-              <NavLink to="/admin/configuracoes" className={collapsed ? "flex items-center justify-center" : ""} activeClassName="">
+              <NavLink to="/admin/configuracoes" className={collapsed ? "flex items-center justify-center" : ""} activeClassName="" onClick={handleNavClick}>
                 <Settings className="shrink-0 !h-5 !w-5" />
                 {!collapsed && <span className="text-lg font-medium">Configurações</span>}
               </NavLink>

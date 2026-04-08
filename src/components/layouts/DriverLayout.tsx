@@ -76,6 +76,7 @@ function DriverSidebar() {
                         end={item.url === "/entregador"}
                         className={collapsed ? "flex items-center justify-center" : ""}
                         activeClassName=""
+                        onClick={handleNavClick}
                       >
                         <item.icon className="shrink-0 !h-5 !w-5" />
                         {!collapsed && <span className="text-lg font-medium">{item.title}</span>}
@@ -102,7 +103,7 @@ function DriverSidebar() {
                   : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
               } rounded-lg ${collapsed ? "h-10 w-10 justify-center p-0" : "h-10"}`}
             >
-              <NavLink to="/entregador/perfil" className={collapsed ? "flex items-center justify-center" : ""} activeClassName="">
+              <NavLink to="/entregador/perfil" className={collapsed ? "flex items-center justify-center" : ""} activeClassName="" onClick={handleNavClick}>
                 <User className="shrink-0 !h-5 !w-5" />
                 {!collapsed && <span className="text-lg font-medium">Meu Perfil</span>}
               </NavLink>
@@ -134,7 +135,6 @@ export function DriverLayout() {
           <div className="flex flex-1 w-full">
             <DriverSidebar />
             <main className="flex-1 overflow-auto p-3 sm:p-4 md:p-6">
-              <Outlet />
               <Outlet />
             </main>
           </div>
