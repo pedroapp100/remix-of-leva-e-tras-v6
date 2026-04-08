@@ -1186,4 +1186,44 @@ Allow: /
 
 ---
 
+## 22. Glossário de Termos de Negócio
+
+| Termo | Definição |
+|---|---|
+| **Solicitação** | Pedido de entrega criado por um cliente ou pelo admin. Contém uma ou mais rotas. Ciclo de vida: pendente → aceita → em_andamento → concluída/cancelada/rejeitada. |
+| **Rota** | Destino individual dentro de uma solicitação. Cada rota tem bairro destino, destinatário, telefone, taxa e valor a receber. Uma solicitação pode ter N rotas. |
+| **Conciliação** | Processo de registro dos pagamentos efetivamente recebidos pelo entregador em cada rota. Garante que os valores recebidos batem com os valores esperados antes de gerar a fatura. |
+| **Repasse** | Valor que a operação (Leva e Traz) deve repassar ao cliente lojista. Exemplo: entregador cobra R$ 50 do consumidor final em nome da loja → R$ 50 é o repasse ao lojista. |
+| **Taxa** | Valor cobrado pela operação pela prestação do serviço de entrega. Compõe a receita da empresa. Pode incluir taxa base, retorno, espera e urgência. |
+| **Fatura** | Documento de cobrança agrupando entregas de um cliente faturado em um período. Consolida taxas, repasses, créditos e débitos para liquidação. |
+| **Faturado** | Modalidade de cliente que acumula entregas e paga em ciclos (diário, semanal, mensal). As cobranças são consolidadas em faturas periódicas. |
+| **Pré-pago** | Modalidade de cliente que mantém saldo positivo. Cada entrega debita automaticamente do saldo. Requer recargas periódicas. |
+| **Recarga** | Adição de crédito ao saldo de um cliente pré-pago. Registrada manualmente pelo admin com valor e observação. |
+| **Saldo** | Crédito disponível de um cliente pré-pago. Decrementado automaticamente ao concluir entregas. Alertas visuais quando abaixo do limite configurado. |
+| **Caixa** | Controle financeiro diário do entregador. Registra troco inicial, recebimentos em dinheiro durante o dia e valor devolvido ao fechar. |
+| **Divergência** | Diferença entre o valor esperado e o valor efetivamente devolvido pelo entregador ao fechar o caixa. Requer justificativa do admin. |
+| **Troco Inicial** | Valor em dinheiro entregue ao motorista no início do expediente para facilitar operações de troco com clientes. |
+| **Comissão** | Remuneração do entregador calculada sobre a receita operacional. Pode ser percentual (% sobre receitas) ou valor fixo por entrega. |
+| **Pertence a** | Classificação de um pagamento: **operação** (receita da empresa) ou **loja** (valor que pertence ao cliente lojista e deve ser repassado). |
+| **Faturar** | Meio de pagamento especial disponível apenas para clientes faturados. Posterga a cobrança para o próximo ciclo de faturamento, adicionando o valor à fatura do período. |
+| **Tarifa / Taxa Resolvida** | Valor da taxa de entrega calculado pela função `resolverTarifaMock()`, que consulta a tabela de preços personalizada do cliente com prioridade: regra específica (bairro+tipo) > regra por região > tarifa padrão do bairro. |
+| **Tabela de Preços** | Configuração de tarifas personalizadas por cliente. Permite definir taxas diferenciadas por bairro, região e tipo de operação, com sistema de prioridades. |
+| **Tipo de Operação** | Classificação da entrega (ex: Normal, Urgente, Noturno). Define dias/horários de aplicação, prioridade e pode afetar o cálculo de tarifas. |
+| **Taxa Extra** | Cobrança adicional aplicável a uma rota (ex: taxa de retorno, taxa de espera). Configurada globalmente e aplicada individualmente por rota. |
+| **Forma de Pagamento** | Meio utilizado para pagamento de uma rota (ex: Dinheiro, Pix, Cartão, Faturar). Configurável e ordenável pelo admin. |
+| **Região** | Agrupamento geográfico de bairros. Usada para definir regras de preço regionais quando não há regra específica por bairro. |
+| **Cargo** | Papel administrativo com conjunto específico de permissões (ex: Admin Geral, Gerente Financeiro, Operador). Define o que cada admin pode ver e fazer. |
+| **Permissão** | Autorização granular para acessar funcionalidades (ex: `clientes.view`, `faturas.edit`). Agrupadas em módulos e atribuídas via cargos. |
+| **Lançamento Financeiro** | Registro contábil gerado automaticamente ao concluir uma solicitação. Categorizado como receita_operacao, credito_loja, debito_loja ou ajuste. |
+| **Ajuste Financeiro** | Correção manual (crédito ou débito) aplicada a uma fatura pelo admin, com motivo obrigatório. Recalcula o saldo líquido da fatura. |
+| **Saldo Líquido** | Resultado final de uma fatura: `valor_taxas - valor_repasse + total_creditos_loja - total_debitos_loja`. Pode ser positivo (cliente deve) ou negativo (operação deve). |
+| **Livro Caixa** | Registro cronológico consolidado de todas as entradas e saídas financeiras da operação, com saldo acumulado. |
+| **Retroativo** | Solicitação criada com data anterior à data atual. Permite registrar entregas que já ocorreram mas não foram lançadas no sistema. |
+| **Ponto de Coleta** | Local onde o entregador recolhe a mercadoria (geralmente o endereço do cliente lojista). |
+| **Webhook** | Endpoint HTTP configurado para receber notificações automáticas de eventos do sistema (ex: nova solicitação, status alterado). |
+| **Onboarding** | Sistema de tour guiado que apresenta as funcionalidades da plataforma ao usuário na primeira visita, com tooltips e overlay. |
+| **Rate Limiting** | Limitação de tentativas de login (máx. 5 em 5 minutos) para proteção contra ataques de força bruta. |
+
+---
+
 *Documento gerado automaticamente a partir do código-fonte. Última atualização: 2026-04-08.*
