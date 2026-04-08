@@ -1,7 +1,7 @@
 // =============================================================================
 // PRISMA SCHEMA — SISTEMA LEVA E TRAZ v2.0
 // =============================================================================
-// Gerado com base no PRD Técnico Definitivo v2.0
+// Atualizado conforme PRD v3.0 (2026-04-08)
 //
 // PRINCÍPIO FINANCEIRO CENTRAL:
 // Em cada entrega existem DOIS proprietários de valor distintos:
@@ -14,6 +14,12 @@
 // Precedência: (cliente+bairro+tipo) > (cliente+bairro+todos) >
 //              (cliente+região+tipo) > (cliente+região+todos) >
 //              bairros.taxaEntrega (fallback) > BLOQUEIO
+//
+// TIPOS DE OPERAÇÃO DINÂMICOS:
+// TipoOperacao não é mais enum fixo. É gerenciado via TipoOperacaoConfig
+// (CRUD em /admin/configuracoes aba Tipos de Operação).
+// Solicitacao.tipoOperacao e TabelaPrecoCliente.tipoOperacao referenciam
+// TipoOperacaoConfig.id como String.
 //
 // IMUTABILIDADE:
 // lancamentos_financeiros é imutável após criação.
@@ -50,11 +56,9 @@ enum StatusSolicitacao {
   rejeitada     // Rejeitada pelo operador (apenas em 'pendente')
 }
 
-enum TipoOperacao {
-  standard  // Entrega padrão
-  express   // Entrega urgente (taxa de urgência aplicada)
-  retorno   // Entrega com retorno ao ponto de coleta
-}
+// TipoOperacao — REMOVIDO como enum fixo.
+// Agora é gerenciado dinamicamente via modelo TipoOperacaoConfig.
+// Campos que referenciam tipo de operação usam String (FK lógica para TipoOperacaoConfig.id).
 
 enum Modalidade {
   pre_pago  // Cliente paga antecipado por saldo
@@ -76,6 +80,16 @@ enum DiaSemana {
   quinta
   sexta
   sabado
+}
+
+enum DiaSemanaConfig {
+  seg
+  ter
+  qua
+  qui
+  sex
+  sab
+  dom
 }
 
 enum TipoComissao {
@@ -158,12 +172,9 @@ enum TipoAjuste {
   debito
 }
 
-enum TipoPreco {
-  standard
-  express
-  retorno
-  todos  // Aplica para qualquer tipo de operação
-}
+// TipoPreco — REMOVIDO como enum fixo.
+// Substituído por String dinâmico que referencia TipoOperacaoConfig.id
+// ou o valor especial "todos" (aplica para qualquer tipo de operação).
 
 // =============================================================================
 // AUTENTICAÇÃO E PERFIS
@@ -206,11 +217,15 @@ model Profile {
 /// solicitacoes.view | .create | .edit | .cancel | .reject | .assign_driver | .conciliar | .conciliar_edit
 /// clientes.view | .create | .edit | .delete | .view_financeiro
 /// entregadores.view | .create | .edit | .delete
+/// entregas.view
+/// caixas.view | .abrir | .fechar | .editar | .justificar
 /// faturas.view | .create | .edit | .delete | .liquidar | .edit_finalizada
 /// financeiro.view | .despesas_create | .despesas_edit | .despesas_pagar
-/// financeiro.ajustes | .auditoria_view | .edit_pos_fechamento
+/// financeiro.receitas_create | .receitas_edit | .ajustes | .auditoria_view | .edit_pos_fechamento
 /// relatorios.view | .export
-/// settings.view | .bairros | .regioes | .formas_pagamento | .cargos | .tabela_precos
+/// logs.view | .export
+/// settings.view | .bairros | .regioes | .formas_pagamento | .cargos | .usuarios
+/// settings.tipos_operacao | .tabela_precos | .taxas_extras | .notificacoes | .webhooks | .integracoes
 model Cargo {
   id          String   @id @default(uuid()) @db.Uuid
   name        String   @unique
@@ -227,10 +242,11 @@ model Cargo {
 // =============================================================================
 
 /// Cliente B2B da operação logística (lojas que contratam o serviço de entrega).
-/// REGRA: Cliente inativo NÃO pode ter novas solicitações criadas.
+/// REGRA: Cliente inativo ou bloqueado NÃO pode ter novas solicitações criadas.
 /// REGRA: Exclusão bloqueada se existir solicitação associada — inativar em vez de excluir.
 /// REGRA: Modalidade 'faturado' com ativarFaturamentoAutomatico=true gera
 ///        fechamentos automáticos conforme a frequência configurada.
+/// REGRA: Status 'bloqueado' impede qualquer operação e exibe alerta visual.
 model Cliente {
   id     String     @id @default(uuid()) @db.Uuid
   nome   String
@@ -243,7 +259,7 @@ model Cliente {
   uf       String   @db.Char(2)
   chavePix String?
 
-  status     String     @default("ativo")  // 'ativo' | 'inativo'
+  status     String     @default("ativo")  // 'ativo' | 'inativo' | 'bloqueado'
   modalidade Modalidade @default(pre_pago)
 
   // Configuração de faturamento automático (apenas modalidade 'faturado')
@@ -258,6 +274,7 @@ model Cliente {
   faturas            Fatura[]
   tabelaPrecos       TabelaPrecoCliente[]
   lancamentos        LancamentoFinanceiro[]
+  recargas           RecargaPrePago[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -353,20 +370,79 @@ model FormaPagamento {
   @@map("formas_pagamento")
 }
 
-/// Taxas extras que podem ser adicionadas às rotas de entrega.
+/// Taxas extras configuráveis que podem ser adicionadas às rotas de entrega.
 /// Ex: "Retorno ao local", "Taxa de espera", "Entrega no andar".
-model TaxaExtra {
-  id    String  @id @default(uuid()) @db.Uuid
-  nome  String
-  valor Decimal @db.Decimal(10, 2)
+/// REGRA: ativo=false oculta a taxa dos selects de criação.
+/// REGRA: valorPadrao é sugestão — valor efetivo pode ser alterado por rota.
+model TaxaExtraConfig {
+  id          String  @id @default(uuid()) @db.Uuid
+  nome        String
+  valorPadrao Decimal @map("valor_padrao") @db.Decimal(10, 2)
+  ativo       Boolean @default(true)
 
   rotasTaxasExtras RotaTaxaExtra[]
 
-  @@map("extra_fees")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("taxas_extras_config")
 }
 
 // =============================================================================
-// TABELA DE PREÇOS POR CLIENTE — MÓDULO CRÍTICO NOVO
+// TIPOS DE OPERAÇÃO DINÂMICOS — NOVO v3.0
+// =============================================================================
+
+/// Tipos de operação configuráveis pelo admin.
+/// Substitui o enum fixo TipoOperacao (standard/express/retorno).
+/// Exemplos: "Normal", "Urgente", "Noturno", "Fim de Semana".
+///
+/// REGRA: dias_semana define quando este tipo é aplicável.
+/// REGRA: horario_inicio/fim define janela horária (opcional).
+/// REGRA: aplica_feriado=true → este tipo se aplica em feriados cadastrados.
+/// REGRA: ativo=false → oculta dos selects de criação e tabela de preços.
+/// REGRA: prioridade define ordem de exibição e precedência (menor = maior prioridade).
+///
+/// Referenciado por Solicitacao.tipoOperacao e TabelaPrecoCliente.tipoOperacao como String (FK lógica).
+model TipoOperacaoConfig {
+  id          String            @id @default(uuid()) @db.Uuid
+  nome        String            @unique
+  descricao   String?
+  diasSemana  DiaSemanaConfig[] @map("dias_semana")
+  horarioInicio String?         @map("horario_inicio") // "HH:mm"
+  horarioFim    String?         @map("horario_fim")    // "HH:mm"
+  aplicaFeriado Boolean         @default(false) @map("aplica_feriado")
+  cor         String            // hex ou tailwind color para badges
+  ativo       Boolean           @default(true)
+  prioridade  Int               @default(100)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("tipos_operacao_config")
+}
+
+// =============================================================================
+// FERIADOS — NOVO v3.0
+// =============================================================================
+
+/// Feriados cadastrados para regras de tipos de operação.
+/// REGRA: Se recorrente=true, repete anualmente (ignora ano da data).
+/// REGRA: ativo=false → feriado ignorado nas verificações.
+/// Usado em conjunto com TipoOperacaoConfig.aplicaFeriado.
+model Feriado {
+  id         String  @id @default(uuid()) @db.Uuid
+  nome       String
+  data       DateTime @db.Date // "YYYY-MM-DD"
+  recorrente Boolean @default(false) // repete todo ano
+  ativo      Boolean @default(true)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("feriados")
+}
+
+// =============================================================================
+// TABELA DE PREÇOS POR CLIENTE — MÓDULO CRÍTICO
 // =============================================================================
 
 /// Tarifas personalizadas por cliente + bairro de destino.
@@ -384,6 +460,8 @@ model TaxaExtra {
 ///
 /// SNAPSHOT: ao criar a rota, gravar taxaResolvida e regraPrecoId para
 /// rastreabilidade. Alterações futuras NÃO afetam solicitações já criadas.
+///
+/// tipoOperacao: String referenciando TipoOperacaoConfig.id ou "todos"
 model TabelaPrecoCliente {
   id String @id @default(uuid()) @db.Uuid
 
@@ -394,7 +472,8 @@ model TabelaPrecoCliente {
   regiaoId String? @map("regiao_id") @db.Uuid
   // NULL = regra de bairro específico
 
-  tipoOperacao TipoPreco @default(todos) @map("tipo_operacao")
+  tipoOperacao String @default("todos") @map("tipo_operacao")
+  // Referencia TipoOperacaoConfig.id ou valor especial "todos"
 
   taxaBase     Decimal @map("taxa_base") @db.Decimal(10, 2)
   taxaRetorno  Decimal @default(0) @map("taxa_retorno") @db.Decimal(10, 2)
@@ -438,6 +517,8 @@ model TabelaPrecoCliente {
 ///        UPDATE fechamento_cliente + UPDATE status + INSERT historico
 ///
 /// REGRA: codigo gerado automaticamente no formato LT-YYYYMMDD-NNNNN
+///
+/// tipoOperacao: String referenciando TipoOperacaoConfig.id (dinâmico)
 model Solicitacao {
   id     String @id @default(uuid()) @db.Uuid
   codigo String @unique
@@ -448,7 +529,8 @@ model Solicitacao {
   // Opcional na criação, obrigatório antes de iniciar
 
   status          StatusSolicitacao @default(pendente)
-  tipoOperacao    TipoOperacao      @map("tipo_operacao")
+  tipoOperacao    String            @map("tipo_operacao")
+  // Referencia TipoOperacaoConfig.id (dinâmico, não mais enum)
   pontoColeta     String            @map("ponto_coleta")
   dataSolicitacao DateTime          @default(now()) @map("data_solicitacao")
   dataInicio      DateTime?         @map("data_inicio")
@@ -461,6 +543,9 @@ model Solicitacao {
 
   justificativa String?
   // Obrigatória para cancelamento (mín. 10 chars) e rejeição
+
+  retroativo Boolean @default(false)
+  // true = solicitação criada com data anterior à data atual (registro retroativo)
 
   historico Json[] @default([])
   // Array de eventos: { tipo, status_anterior, status_novo, usuarioId, timestamp, descricao }
@@ -538,12 +623,15 @@ model RotaFormaPagamento {
 }
 
 /// Tabela de junção: taxas extras aplicadas por rota
+/// Valor efetivo pode diferir do valorPadrao da TaxaExtraConfig
 model RotaTaxaExtra {
-  rotaId      String @map("rota_id") @db.Uuid
-  taxaExtraId String @map("taxa_extra_id") @db.Uuid
+  rotaId      String  @map("rota_id") @db.Uuid
+  taxaExtraId String  @map("taxa_extra_id") @db.Uuid
+  valor       Decimal @db.Decimal(10, 2)
+  // Valor efetivo aplicado nesta rota (snapshot do valorPadrao ou customizado)
 
-  rota  Rota      @relation(fields: [rotaId], references: [id])
-  taxa  TaxaExtra @relation(fields: [taxaExtraId], references: [id])
+  rota  Rota            @relation(fields: [rotaId], references: [id])
+  taxa  TaxaExtraConfig @relation(fields: [taxaExtraId], references: [id])
 
   @@id([rotaId, taxaExtraId])
   @@map("rota_taxa_extra")
@@ -754,6 +842,31 @@ model Receita {
 }
 
 // =============================================================================
+// RECARGAS PRÉ-PAGO — NOVO v3.0
+// =============================================================================
+
+/// Registro de recargas de saldo para clientes pré-pagos.
+/// Saldo = SUM(recargas.valor) - SUM(débitos automáticos de solicitações concluídas)
+///
+/// REGRA: Apenas admin pode registrar recargas (via ClientProfileModal ou RecargaSaldoDialog).
+/// REGRA: Valor deve ser > 0.
+/// REGRA: Cada recarga gera log de auditoria.
+model RecargaPrePago {
+  id           String @id @default(uuid()) @db.Uuid
+  clienteId    String @map("cliente_id") @db.Uuid
+  valor        Decimal @db.Decimal(10, 2)
+  observacao   String?
+  registradoPor String @map("registrado_por") // ID ou nome do admin
+
+  cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([clienteId])
+  @@map("recargas_pre_pago")
+}
+
+// =============================================================================
 // AUDITORIA E AJUSTES FINANCEIROS
 // =============================================================================
 
@@ -809,10 +922,12 @@ model AuditoriaFinanceira {
 // =============================================================================
 
 /// Configurações globais do sistema.
-/// Usada para armazenar chaves de integração (Stripe, Google Maps, WhatsApp).
+/// Usada para armazenar chaves de integração (Stripe, Google Maps, WhatsApp)
+/// e configurações operacionais (limite_saldo_pre_pago, etc.).
 /// Chaves sensíveis devem ser criptografadas ou gerenciadas via Supabase Vault.
 /// Keys definidas: 'stripe_public_key', 'stripe_secret_key',
-///                 'google_maps_key', 'whatsapp_token', 'whatsapp_phone_id'
+///                 'google_maps_key', 'whatsapp_token', 'whatsapp_phone_id',
+///                 'limite_saldo_pre_pago'
 model SystemSetting {
   key       String  @id
   value     String?
