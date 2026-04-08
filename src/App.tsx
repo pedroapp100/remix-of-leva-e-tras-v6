@@ -131,6 +131,7 @@ const App = () => (
                     <Route path="/financeiro" element={<Navigate to="/admin/financeiro" replace />} />
                     <Route path="/relatorios" element={<Navigate to="/admin/relatorios" replace />} />
                     <Route path="/configuracoes" element={<Navigate to="/admin/configuracoes" replace />} />
+                    <Route path="/caixas" element={<Navigate to="/admin/caixas-entregadores" replace />} />
 
                     <Route path="*" element={<NotFound />} />
                   </Routes>
