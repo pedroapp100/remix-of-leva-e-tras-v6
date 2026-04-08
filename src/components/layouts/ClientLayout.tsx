@@ -27,10 +27,14 @@ const clientItems = [
 ];
 
 function ClientSidebar() {
-  const { state, toggleSidebar, isMobile } = useSidebar();
+  const { state, toggleSidebar, isMobile, setOpenMobile } = useSidebar();
   const collapsed = state === "collapsed";
   const location = useLocation();
   const { logout } = useAuth();
+
+  const handleNavClick = () => {
+    if (isMobile) setOpenMobile(false);
+  };
 
   const isActive = (path: string) => {
     if (path === "/cliente") return location.pathname === "/cliente";
@@ -71,6 +75,7 @@ function ClientSidebar() {
                         end={item.url === "/cliente"}
                         className={collapsed ? "flex items-center justify-center" : ""}
                         activeClassName=""
+                        onClick={handleNavClick}
                       >
                         <item.icon className="shrink-0 !h-5 !w-5" />
                         {!collapsed && <span className="text-lg font-medium">{item.title}</span>}
@@ -97,7 +102,7 @@ function ClientSidebar() {
                   : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
               } rounded-lg ${collapsed ? "h-10 w-10 justify-center p-0" : "h-10"}`}
             >
-              <NavLink to="/cliente/perfil" className={collapsed ? "flex items-center justify-center" : ""} activeClassName="">
+              <NavLink to="/cliente/perfil" className={collapsed ? "flex items-center justify-center" : ""} activeClassName="" onClick={handleNavClick}>
                 <User className="shrink-0 !h-5 !w-5" />
                 {!collapsed && <span className="text-lg font-medium">Meu Perfil</span>}
               </NavLink>
