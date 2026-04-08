@@ -247,7 +247,28 @@ Multi-step wizard (4 etapas):
 - Motivo de cancelamento/rejeição
 
 #### AdminConciliacaoDialog
-- Versão administrativa com campos adicionais
+Versão administrativa do diálogo de conciliação, usada quando o admin precisa revisar/ajustar pagamentos registrados pelo entregador.
+
+- **Exibe pagamentos do motorista:** mostra os pagamentos que o entregador já registrou via `ConciliacaoDialog`
+- **Edição administrativa:** admin pode adicionar, remover e alterar pagamentos por rota
+- **Categorização:** cada pagamento tem forma de pagamento + classificação (operação/loja/faturar)
+- **Resumo comparativo:** totais lado a lado — operação vs loja vs faturar vs esperado
+- **Validação de equilíbrio:** botão "Conferir e Gerar Fatura" só habilita quando `isBalanced = true`
+- **Fluxo de conclusão:** persiste pagamentos via `addPagamentos()`, chama `concluirComCaixa()` para finalizar solicitação + lançar no caixa do entregador
+- **Cálculo em centavos:** todas as operações financeiras usam `Math.round(x * 100)` para evitar erros de ponto flutuante
+
+**Arquivo:** `AdminConciliacaoDialog.tsx`
+
+#### RecargaSaldoDialog
+Modal para adicionar crédito ao saldo de um cliente pré-pago.
+
+- **Campos:** valor da recarga (`CurrencyInput`) + observação opcional (`Textarea`)
+- **Exibe saldo atual** do cliente e **projeta novo saldo** em tempo real
+- **Validação:** valor deve ser > 0
+- **Ação:** chama `addRecarga(clienteId, valor, observacao)` no `GlobalStore`
+- **Feedback:** toast de sucesso com valor e novo saldo
+
+**Arquivo:** `RecargaSaldoDialog.tsx`
 
 ---
 
