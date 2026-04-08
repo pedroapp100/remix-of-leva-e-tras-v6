@@ -43,6 +43,15 @@ function useDashboardData() {
       (s) => s.status === "concluida" && s.data_conclusao?.slice(0, 10) === today
     ).length;
 
+    // Calculate real average: entregas concluídas nos últimos 30 dias / 30
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const entregasUltimos30d = MOCK_SOLICITACOES.filter((s) => {
+      if (s.status !== "concluida" || !s.data_conclusao) return false;
+      return new Date(s.data_conclusao) >= thirtyDaysAgo;
+    }).length;
+    const mediaEntregasDia = entregasUltimos30d > 0 ? Math.round(entregasUltimos30d / 30 * 10) / 10 : 1;
+
     // Taxas Recebidas (mês atual)
     const currentMonth = new Date().getMonth();
     const currentYear = new Date().getFullYear();
@@ -63,6 +72,7 @@ function useDashboardData() {
       faturasVencidas: faturasVencidas.length,
       faturasVencidasValor,
       entregasHoje,
+      mediaEntregasDia,
       taxasRecebidas,
       novasSolicitacoes,
     };
@@ -161,7 +171,7 @@ export default function AdminDashboard() {
                 value={metrics.entregasHoje}
                 icon={Truck}
                 subtitle="Concluídas"
-                delta={metrics.entregasHoje > 0 ? Math.round(((metrics.entregasHoje - 3) / 3) * 100) : 0}
+                delta={metrics.mediaEntregasDia > 0 ? Math.round(((metrics.entregasHoje - metrics.mediaEntregasDia) / metrics.mediaEntregasDia) * 100) : 0}
                 deltaLabel="vs média"
               />
             </motion.div>
