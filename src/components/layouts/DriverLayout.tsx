@@ -2,7 +2,7 @@ import { Outlet } from "react-router-dom";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppHeader } from "./AppHeader";
 import { OnboardingRoleSync } from "@/onboarding/OnboardingRoleSync";
-import { RouteBreadcrumb } from "@/components/shared/RouteBreadcrumb";
+
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
 import { LayoutDashboard, ClipboardList, DollarSign, User, LogOut, ChevronRight, Truck, Wallet } from "lucide-react";
