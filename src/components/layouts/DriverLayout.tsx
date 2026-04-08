@@ -28,10 +28,14 @@ const driverItems = [
 ];
 
 function DriverSidebar() {
-  const { state, toggleSidebar, isMobile } = useSidebar();
+  const { state, toggleSidebar, isMobile, setOpenMobile } = useSidebar();
   const collapsed = state === "collapsed";
   const location = useLocation();
   const { logout } = useAuth();
+
+  const handleNavClick = () => {
+    if (isMobile) setOpenMobile(false);
+  };
 
   const isActive = (path: string) => {
     if (path === "/entregador") return location.pathname === "/entregador";

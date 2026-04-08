@@ -45,10 +45,14 @@ const navItems = [
 ];
 
 export function AdminSidebar() {
-  const { state, toggleSidebar, isMobile } = useSidebar();
+  const { state, toggleSidebar, isMobile, setOpenMobile } = useSidebar();
   const collapsed = state === "collapsed";
   const location = useLocation();
   const { logout } = useAuth();
+
+  const handleNavClick = () => {
+    if (isMobile) setOpenMobile(false);
+  };
   const { solicitacoes, faturas } = useGlobalStore();
 
   const solicitacoesPendentes = solicitacoes.filter(s => s.status === "pendente").length;
