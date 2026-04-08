@@ -2,7 +2,7 @@ import { Outlet } from "react-router-dom";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppHeader } from "./AppHeader";
 import { OnboardingRoleSync } from "@/onboarding/OnboardingRoleSync";
-import { RouteBreadcrumb } from "@/components/shared/RouteBreadcrumb";
+
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
 import { LayoutDashboard, ClipboardList, DollarSign, User, LogOut, ChevronRight, Calculator } from "lucide-react";
@@ -129,7 +129,7 @@ export function ClientLayout() {
           <div className="flex flex-1 w-full">
             <ClientSidebar />
             <main className="flex-1 overflow-auto p-3 sm:p-4 md:p-6">
-              <RouteBreadcrumb />
+              <Outlet />
               <Outlet />
             </main>
           </div>
