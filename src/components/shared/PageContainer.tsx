@@ -22,6 +22,7 @@ const ROUTE_LABELS: Record<string, string> = {
   configuracoes: "Configurações",
   logs: "Logs",
   caixas: "Caixas",
+  "caixas-entregadores": "Caixas",
   cliente: "Portal Cliente",
   entregador: "Portal Entregador",
   perfil: "Perfil",
