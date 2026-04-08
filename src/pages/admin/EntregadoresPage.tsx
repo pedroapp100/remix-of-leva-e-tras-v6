@@ -52,9 +52,20 @@ export default function EntregadoresPage() {
     entregasHoje: solicitacoes.filter(
       (s) => s.status === "concluida" && s.data_conclusao?.slice(0, 10) === today && entregadores.some((e) => e.id === s.entregador_id)
     ).length,
-    horasTrabalhadas: solicitacoes.filter(
-      (s) => ["em_andamento", "concluida"].includes(s.status) && s.data_conclusao?.slice(0, 10) === today && entregadores.some((e) => e.id === s.entregador_id)
-    ).length * 1.5, // ~1.5h média por entrega
+    horasTrabalhadas: (() => {
+      const hojeEntregas = solicitacoes.filter(
+        (s) => ["em_andamento", "concluida"].includes(s.status) && entregadores.some((e) => e.id === s.entregador_id)
+          && s.data_conclusao?.slice(0, 10) === today
+      );
+      const totalMinutes = hojeEntregas.reduce((sum, s) => {
+        if (s.data_inicio && s.data_conclusao) {
+          const diff = new Date(s.data_conclusao).getTime() - new Date(s.data_inicio).getTime();
+          return sum + Math.max(0, diff / 60000);
+        }
+        return sum + 90; // fallback 1.5h if no timestamps
+      }, 0);
+      return Math.round(totalMinutes / 60 * 10) / 10;
+    })(),
   };
 
   const openCreate = () => { setEditing(null); setFormOpen(true); };

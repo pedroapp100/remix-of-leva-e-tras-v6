@@ -52,6 +52,7 @@ const EntregadorSolicitacoesPage = lazy(() => import("./pages/entregador/Entrega
 const EntregadorHistoricoPage = lazy(() => import("./pages/entregador/EntregadorHistoricoPage"));
 const EntregadorFinanceiroPage = lazy(() => import("./pages/entregador/EntregadorFinanceiroPage"));
 const EntregadorPerfilPage = lazy(() => import("./pages/entregador/EntregadorPerfilPage"));
+const EntregadorCorridasPage = lazy(() => import("./pages/entregador/EntregadorCorridasPage"));
 const EntregadorCaixaPage = lazy(() => import("./pages/entregador/EntregadorCaixaPage"));
 
 const NotFound = lazy(() => import("./pages/NotFound"));
@@ -115,6 +116,7 @@ const App = () => (
                   <Route path="/entregador" element={<ProtectedAppShell allowedRoles={["entregador"]}><DriverLayout /></ProtectedAppShell>}>
                     <Route index element={<EntregadorDashboard />} />
                     <Route path="solicitacoes" element={<EntregadorSolicitacoesPage />} />
+                    <Route path="corridas" element={<EntregadorCorridasPage />} />
                     <Route path="historico" element={<EntregadorHistoricoPage />} />
                     <Route path="financeiro" element={<EntregadorFinanceiroPage />} />
                     <Route path="caixa" element={<EntregadorCaixaPage />} />

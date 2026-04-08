@@ -8,7 +8,7 @@ import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency, formatDateBR } from "@/lib/formatters";
 import { useGlobalStore } from "@/contexts/GlobalStore";
-import { MOCK_COMISSOES } from "@/data/mockFinanceiro";
+import { useComissao } from "@/hooks/useComissao";
 import { getClienteName } from "@/data/mockSolicitacoes";
 
 const ENTREGADOR_ID = "ent-001";
@@ -21,6 +21,7 @@ const fadeUp = {
 
 export default function EntregadorDashboard() {
   const { solicitacoes } = useGlobalStore();
+  const comissaoData = useComissao(ENTREGADOR_ID);
 
   const metrics = useMemo(() => {
     const minhas = solicitacoes.filter((s) => s.entregador_id === ENTREGADOR_ID);
@@ -29,12 +30,11 @@ export default function EntregadorDashboard() {
     const corridasAtivas = minhas.filter((s) => s.status === "em_andamento" || s.status === "aceita").length;
     const concluidasHoje = minhas.filter((s) => s.status === "concluida" && s.data_conclusao?.slice(0, 10) === today).length;
 
-    const comissaoData = MOCK_COMISSOES.find((c) => c.entregador_id === ENTREGADOR_ID);
     const comissaoMes = comissaoData?.comissao ?? 0;
     const comissaoDia = comissaoMes > 0 ? Math.round((comissaoMes / 22) * 100) / 100 : 0;
 
     return { corridasAtivas, concluidasHoje, comissaoDia, comissaoMes };
-  }, [solicitacoes]);
+  }, [solicitacoes, comissaoData]);
 
   const recentEntregas = useMemo(() => {
     return solicitacoes
