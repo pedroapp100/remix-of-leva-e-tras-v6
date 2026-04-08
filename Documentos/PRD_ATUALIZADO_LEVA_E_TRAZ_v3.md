@@ -940,4 +940,250 @@ UserAccount
 
 ---
 
-*Documento gerado automaticamente a partir do código-fonte em 2026-04-08.*
+## 17. Mapa Completo de Rotas / URLs
+
+### 17.1 Rotas Públicas
+
+| Rota | Componente | Descrição |
+|---|---|---|
+| `/` | `RootRedirect` → `Index` ou redirect | Se logado, redireciona para rota do role (`/admin`, `/cliente`, `/entregador`). Se não, exibe Landing Page. |
+| `/login` | `LoginPage` | Formulário de login |
+| `/login/reset` | `ForgotPasswordPage` | Solicitar reset de senha |
+| `/reset-password` | `ResetPasswordPage` | Definir nova senha |
+
+### 17.2 Rotas Admin (`/admin/*`)
+
+Guard: `ProtectedAppShell allowedRoles={["admin"]}` → `AdminLayout`
+
+| Rota | Componente | Query Params |
+|---|---|---|
+| `/admin` | `Dashboard` | — |
+| `/admin/solicitacoes` | `SolicitacoesPage` | `?tab=pendente\|aceita\|...` `?search=xxx` `?from=YYYY-MM-DD` `?to=YYYY-MM-DD` |
+| `/admin/clientes` | `ClientesPage` | — |
+| `/admin/entregadores` | `EntregadoresPage` | — |
+| `/admin/entregas` | `EntregasPage` | — |
+| `/admin/caixas-entregadores` | `CaixasEntregadoresPage` | — |
+| `/admin/faturas` | `FaturasPage` | — |
+| `/admin/financeiro` | `FinanceiroPage` | — |
+| `/admin/relatorios` | `RelatoriosPage` | — |
+| `/admin/logs` | `LogsPage` | — |
+| `/admin/configuracoes` | `SettingsPage` | `?clienteId=XXX` (abre aba Tabela de Preços com cliente pré-selecionado) |
+
+### 17.3 Rotas Cliente (`/cliente/*`)
+
+Guard: `ProtectedAppShell allowedRoles={["cliente"]}` → `ClientLayout`
+
+| Rota | Componente |
+|---|---|
+| `/cliente` | `ClienteDashboard` |
+| `/cliente/solicitacoes` | `MinhasSolicitacoesPage` |
+| `/cliente/financeiro` | `ClienteFinanceiroPage` |
+| `/cliente/simulador` | `SimuladorClientePage` |
+| `/cliente/perfil` | `ClientePerfilPage` |
+
+### 17.4 Rotas Entregador (`/entregador/*`)
+
+Guard: `ProtectedAppShell allowedRoles={["entregador"]}` → `DriverLayout`
+
+| Rota | Componente |
+|---|---|
+| `/entregador` | `EntregadorDashboard` |
+| `/entregador/solicitacoes` | `EntregadorSolicitacoesPage` |
+| `/entregador/historico` | `EntregadorHistoricoPage` |
+| `/entregador/financeiro` | `EntregadorFinanceiroPage` |
+| `/entregador/caixa` | `EntregadorCaixaPage` |
+| `/entregador/perfil` | `EntregadorPerfilPage` |
+
+### 17.5 Redirects de Conveniência
+
+Atalhos que redirecionam rotas curtas para suas rotas reais dentro do painel admin:
+
+| Rota Curta | Redireciona Para |
+|---|---|
+| `/clientes` | `/admin/clientes` |
+| `/entregadores` | `/admin/entregadores` |
+| `/solicitacoes` | `/admin/solicitacoes` |
+| `/faturas` | `/admin/faturas` |
+| `/financeiro` | `/admin/financeiro` |
+| `/relatorios` | `/admin/relatorios` |
+| `/configuracoes` | `/admin/configuracoes` |
+
+### 17.6 Rota 404
+
+| Rota | Componente | Descrição |
+|---|---|---|
+| `*` | `NotFound` | Página 404 com link para `/`. Loga `console.error` com a rota tentada para debugging. |
+
+---
+
+## 18. Hooks Customizados
+
+### 18.1 `useAuth()` — Contexto de Autenticação
+
+**Arquivo:** `src/contexts/AuthContext.tsx`
+
+| Retorno | Tipo | Descrição |
+|---|---|---|
+| `user` | `AuthUser \| null` | Usuário logado ou null |
+| `role` | `Role \| null` | Role do usuário (`admin`, `cliente`, `entregador`) |
+| `isReady` | `boolean` | `true` quando o estado inicial foi restaurado do storage |
+| `loading` | `boolean` | `true` durante operações de login/logout |
+| `isBlocked` | `boolean` | `true` se bloqueado por tentativas excessivas |
+| `remainingAttempts` | `number` | Tentativas restantes antes do bloqueio |
+| `login(email, password)` | `Promise<{success, error?}>` | Autentica o usuário |
+| `logout()` | `void` | Encerra sessão e limpa storage |
+| `changeCargo(cargoId)` | `void` | Altera cargo do admin (recalcula permissões) |
+| `requestPasswordReset(email)` | `Promise<{success}>` | Solicita reset de senha (mock) |
+| `resetPassword(password)` | `Promise<{success}>` | Define nova senha (mock) |
+
+**Exemplo:**
+```tsx
+const { user, role, login, logout } = useAuth();
+if (!user) return <Navigate to="/login" />;
+```
+
+### 18.2 `usePermissions()` — Verificação de Permissões
+
+**Arquivo:** `src/hooks/usePermissions.ts`
+
+| Retorno | Tipo | Descrição |
+|---|---|---|
+| `role` | `Role \| null` | Role atual |
+| `permissions` | `string[]` | Lista de permission keys do usuário |
+| `hasPermission(key)` | `(string) => boolean` | Verifica uma permissão específica (ex: `"clientes.edit"`) |
+| `hasAllPermissions(keys)` | `(string[]) => boolean` | Verifica se tem TODAS as permissões |
+| `hasAnyPermission(keys)` | `(string[]) => boolean` | Verifica se tem ALGUMA das permissões |
+| `canAccessSidebarItem(title)` | `(string) => boolean` | Verifica permissão de menu sidebar |
+| `isAdmin` | `boolean` | Shorthand para `role === "admin"` |
+| `isCliente` | `boolean` | Shorthand para `role === "cliente"` |
+| `isEntregador` | `boolean` | Shorthand para `role === "entregador"` |
+| `isAuthenticated` | `boolean` | `true` se role !== null |
+
+**Exemplo:**
+```tsx
+const { hasPermission, isAdmin } = usePermissions();
+if (!hasPermission("faturas.edit")) return null;
+```
+
+### 18.3 `useClienteId()` — Mapeamento Usuário → Cliente
+
+**Arquivo:** `src/hooks/useClienteId.ts`
+
+Mapeia o usuário logado para seu respectivo registro de cliente nos dados mock.
+
+| Retorno | Tipo | Descrição |
+|---|---|---|
+| `clienteId` | `string` | ID do cliente (fallback: `"cli-001"`) |
+| `cliente` | `Cliente \| undefined` | Objeto completo do cliente |
+
+**Mapeamento interno:**
+- `mock-cliente-001` → `cli-001` (João Silva, pré-pago)
+- `mock-cliente-002` → `cli-002` (Padaria Pão Quente, faturado)
+
+**Exemplo:**
+```tsx
+const { clienteId, cliente } = useClienteId();
+const minhasSolicitacoes = solicitacoes.filter(s => s.cliente_id === clienteId);
+```
+
+### 18.4 `useConcluirComCaixa()` — Conclusão com Lançamento em Caixa
+
+**Arquivo:** `src/hooks/useConcluirComCaixa.ts`
+
+Hook que encapsula o fluxo completo de conclusão de uma solicitação, integrando faturamento + caixa do entregador.
+
+| Retorno | Tipo | Descrição |
+|---|---|---|
+| `concluirComCaixa(solId)` | `(string) => { success: boolean; error?: string }` | Conclui solicitação e lança recebimentos no caixa |
+
+**Fluxo interno:**
+1. Busca a solicitação pelo ID
+2. Calcula recebimentos em dinheiro das rotas (`receber_do_cliente = true`)
+3. Chama `concluirSolicitacaoComFatura(solId)` no GlobalStore (gera fatura)
+4. Se houve recebimento em dinheiro, chama `addRecebimentoAutomatico()` no CaixaStore (registra no caixa aberto do entregador)
+5. Retorna `{ success: true }` ou `{ success: false, error: "..." }`
+
+**Exemplo:**
+```tsx
+const concluirComCaixa = useConcluirComCaixa();
+const result = concluirComCaixa(solicitacao.id);
+if (result.success) toast.success("Concluída!");
+else toast.error(result.error);
+```
+
+### 18.5 `useIsMobile()` — Detecção de Viewport Mobile
+
+**Arquivo:** `src/hooks/use-mobile.tsx`
+
+| Retorno | Tipo | Descrição |
+|---|---|---|
+| (retorno direto) | `boolean` | `true` se viewport < 768px |
+
+Usa `window.matchMedia` com listener de mudança. Retorna `false` por padrão até o primeiro render no client.
+
+**Exemplo:**
+```tsx
+const isMobile = useIsMobile();
+return isMobile ? <MobileCard /> : <DesktopTable />;
+```
+
+---
+
+## 19. Estratégia de Testes
+
+### 19.1 Testes Unitários (Vitest)
+- **Configuração:** `vitest.config.ts` com `jsdom` como environment
+- **Setup:** `src/test/setup.ts` com `@testing-library/jest-dom`
+- **Escopo:** utilitários, formatadores, lógica de negócio pura
+
+### 19.2 Testes E2E (Playwright)
+- **Configuração:** `playwright.config.ts` + `playwright-fixture.ts`
+- **Escopo:** fluxos críticos (login, criar solicitação, concluir, gerar fatura)
+
+### 19.3 Comando
+```bash
+npx vitest          # unitários
+npx playwright test # e2e
+```
+
+---
+
+## 20. SEO Técnico
+
+### 20.1 Meta Tags (`index.html`)
+- `<title>` — título da aplicação
+- `<meta name="description">` — descrição para buscadores
+- `<meta name="author">` — autor
+- **Open Graph:** `og:title`, `og:description`, `og:type`, `og:url`, `og:image`
+
+### 20.2 `robots.txt`
+```
+User-agent: Googlebot, Bingbot, Twitterbot, facebookexternalhit, *
+Allow: /
+```
+
+### 20.3 HTML Semântico
+- Single `<h1>` na Landing Page (Hero)
+- Hierarquia `<h2>`, `<h3>` nas seções
+- Alt text em imagens
+- Lazy loading de imagens com `loading="lazy"`
+
+### 20.4 Performance
+- Todas as rotas usam `React.lazy()` + `Suspense` (code splitting por rota)
+- CSS via Tailwind (purged em produção)
+- Viewport responsivo: `<meta name="viewport" content="width=device-width, initial-scale=1.0">`
+
+---
+
+## 21. ErrorBoundary
+
+**Arquivo:** `src/components/shared/ErrorBoundary.tsx`
+
+- Componente class-based que captura erros de renderização React
+- Exibe tela amigável com mensagem de erro e botão "Tentar novamente"
+- Loga erro no console para debugging
+- Envolve toda a árvore de rotas em `App.tsx`
+
+---
+
+*Documento gerado automaticamente a partir do código-fonte. Última atualização: 2026-04-08.*
