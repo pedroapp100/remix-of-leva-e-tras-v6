@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/formatters";
 import { exportCSV, exportPDF } from "@/lib/exportTable";
-import { MOCK_COMISSOES } from "@/data/mockFinanceiro";
+import { useComissao } from "@/hooks/useComissao";
 
 const ENTREGADOR_ID = "ent-001";
 
@@ -20,7 +20,7 @@ const fadeUp = {
 };
 
 export default function EntregadorFinanceiroPage() {
-  const comissao = useMemo(() => MOCK_COMISSOES.find((c) => c.entregador_id === ENTREGADOR_ID), []);
+  const comissao = useComissao(ENTREGADOR_ID);
 
   const exportConfig = useMemo(() => {
     if (!comissao) return null;
