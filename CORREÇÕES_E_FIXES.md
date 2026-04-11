@@ -1034,6 +1034,72 @@ verify_jwt: false
 
 ---
 
+## 📅 Fix #8: getSession() Travando Indefinidamente com Sessão Expirada (11 Abril 2026)
+
+### 🔴 **Problema**
+O login travava por 20 segundos com mensagem "A operação demorou muito. Verifique sua conexão e tente novamente." mesmo o Supabase estando online e o código parecendo correto.
+
+### 📊 **Sintomas**
+- ❌ `[Auth] Safety timeout (20s) — getSession nunca completou` no console
+- ❌ Login page mostra "4 tentativas restantes" logo ao abrir o app
+- ❌ 20 segundos de espera antes de poder usar o app
+- ✅ Supabase responde 401 "No API key" = servidor UP
+- ✅ Código do Fix #1 estava correto em disco (não era regressão)
+
+### 🔍 **Causa Raiz**
+
+O Supabase JS SDK v2 realiza `initialize()` internamente ao criar o cliente. Este método:
+1. Lê a sessão salva no localStorage (chave `lt-auth-session`)
+2. Se o `access_token` estiver expirado mas `refresh_token` válido → faz chamada de rede para `/auth/v1/token?grant_type=refresh_token`
+3. Todos os métodos de `supabase.auth` (incluindo `getSession()`) aguardam `initializePromise` antes de responder
+
+Se essa chamada de refresh travar (rate limiting, rede instável, token inválido), `getSession()` fica aguardando indefinidamente. Nosso `fetchWithTimeout` skippava o timeout em `/auth/v1/` — correto — mas o `fetch()` nativo também pode travar sem retorno.
+
+### ✅ **Solução Implementada**
+
+**Arquivo**: `src/contexts/AuthContext.tsx`
+
+```typescript
+// ❌ ANTES: getSession() puro sem timeout próprio
+supabase.auth.getSession()
+  .then(async ({ data: { session } }) => { ... })
+  .catch(() => { ... });
+  
+// Safety timer de 20s como único fallback
+
+// ✅ DEPOIS: Promise.race com timeout de 5s
+const getSessionWithTimeout = Promise.race([
+  supabase.auth.getSession(),
+  new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error("getSession timeout — sessão possivelmente corrompida")), 5000)
+  ),
+]);
+
+getSessionWithTimeout
+  .then(async ({ data: { session } }) => { ... })
+  .catch((err) => {
+    // Limpar sessão corrompida/expirada — força fresh login na próxima vez
+    try { localStorage.removeItem("lt-auth-session"); } catch { /**/ }
+    // Limpa estado interno do SDK sem bloquear (scope:local = sem chamada de rede)
+    void supabase.auth.signOut({ scope: "local" }).catch(() => { /**/ });
+    completeInitialization();
+  });
+  
+// Safety timer reduzido para 8s como último recurso
+```
+
+### 📋 **Impacto**
+- ✅ App carrega em no máximo 5s mesmo com sessão corrompida
+- ✅ Sessão problemática é limpa automaticamente → próximo load é rápido
+- ✅ Usuário legítimo com sessão válida não é afetado (getSession() retorna < 1s)
+- ✅ `signOut({ scope: "local" })` limpa estado interno do SDK sem chamar a rede
+
+### 🔗 **Relacionado**
+- Fix #1: Race condition original de autenticação (timeouts competindo)
+- Commit: `1ad2642`
+
+---
+
 **Última atualização**: 11 de Abril de 2026
 **Responsável**: Assistente IA
-**Status**: 7 fixes documentados ✅ — Fix #7 resolve diagnóstico Z-API e erros acionáveis
+**Status**: 8 fixes documentados ✅ — Fix #8 resolve trava de getSession() com sessão expirada
