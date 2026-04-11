@@ -848,6 +848,192 @@ Toda vez que corrigir um bug:
 
 ---
 
+## 📅 Fix #7: Z-API — Status Check Falso + Erros 502 Sem Informação (11 Abril 2026)
+
+### 🔴 **Problema**
+Três falhas relacionadas ao fluxo de envio de mensagens Z-API: (1) botão "Testar Conexão" em Integrações era completamente falso, (2) a edge function não tinha endpoint para verificar status real da instância Z-API, (3) erros 502 no frontend exibiam "Erro ao enviar: Object" ao usuário sem nenhuma informação útil.
+
+### 📊 **Sintomas**
+- ❌ Botão "Testar Conexão" sempre dizia "validada com sucesso" mesmo com credenciais erradas
+- ❌ Console: `Failed to load resource: 502` ao enviar teste de notificação
+- ❌ Toast: `[TestSend] Erro ao enviar: Object` (inutilável para diagnóstico)
+- ❌ Não havia como saber se a instância Z-API estava conectada ao WhatsApp
+
+### 🔍 **Causa Raiz**
+
+#### 1. `handleTestConnection` era um stub falso (`IntegracoesTab.tsx`)
+```typescript
+// ❌ ANTES: Só checava comprimento da string!
+const handleTestConnection = () => {
+  if (formApiKey.trim().length > 10) {
+    toast.success(`Chave API de ${selected.nome} validada com sucesso!`);
+    // ↑ Nunca chamava Z-API. Qualquer texto com 11+ chars “passava”
+  } else {
+    toast.error(`Chave API inválida.`);
+  }
+};
+```
+
+#### 2. Edge Function sem rota de status (`enviar-whatsapp/index.ts`)
+- Aceitava apenas `POST` para enviar mensagens
+- Não havia como verificar se a instância Z-API estava online
+- Endpoint `/instances/:id/token/:token/status` da Z-API nunca era chamado
+
+#### 3. Erros 502 sem mensagem acionável (`NotificacoesTab.tsx`)
+```typescript
+// ❌ ANTES: Erro genérico sem contexto
+if (!response.ok) {
+  const errorMsg = data?.error || `Erro ${response.status}: ${response.statusText}`;
+  toast.error(`Erro ao enviar: ${errorMsg}`);
+  // ↑ data?.error nunca estava presente no corpo 502 — exibia "Object"
+}
+```
+
+### ✅ **Solução Aplicada**
+
+#### 1. Edge Function: Adicionar endpoint de status real
+
+Adicionado suporte a **2 novos modos** na `enviar-whatsapp`:
+
+```typescript
+// Modo A: GET /enviar-whatsapp → verifica com credenciais do BD
+if (req.method === "GET") {
+  return await handleStatusCheck(createClient(...));
+}
+
+// Modo B: POST com action=status → verifica com credenciais fornecidas no body
+// (permite testar ANTES de salvar no BD)
+if (action === "status") {
+  return await handleStatusCheck(supabase, {
+    instance_id: bodyInstanceId,
+    token: bodyToken,
+    client_token: bodyClientToken,
+  });
+}
+```
+
+A função `handleStatusCheck` chama o endpoint real da Z-API:
+```typescript
+const statusUrl = `https://api.z-api.io/instances/${instance_id}/token/${token}/status`;
+const zapiResp = await fetch(statusUrl, { headers: { "Client-Token": client_token } });
+
+// Detecta qualquer forma de resposta da Z-API
+const connected =
+  zapiData?.connected === true ||
+  zapiData?.status === "CONNECTED" ||
+  zapiData?.smartphoneConnected === true;
+
+// Atualiza status no BD automaticamente
+await supabase.from("integracoes")
+  .update({ status: connected ? "conectado" : "desconectado" })
+  .eq("icone", "whatsapp");
+```
+
+#### 2. `handleTestConnection` real (`IntegracoesTab.tsx`)
+
+```typescript
+// ✅ DEPOIS: Chama Z-API via edge function
+const handleTestConnection = async () => {
+  setTestingConnection(true); // spinner no botão
+  
+  const response = await fetch(edgeFunctionUrl, {
+    method: "POST",
+    headers: { ... },
+    body: JSON.stringify({
+      action: "status",
+      instance_id: formConfig.instance_id, // credenciais do formulário atual
+      token: formApiKey,
+      client_token: formConfig.client_token,
+    }),
+  });
+
+  const data = await response.json();
+
+  if (data.connected) {
+    toast.success("✅ Z-API conectada! WhatsApp ativo e pronto.");
+  } else if (data.errorCode === "INCOMPLETE_CREDENTIALS") {
+    toast.error("Credenciais incompletas. Verifique Instance ID e Token.");
+  } else {
+    toast.error(`❌ Z-API desconectada: ${data.error}`, { duration: 7000 });
+  }
+
+  setTestingConnection(false);
+};
+```
+
+**Detalhe:** permite testar *antes* de salvar — usuário não precisa salvar credenciais erradas só para testar.
+
+#### 3. Erros 502 com mensagens acionáveis (`NotificacoesTab.tsx`)
+
+```typescript
+// ✅ DEPOIS: Mensagens específicas por errorCode
+if (!response.ok) {
+  if (data?.errorCode === "INTEGRATION_NOT_FOUND") {
+    toast.error(
+      "Integração Z-API não encontrada. Vá em Configurações → Integrações e configure o WhatsApp.",
+      { duration: 8000 }
+    );
+  } else if (data?.errorCode === "INCOMPLETE_CREDENTIALS") {
+    toast.error(
+      "Credenciais Z-API incompletas (Instance ID e Token são obrigatórios). Configure em Integrações.",
+      { duration: 8000 }
+    );
+  } else if (data?.zapiStatus || data?.zapiResponse) {
+    const zapiMsg = data?.zapiResponse?.message ?? data?.error ?? `Erro Z-API (${data?.zapiStatus})`;
+    toast.error(`Z-API: ${zapiMsg} — Verifique a conexão da instância em Integrações.`, { duration: 8000 });
+  } else {
+    toast.error(`Erro ao enviar: ${data?.error || response.statusText}`);
+  }
+}
+```
+
+#### 4. Deploy via MCP Supabase
+A edge function foi deployada diretamente via MCP sem necessidade de CLI login:
+```
+status: ACTIVE
+version: 2
+verify_jwt: false
+```
+
+### 📂 **Arquivos Modificados**
+| Arquivo | Linhas | Mudança |
+|---------|--------|----------|
+| `supabase/functions/enviar-whatsapp/index.ts` | +80 | Função `handleStatusCheck`, suporte a GET, `action=status` no POST |
+| `src/pages/admin/settings/IntegracoesTab.tsx` | +50 | `handleTestConnection` async real + estado de loading + `Loader2` icon |
+| `src/pages/admin/settings/NotificacoesTab.tsx` | +20 | Erros 502 mapeados em mensagens acionáveis por `errorCode` |
+
+### 🧪 **Como Reproduzir (ANTES)**
+1. Ir para Configurações → Integrações
+2. Configurar Z-API com qualquer dado (até inventado)
+3. Clicar "Testar Conexão"
+4. ❌ Toast: "validada com sucesso!" — mesmo com credenciais erradas
+5. Ir para Notificações, enviar teste
+6. ❌ Console: `502 Bad Gateway`
+7. ❌ Toast: "Erro ao enviar: Object"
+
+### ✅ **Verificação (DEPOIS)**
+1. Ir para Configurações → Integrações → Configurar Z-API
+2. Preencher Instance ID, Token, Client Token reais
+3. Clicar "Testar Conexão" (botão mostra spinner)
+4. ✅ Toast: "✅ Z-API conectada! WhatsApp ativo" (se correto)
+5. OU ❌ Toast detalhado: "Z-API desconectada: [motivo específico da Z-API]"
+6. Se tentar enviar teste sem config: Toast claro "Vá em Integrações e configure o WhatsApp"
+
+### 📊 **Impacto**
+- ✅ Diagnóstico real: usuário sabe imediatamente se Z-API está conectada
+- ✅ Erro 502 tem mensagem acionável — nunca mais "Object"
+- ✅ Edge function retorna `errorCode` estruturado em todos os erros
+- ✅ Deploy feito via MCP sem precisar de `supabase login` no terminal
+- ✅ Status da integração atualizado automaticamente no BD após cada verificação
+
+### 🔗 **Referências Relacionadas**
+- Fix #2: handleTestSend que não enviava (problemática original)
+- Fix #5: Logs adicionados à edge function
+- Commit: `bab66a6`
+- Edge function versão deployada: `v2 (ACTIVE)`
+
+---
+
 **Última atualização**: 11 de Abril de 2026
 **Responsável**: Assistente IA
-**Status**: 6 fixes documentados ✅ — Fix #6 resolve regressão infinita de versionamento
+**Status**: 7 fixes documentados ✅ — Fix #7 resolve diagnóstico Z-API e erros acionáveis

@@ -21,15 +21,17 @@
 
 ---
 
-### 💬 **Notificações (2 fixes)**
+### 💬 **Notificações / Z-API (3 fixes)**
 | # | Data | Problema | Arquivo | Status |
 |---|------|----------|---------|--------|
 | 2 | 11/04/26 | handleTestSend não envia | [CORREÇÕES_E_FIXES.md#fix-2](CORREÇÕES_E_FIXES.md#-fix-2-edge-function-não-enviava-mensagens-whatsapp-11-abril-2026) | ✅ |
 | 5 | 11/04/26 | Mensagens não chegam (sem logs) | [CORREÇÕES_E_FIXES.md#fix-5](CORREÇÕES_E_FIXES.md#-fix-5-mensagens-de-teste-não-chegam-z-api-integration-11-abril-2026) | ✅ |
+| 7 | 11/04/26 | **Status check falso + erros 502 sem info** | [CORREÇÕES_E_FIXES.md#fix-7](CORREÇÕES_E_FIXES.md#-fix-7-z-api--status-check-falso--erros-502-sem-informação-11-abril-2026) | ✅ |
 
 🔧 **Arquivos afetados:**
-- `src/pages/admin/settings/NotificacoesTab.tsx` (handleTestSend + logs)
-- `supabase/functions/enviar-whatsapp/index.ts` (logs detalhados)
+- `src/pages/admin/settings/NotificacoesTab.tsx` (handleTestSend + logs + erros acionáveis)
+- `src/pages/admin/settings/IntegracoesTab.tsx` (handleTestConnection real com Z-API)
+- `supabase/functions/enviar-whatsapp/index.ts` (logs detalhados + endpoint status)
 - `DEBUG_MESSAGES_NOT_ARRIVING.md` (guia de diagnóstico)
 - `debug_test_send.js` (script de teste)
 - `debug_test_send.py` (script de teste)
@@ -60,6 +62,10 @@
 → Ver [Fix #5 - Logs + Diagnóstico](CORREÇÕES_E_FIXES.md#-fix-5-mensagens-de-teste-não-chegam-z-api-integration-11-abril-2026)
 → Consulte: [DEBUG_MESSAGES_NOT_ARRIVING.md](DEBUG_MESSAGES_NOT_ARRIVING.md)
 
+### Problema: "Testar Conexão sempre diz conectado / 502 sem mensagem"
+→ Ver [Fix #7 - Z-API Status Check Real](CORREÇÕES_E_FIXES.md#-fix-7-z-api--status-check-falso--erros-502-sem-informação-11-abril-2026)
+→ Causa: `handleTestConnection` era stub falso + edge function sem endpoint de status
+
 ### Problema: "Erro ao criar evento"
 → Ver [Fix #3 - RLS](CORREÇÕES_E_FIXES.md#-fix-3-rls-bloqueando-notification_templates-11-abril-2026)
 
@@ -77,7 +83,8 @@
 | `src/hooks/` (8 arquivos) | #6 | Hooks Supabase adicionados ao git |
 | `src/services/` (8 arquivos) | #6 | Services adicionados ao git |
 | `src/pages/admin/settings/NotificacoesTab.tsx` | #2, #5 | handleTestSend implementado; logs [TestSend] adicionados |
-| `supabase/functions/enviar-whatsapp/index.ts` | #5 | Logs [enviar-whatsapp] passo-a-passo adicionados |
+| `supabase/functions/enviar-whatsapp/index.ts` | #5, #7 | Logs detalhados + endpoint `GET` e `action=status` para status check real |
+| `src/pages/admin/settings/IntegracoesTab.tsx` | #7 | `handleTestConnection` async real com loader + verifica Z-API via edge function |
 | Database (Supabase) | #3 | RLS desabilitado em notification_templates |
 | **`DEBUG_MESSAGES_NOT_ARRIVING.md`** | #5 | **NOVO** — Guia de diagnóstico completo |
 | **`debug_test_send.js`** | #5 | **NOVO** — Script de teste NodeJS |
@@ -115,12 +122,12 @@
 
 ## 📊 **Estatísticas**
 
-- **Total de Fixes**: 6
-- **Resolvidos**: 6 ✅
+- **Total de Fixes**: 7
+- **Resolvidos**: 7 ✅
 - **Pendentes**: 0
 - **Bloqueados**: 0
 - **Severidade Crítica**: 2 (Fix #1 auth, Fix #6 versionamento)
-- **Severidade Alta**: 3
+- **Severidade Alta**: 4 (incl. Fix #7 Z-API)
 - **Severidade Média**: 1
 - **Taxa de Resolução**: 100%
 - **Data Range**: 11/04/26 — 11/04/26
@@ -141,4 +148,4 @@
 
 **Última atualização**: 11 Abril 2026
 **Responsável**: Assistente IA + Equipe
-**Status**: ✅ 6 Fixes documentados | 🔒 Fix #6 resolve regressão infinita de versionamento
+**Status**: ✅ 7 Fixes documentados | 🔆 Fix #7 resolve diagnóstico Z-API e erros acionáveis
