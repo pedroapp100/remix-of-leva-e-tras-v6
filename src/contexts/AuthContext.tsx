@@ -1,9 +1,9 @@
 import { createContext, useContext, useState, useCallback, type ReactNode, useEffect, useRef } from "react";
-import type { Role, UserAccount } from "@/types/database";
+import type { Role } from "@/types/database";
 import { getPermissionsForRole } from "@/lib/permissions";
-import { useUserStore } from "@/data/mockUsers";
+import { supabase } from "@/lib/supabase";
 
-// ── Mock user type ──
+// ── Auth user ──
 export interface AuthUser {
   id: string;
   email: string;
@@ -14,7 +14,7 @@ export interface AuthUser {
   permissions?: string[];
 }
 
-// ── Rate limiting ──
+// ── Rate limiting (UI protection — Supabase has server-side limits too) ──
 interface LoginAttempt {
   count: number;
   firstAttemptAt: number;
@@ -22,7 +22,6 @@ interface LoginAttempt {
 
 const MAX_ATTEMPTS = 5;
 const BLOCK_WINDOW_MS = 5 * 60 * 1000; // 5 minutos
-const LOGIN_FEEDBACK_DELAY_MS = 200;
 
 // ── Error mapping PT-BR ──
 const ERROR_MESSAGES: Record<string, string> = {
@@ -33,108 +32,43 @@ const ERROR_MESSAGES: Record<string, string> = {
   unknown: "Erro inesperado. Tente novamente.",
 };
 
-const AUTH_STORAGE_KEY = "let-auth-user";
-
-type SessionPersistence = "local" | "session";
-
-function mapAccountToAuthUser(account: UserAccount): AuthUser {
-  return {
-    id: account.id,
-    email: account.email,
-    nome: account.nome,
-    role: account.role,
-    cargo_id: account.cargo_id ?? undefined,
-    avatarUrl: account.avatarUrl ?? undefined,
-    permissions: getPermissionsForRole(account.role, account.cargo_id ?? undefined),
-  };
-}
-
 function isRole(value: unknown): value is Role {
   return value === "admin" || value === "cliente" || value === "entregador";
 }
 
-function sanitizeStoredUser(value: unknown): AuthUser | null {
-  if (!value || typeof value !== "object") return null;
+/** Resultado detalhado do profileToAuthUser */
+interface ProfileResult {
+  user: AuthUser | null;
+  reason: "ok" | "db_error" | "inactive" | "invalid_role" | "not_found";
+}
 
-  const candidate = value as Partial<AuthUser>;
-  if (
-    typeof candidate.id !== "string" ||
-    typeof candidate.email !== "string" ||
-    typeof candidate.nome !== "string" ||
-    !isRole(candidate.role)
-  ) {
-    return null;
-  }
+/** Mapeia um profile do banco para o AuthUser usado pela aplicação */
+async function profileToAuthUser(userId: string, email: string): Promise<ProfileResult> {
+  const [profileResult, cargosResult] = await Promise.all([
+    supabase.from("profiles").select("id, nome, role, cargo_id, avatar, ativo").eq("id", userId).single(),
+    supabase.from("cargos").select("id, name, description, permissions"),
+  ]);
 
-  const cargoId = typeof candidate.cargo_id === "string" ? candidate.cargo_id : undefined;
-  const avatarUrl = typeof candidate.avatarUrl === "string" ? candidate.avatarUrl : undefined;
+  const { data: profile, error } = profileResult;
+  if (error) return { user: null, reason: "db_error" };
+  if (!profile) return { user: null, reason: "not_found" };
+  if (!profile.ativo) return { user: null, reason: "inactive" };
+  if (!isRole(profile.role)) return { user: null, reason: "invalid_role" };
+
+  const cargos = cargosResult.data ?? [];
 
   return {
-    id: candidate.id,
-    email: candidate.email,
-    nome: candidate.nome,
-    role: candidate.role,
-    cargo_id: cargoId,
-    avatarUrl,
-    permissions: getPermissionsForRole(candidate.role, cargoId),
+    user: {
+      id: profile.id,
+      email,
+      nome: profile.nome,
+      role: profile.role,
+      cargo_id: profile.cargo_id ?? undefined,
+      avatarUrl: profile.avatar ?? undefined,
+      permissions: getPermissionsForRole(profile.role, profile.cargo_id ?? undefined, cargos),
+    },
+    reason: "ok",
   };
-}
-
-function readStoredUser(storage: Storage): AuthUser | null {
-  try {
-    const raw = storage.getItem(AUTH_STORAGE_KEY);
-    if (!raw) return null;
-
-    const user = sanitizeStoredUser(JSON.parse(raw));
-    if (!user) {
-      storage.removeItem(AUTH_STORAGE_KEY);
-    }
-
-    return user;
-  } catch {
-    storage.removeItem(AUTH_STORAGE_KEY);
-    return null;
-  }
-}
-
-function loadStoredAuth(): { user: AuthUser | null; persistence: SessionPersistence | null } {
-  if (typeof window === "undefined") {
-    return { user: null, persistence: null };
-  }
-
-  const localUser = readStoredUser(window.localStorage);
-  if (localUser) return { user: localUser, persistence: "local" };
-
-  const sessionUser = readStoredUser(window.sessionStorage);
-  if (sessionUser) return { user: sessionUser, persistence: "session" };
-
-  return { user: null, persistence: null };
-}
-
-function clearStoredAuth() {
-  if (typeof window === "undefined") return;
-
-  window.localStorage.removeItem(AUTH_STORAGE_KEY);
-  window.sessionStorage.removeItem(AUTH_STORAGE_KEY);
-}
-
-function persistStoredAuth(user: AuthUser, persistence: SessionPersistence) {
-  if (typeof window === "undefined") return;
-
-  clearStoredAuth();
-
-  const storage = persistence === "local" ? window.localStorage : window.sessionStorage;
-  storage.setItem(
-    AUTH_STORAGE_KEY,
-    JSON.stringify({
-      id: user.id,
-      email: user.email,
-      nome: user.nome,
-      role: user.role,
-      cargo_id: user.cargo_id ?? null,
-      avatarUrl: user.avatarUrl ?? null,
-    })
-  );
 }
 
 // ── Context type ──
@@ -162,13 +96,20 @@ export const ROLE_REDIRECTS: Record<Role, string> = {
 };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const { findByEmail } = useUserStore();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(false);
   const [isReady, setIsReady] = useState(false);
-  const [sessionPersistence, setSessionPersistence] = useState<SessionPersistence | null>(null);
   const [loginAttempts, setLoginAttempts] = useState<LoginAttempt>({ count: 0, firstAttemptAt: 0 });
   const transitionTimeoutRef = useRef<number | null>(null);
+  // Rastreia se o AuthProvider ainda está montado — usado em callbacks assíncronos
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const clearTransitionTimeout = useCallback(() => {
     if (transitionTimeoutRef.current !== null) {
@@ -177,33 +118,100 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // ── Inicialização: verificar sessão existente e subscrever mudanças ──
   useEffect(() => {
-    const { user: storedUser, persistence } = loadStoredAuth();
+    let mounted = true;
+    let initialized = false;
 
-    if (storedUser && persistence) {
-      setUser(storedUser);
-      setSessionPersistence(persistence);
-    }
-
-    setIsReady(true);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      clearTransitionTimeout();
+    /**
+     * Marca o sistema como pronto (isReady=true).
+     * Chamado exatamente UMA VEZ — primeira vez que qualquer uma dessas coisas completa:
+     * 1. getSession() retorna (sucesso ou erro)
+     * 2. Safety timer de 15s expira (fallback se tudo falhar)
+     */
+    const completeInitialization = () => {
+      if (!initialized && mounted) {
+        initialized = true;
+        setIsReady(true);
+      }
     };
-  }, [clearTransitionTimeout]);
 
-  useEffect(() => {
-    if (!isReady) return;
+    // === TIMEOUT DE SEGURANÇA ===
+    // Se getSession() travar por qualquer motivo, isto força isReady=true após 20s
+    // OBS: 20s > timeout interno do Supabase (~10-15s) — é apenas um último recurso
+    const safetyTimer = setTimeout(() => {
+      if (!initialized) {
+        console.warn("[Auth] Safety timeout (20s) — getSession nunca completou. Verifique a conexão com Supabase.");
+        completeInitialization();
+      }
+    }, 20000);
 
-    if (!user || !sessionPersistence) {
-      clearStoredAuth();
-      return;
-    }
+    // === BUSCAR SESSÃO EXISTENTE ===
+    console.log("[Auth] Verificando sessão...");
+    supabase.auth.getSession()
+      .then(async ({ data: { session } }) => {
+        if (!mounted) return;
 
-    persistStoredAuth(user, sessionPersistence);
-  }, [isReady, user, sessionPersistence]);
+        if (session?.user) {
+          // Sessão existe — carregar dados do profile
+          console.log("[Auth] Sessão encontrada, carregando profile...");
+          try {
+            const { user: authUser } = await profileToAuthUser(session.user.id, session.user.email ?? "");
+            if (mounted) setUser(authUser);
+            console.log("[Auth] ✓ User autenticado:", authUser?.nome);
+          } catch (err) {
+            console.error("[Auth] Erro ao carregar profile:", err);
+          }
+        } else {
+          console.log("[Auth] Nenhuma sessão existente");
+        }
+
+        completeInitialization();
+      })
+      .catch((err) => {
+        if (!mounted) return;
+        console.error("[Auth] Erro ao buscar sessão:", err?.message ?? err);
+        // Limpar localStorage corrompido se houver
+        try { localStorage.removeItem("lt-auth-session"); } catch { /**/ }
+        completeInitialization();
+      });
+
+    // === SUBSCREVER MUDANÇAS DE AUTENTICAÇÃO ===
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
+
+      try {
+        if (event === "INITIAL_SESSION") {
+          // Already handled by getSession above
+          return;
+        }
+
+        if (event === "SIGNED_OUT" || !session) {
+          setUser(null);
+          completeInitialization();
+          return;
+        }
+
+        if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "USER_UPDATED") {
+          if (session.user) {
+            const { user: authUser } = await profileToAuthUser(session.user.id, session.user.email ?? "");
+            if (mounted) setUser(authUser);
+          }
+          completeInitialization();
+        }
+      } catch (err) {
+        console.error("[Auth] onAuthStateChange error:", err);
+        completeInitialization();
+      }
+    });
+
+    // === LIMPAR RECURSOS AO DESMONTAR ===
+    return () => {
+      mounted = false;
+      clearTimeout(safetyTimer);
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const isBlocked = (() => {
     if (loginAttempts.count < MAX_ATTEMPTS) return false;
@@ -213,78 +221,129 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const remainingAttempts = Math.max(0, MAX_ATTEMPTS - loginAttempts.count);
 
-  const login = useCallback(async (email: string, password: string, rememberMe = false) => {
+  const login = useCallback(async (email: string, password: string, _rememberMe = false) => {
     if (isBlocked) {
       return { success: false, error: ERROR_MESSAGES.too_many_attempts };
     }
 
     clearTransitionTimeout();
     setLoading(true);
-    await new Promise((r) => setTimeout(r, LOGIN_FEEDBACK_DELAY_MS));
 
-    const normalizedEmail = email.trim().toLowerCase();
-    const account = findByEmail(normalizedEmail);
+    // Timeout de segurança: garante que loading volta a false em até 20s,
+    // independente do estado das promises do Supabase.
+    let loginTimeoutId: ReturnType<typeof window.setTimeout> | null = null;
+    const loginTimeoutPromise = new Promise<{ success: false; error: string }>((resolve) => {
+      loginTimeoutId = window.setTimeout(
+        () => resolve({ success: false, error: "A operação demorou muito. Verifique sua conexão e tente novamente." }),
+        20_000
+      );
+    });
 
-    if (!account || account.password !== password) {
-      setLoginAttempts((prev) => ({
-        count: prev.count + 1,
-        firstAttemptAt: prev.count === 0 ? Date.now() : prev.firstAttemptAt,
-      }));
+    const doLogin = async (): Promise<{ success: boolean; user?: AuthUser; error?: string }> => {
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: email.trim().toLowerCase(),
+          password,
+        });
+
+        if (error || !data.user) {
+          setLoginAttempts((prev) => ({
+            count: prev.count + 1,
+            firstAttemptAt: prev.count === 0 ? Date.now() : prev.firstAttemptAt,
+          }));
+          if (error?.message?.toLowerCase().includes("email not confirmed")) {
+            return { success: false, error: ERROR_MESSAGES.email_not_confirmed };
+          }
+          return { success: false, error: ERROR_MESSAGES.invalid_credentials };
+        }
+
+        // Buscar profile do banco
+        const { user: authUser, reason } = await profileToAuthUser(data.user.id, data.user.email ?? email);
+
+        if (!authUser) {
+          if (reason === "db_error") {
+            return { success: false, error: "Erro ao conectar ao banco de dados. Tente novamente." };
+          }
+          await supabase.auth.signOut();
+          return { success: false, error: ERROR_MESSAGES.user_inactive };
+        }
+
+        setUser(authUser);
+        setLoginAttempts({ count: 0, firstAttemptAt: 0 });
+        return { success: true, user: authUser };
+      } catch (err) {
+        console.error("[Auth] login error:", err);
+        return { success: false, error: "Erro de conexão. Verifique sua internet e tente novamente." };
+      }
+    };
+
+    try {
+      return await Promise.race([doLogin(), loginTimeoutPromise]);
+    } finally {
+      // Garante que loading sempre volta a false, independente do caminho tomado
+      if (loginTimeoutId !== null) window.clearTimeout(loginTimeoutId);
       setLoading(false);
-      return { success: false, error: ERROR_MESSAGES.invalid_credentials };
     }
-
-    if (account.status === "inativo") {
-      setLoading(false);
-      return { success: false, error: ERROR_MESSAGES.user_inactive };
-    }
-
-    const userWithPerms = mapAccountToAuthUser(account);
-    const persistence: SessionPersistence = rememberMe ? "local" : "session";
-
-    persistStoredAuth(userWithPerms, persistence);
-    setSessionPersistence(persistence);
-    setUser(userWithPerms);
-    setLoginAttempts({ count: 0, firstAttemptAt: 0 });
-
-    // Clear loading immediately so ProtectedRoute doesn't show a second loader
-    setLoading(false);
-
-    return { success: true, user: userWithPerms };
-  }, [clearTransitionTimeout, isBlocked, findByEmail]);
+  }, [clearTransitionTimeout, isBlocked]);
 
   const logout = useCallback(() => {
     clearTransitionTimeout();
-    clearStoredAuth();
     setLoading(false);
-    setSessionPersistence(null);
-    setUser(null);
+    // Chama signOut — o onAuthStateChange vai setar user=null
+    supabase.auth.signOut();
   }, [clearTransitionTimeout]);
 
-  const changeCargo = useCallback((cargoId: string) => {
-    setUser(prev => {
-      if (!prev || prev.role !== "admin") return prev;
-      return {
-        ...prev,
-        cargo_id: cargoId,
-        permissions: getPermissionsForRole("admin", cargoId),
-      };
-    });
-  }, []);
+  const changeCargo = useCallback(async (cargoId: string) => {
+    if (!user || user.role !== "admin") return;
+
+    const { error } = await supabase
+      .from("profiles")
+      .update({ cargo_id: cargoId })
+      .eq("id", user.id);
+
+    if (error) {
+      console.error("[AuthContext] changeCargo falhou:", error.message);
+      return;
+    }
+
+    // Optimistic update imediato com o novo cargo_id
+    if (!mountedRef.current) return;
+    setUser(prev => prev ? { ...prev, cargo_id: cargoId } : prev);
+
+    // Busca permissões atualizadas do cargo e aplica
+    const { data: cargos } = await supabase.from("cargos").select("id, name, description, permissions");
+    if (!mountedRef.current) return;
+    setUser(prev => prev ? { ...prev, cargo_id: cargoId, permissions: getPermissionsForRole("admin", cargoId, cargos ?? []) } : prev);
+  }, [user]);
 
   const requestPasswordReset = useCallback(async (email: string) => {
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 600));
+
+    const { error } = await supabase.auth.resetPasswordForEmail(
+      email.trim().toLowerCase(),
+      { redirectTo: `${window.location.origin}/reset-password` }
+    );
+
     setLoading(false);
-    console.log(`[MOCK] Password reset email sent to: ${email}`);
+
+    if (error) {
+      return { success: false, error: ERROR_MESSAGES.unknown };
+    }
+
     return { success: true };
   }, []);
 
-  const resetPassword = useCallback(async (_newPassword: string) => {
+  const resetPassword = useCallback(async (newPassword: string) => {
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 600));
+
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+
     setLoading(false);
-    console.log("[MOCK] Password updated successfully");
+
+    if (error) {
+      return { success: false, error: ERROR_MESSAGES.unknown };
+    }
+
     return { success: true };
   }, []);
 
@@ -293,7 +352,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         user,
         role: user?.role ?? null,
-          isReady,
+        isReady,
         loading,
         isBlocked,
         remainingAttempts,
