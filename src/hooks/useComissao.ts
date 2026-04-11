@@ -1,8 +1,9 @@
 import { useMemo } from "react";
-import { useGlobalStore } from "@/contexts/GlobalStore";
-import { MOCK_ENTREGADORES } from "@/data/mockEntregadores";
+import { useSolicitacoesAll } from "@/hooks/useSolicitacoes";
+import { useEntregadorById, useEntregadoresAtivos } from "@/hooks/useEntregadores";
 
 export interface ComissaoCalculada {
+  id?: string;
   entregador_id: string;
   nome: string;
   entregas: number;
@@ -16,11 +17,11 @@ export interface ComissaoCalculada {
  * Calculates driver commission reactively from concluded solicitations.
  * Replaces static MOCK_COMISSOES.
  */
-export function useComissao(entregadorId: string): ComissaoCalculada | null {
-  const { solicitacoes } = useGlobalStore();
+export function useComissao(entregadorId: string | null): ComissaoCalculada | null {
+  const { data: solicitacoes = [] } = useSolicitacoesAll();
+  const { data: entregador } = useEntregadorById(entregadorId ?? "");
 
   return useMemo(() => {
-    const entregador = MOCK_ENTREGADORES.find((e) => e.id === entregadorId);
     if (!entregador) return null;
 
     const concluidas = solicitacoes.filter(
@@ -39,7 +40,7 @@ export function useComissao(entregadorId: string): ComissaoCalculada | null {
         : entregas * entregador.valor_comissao;
 
     return {
-      entregador_id: entregadorId,
+      entregador_id: entregadorId ?? "",
       nome: entregador.nome,
       entregas,
       valor_gerado,
@@ -47,17 +48,18 @@ export function useComissao(entregadorId: string): ComissaoCalculada | null {
       taxa: entregador.valor_comissao,
       comissao: Math.round(comissao * 100) / 100,
     };
-  }, [solicitacoes, entregadorId]);
+  }, [solicitacoes, entregadorId, entregador]);
 }
 
 /**
  * Calculates commissions for all drivers.
  */
 export function useAllComissoes(): ComissaoCalculada[] {
-  const { solicitacoes } = useGlobalStore();
+  const { data: solicitacoes = [] } = useSolicitacoesAll();
+  const { data: entregadores = [] } = useEntregadoresAtivos();
 
   return useMemo(() => {
-    return MOCK_ENTREGADORES.map((entregador) => {
+    return entregadores.map((entregador) => {
       const concluidas = solicitacoes.filter(
         (s) => s.entregador_id === entregador.id && s.status === "concluida"
       );
@@ -81,5 +83,5 @@ export function useAllComissoes(): ComissaoCalculada[] {
         comissao: Math.round(comissao * 100) / 100,
       };
     });
-  }, [solicitacoes]);
+  }, [solicitacoes, entregadores]);
 }

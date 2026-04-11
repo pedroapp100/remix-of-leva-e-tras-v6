@@ -9,7 +9,6 @@ export function usePermissions() {
   const { role, user } = useAuth();
 
   const permissions = user?.permissions ?? [];
-  const isBypassMode = !user;
 
   const hasRole = (requiredRole: Role) => role === requiredRole;
   const hasAnyRole = (roles: Role[]) => role !== null && roles.includes(role);
@@ -18,18 +17,17 @@ export function usePermissions() {
   const isEntregador = role === "entregador";
 
   /** Check if user has a specific permission key (e.g. "clientes.edit") */
-  const hasPermission = (key: string) => isBypassMode || permissions.includes(key);
+  const hasPermission = (key: string) => !!user && permissions.includes(key);
 
   /** Check if user has ALL listed permissions */
-  const hasAllPermissions = (keys: string[]) => isBypassMode || keys.every(k => permissions.includes(k));
+  const hasAllPermissions = (keys: string[]) => !!user && keys.every(k => permissions.includes(k));
 
   /** Check if user has ANY of listed permissions */
-  const hasAnyPermission = (keys: string[]) => isBypassMode || keys.some(k => permissions.includes(k));
+  const hasAnyPermission = (keys: string[]) => !!user && keys.some(k => permissions.includes(k));
 
-  /** Check if a sidebar item should be visible based on permission.
-   * If no user is logged in (bypass/demo mode), show all items. */
+  /** Check if a sidebar item should be visible based on permission. */
   const canAccessSidebarItem = (title: string) => {
-    if (isBypassMode) return true; // bypass mode — show everything
+    if (!user) return false;
     const requiredPerm = SIDEBAR_PERMISSION_MAP[title];
     if (!requiredPerm) return true;
     return permissions.includes(requiredPerm);
