@@ -8,7 +8,7 @@ import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { OnboardingHelpButton } from "@/onboarding/OnboardingHelpButton";
 import { Button } from "@/components/ui/button";
-import { MOCK_CARGOS } from "@/data/mockSettings";
+import { useCargos } from "@/hooks/useSettings";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -26,6 +26,7 @@ export function AppHeader() {
   const { notifications, markAsRead, markAllAsRead, unreadCount } = useNotifications();
   const navigate = useNavigate();
   const { isMobile, toggleSidebar } = useSidebar();
+  const { data: cargos = [] } = useCargos();
 
   const initials = user?.nome
     ? user.nome
@@ -127,7 +128,11 @@ export function AppHeader() {
               </div>
               {unreadCount > 0 && (
                 <button
-                  onClick={markAllAsRead}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    markAllAsRead();
+                  }}
                   className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
                 >
                   <CheckCheck className="h-3.5 w-3.5" />
@@ -151,7 +156,9 @@ export function AppHeader() {
                   <button
                     key={notif.id}
                     className={`w-full flex items-start gap-3 px-4 py-3 hover:bg-muted/50 transition-colors text-left ${!notif.read ? "bg-muted/30" : ""}`}
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
                       markAsRead(notif.id);
                       if (notif.link) navigate(notif.link);
                     }}
@@ -209,7 +216,7 @@ export function AppHeader() {
                   <Shield className="h-3 w-3" />
                   Cargo ativo
                 </DropdownMenuLabel>
-                {MOCK_CARGOS.map((cargo) => (
+                {cargos.map((cargo) => (
                   <DropdownMenuItem
                     key={cargo.id}
                     onClick={() => changeCargo(cargo.id)}

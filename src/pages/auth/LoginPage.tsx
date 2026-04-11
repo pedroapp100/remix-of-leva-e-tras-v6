@@ -53,11 +53,22 @@ export default function LoginPage() {
       return;
     }
 
-    const { success, user, error: loginError } = await login(normalizedEmail, password, rememberMe);
-    if (success && user) {
-      navigate(ROLE_REDIRECTS[user.role] || "/admin", { replace: true });
-    } else {
-      setError(loginError || "Erro desconhecido");
+    try {
+      const loginPromise = login(normalizedEmail, password, rememberMe);
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), 30000)
+      );
+      const { success, user, error: loginError } = await Promise.race([loginPromise, timeoutPromise]);
+      if (success && user) {
+        navigate(ROLE_REDIRECTS[user.role] || "/admin", { replace: true });
+      } else {
+        setError(loginError || "Erro desconhecido");
+      }
+    } catch (err) {
+      console.error("[Login] handleSubmit error:", err);
+      setError(err instanceof Error && err.message === "timeout"
+        ? "Servidor demorou para responder. Verifique sua conexão."
+        : "Erro inesperado ao fazer login.");
     }
   };
 
@@ -200,13 +211,10 @@ export default function LoginPage() {
           <div className="rounded-xl border border-border/50 bg-muted/20 dark:bg-[hsl(230_30%_12%)] dark:border-[hsl(230_25%_20%)] p-4 space-y-2">
             <p className="text-sm font-semibold text-muted-foreground flex items-center gap-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-              Credenciais de teste
+              Credenciais de acesso
             </p>
             <div className="text-sm text-muted-foreground space-y-1 font-mono">
-              <p>admin@levaetraz.com / admin123</p>
-              <p>cliente@levaetraz.com / cliente123 <span className="text-xs opacity-60">(pré-pago)</span></p>
-              <p>faturado@levaetraz.com / faturado123 <span className="text-xs opacity-60">(faturado)</span></p>
-              <p>entregador@levaetraz.com / entregador123</p>
+              <p>pedroaps100@gmail.com / Pedro123@</p>
             </div>
           </div>
         </motion.div>

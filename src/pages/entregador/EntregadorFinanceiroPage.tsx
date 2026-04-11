@@ -10,8 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/formatters";
 import { exportCSV, exportPDF } from "@/lib/exportTable";
 import { useComissao } from "@/hooks/useComissao";
-
-const ENTREGADOR_ID = "ent-001";
+import { useEntregadorId } from "@/hooks/useEntregadorId";
 
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.1 } } };
 const fadeUp = {
@@ -20,6 +19,7 @@ const fadeUp = {
 };
 
 export default function EntregadorFinanceiroPage() {
+  const { entregadorId: ENTREGADOR_ID } = useEntregadorId();
   const comissao = useComissao(ENTREGADOR_ID);
 
   const exportConfig = useMemo(() => {

@@ -7,8 +7,10 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { formatCurrency, formatDateBR } from "@/lib/formatters";
-import { getEntregadorName } from "@/data/mockSolicitacoes";
-import { useGlobalStore } from "@/contexts/GlobalStore";
+import { useSolicitacoes } from "@/hooks/useSolicitacoes";
+import { useFaturas } from "@/hooks/useFaturas";
+import { useClienteSaldoMap } from "@/hooks/useClientes";
+import { useEntregadores } from "@/hooks/useEntregadores";
 import { useClienteId } from "@/hooks/useClienteId";
 
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.1 } } };
@@ -18,48 +20,49 @@ const fadeUp = {
 };
 
 export default function ClienteDashboard() {
-  const { solicitacoes, faturas, getClienteSaldo } = useGlobalStore();
+  const { data: solicitacoes = [] } = useSolicitacoes();
+  const { data: faturas = [] } = useFaturas();
+  const { getClienteSaldo } = useClienteSaldoMap();
+  const { data: entregadores = [] } = useEntregadores();
+  const getEntregadorNome = (id: string | null | undefined) => !id ? "—" : (entregadores.find((e) => e.id === id)?.nome ?? id);
   const { clienteId, cliente } = useClienteId();
   const CLIENTE_ID = clienteId;
   const isPrePago = cliente?.modalidade === "pre_pago";
 
-  const metrics = useMemo(() => {
+  // Single-pass: solicitações metrics + recent list + faturas metrics
+  const { metrics, recentSolicitacoes } = useMemo(() => {
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
 
-    const minhasSolicitacoes = solicitacoes.filter((s) => s.cliente_id === CLIENTE_ID);
+    let pedidosDoMes = 0, emAndamento = 0, concluidas = 0;
+    const recents: typeof solicitacoes = [];
 
-    const pedidosDoMes = minhasSolicitacoes.filter((s) => {
+    for (const s of solicitacoes) {
+      if (s.cliente_id !== CLIENTE_ID) continue;
+      recents.push(s);
       const d = new Date(s.data_solicitacao);
-      return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-    }).length;
+      if (d.getMonth() === currentMonth && d.getFullYear() === currentYear) pedidosDoMes++;
+      if (s.status === "em_andamento" || s.status === "aceita") emAndamento++;
+      if (s.status === "concluida") concluidas++;
+    }
+    recents.sort((a, b) => new Date(b.data_solicitacao).getTime() - new Date(a.data_solicitacao).getTime());
 
-    const emAndamento = minhasSolicitacoes.filter(
-      (s) => s.status === "em_andamento" || s.status === "aceita"
-    ).length;
+    let saldoDevedor = 0, saldoAReceber = 0;
+    for (const f of faturas) {
+      if (f.cliente_id !== CLIENTE_ID || f.status_geral === "Finalizada") continue;
+      const saldo = f.saldo_liquido ?? 0;
+      if (saldo < 0) saldoDevedor += Math.abs(saldo);
+      else saldoAReceber += saldo;
+    }
 
-    const minhasFaturas = faturas.filter((f) => f.cliente_id === CLIENTE_ID);
-
-    const saldoDevedor = minhasFaturas
-      .filter((f) => f.status_geral !== "Finalizada" && (f.saldo_liquido ?? 0) < 0)
-      .reduce((sum, f) => sum + Math.abs(f.saldo_liquido ?? 0), 0);
-
-    const saldoAReceber = minhasFaturas
-      .filter((f) => f.status_geral !== "Finalizada" && (f.saldo_liquido ?? 0) > 0)
-      .reduce((sum, f) => sum + (f.saldo_liquido ?? 0), 0);
-
-    return { pedidosDoMes, emAndamento, saldoDevedor, saldoAReceber };
+    return {
+      metrics: { pedidosDoMes, emAndamento, saldoDevedor, saldoAReceber, concluidas },
+      recentSolicitacoes: recents.slice(0, 5),
+    };
   }, [solicitacoes, faturas]);
 
-  const saldoPrePago = isPrePago ? getClienteSaldo(CLIENTE_ID) : 0;
-
-  const recentSolicitacoes = useMemo(() => {
-    return solicitacoes
-      .filter((s) => s.cliente_id === CLIENTE_ID)
-      .sort((a, b) => new Date(b.data_solicitacao).getTime() - new Date(a.data_solicitacao).getTime())
-      .slice(0, 5);
-  }, [solicitacoes]);
+  const saldoPrePago = isPrePago && CLIENTE_ID ? getClienteSaldo(CLIENTE_ID) : 0;
 
   return (
     <PageContainer title="Dashboard" subtitle="Visão geral das suas entregas e financeiro.">
@@ -89,7 +92,7 @@ export default function ClienteDashboard() {
           {isPrePago ? (
             <MetricCard
               title="Corridas Concluídas"
-              value={solicitacoes.filter((s) => s.cliente_id === CLIENTE_ID && s.status === "concluida").length}
+              value={metrics.concluidas}
               icon={Package}
               subtitle="Total de entregas finalizadas"
             />
@@ -121,7 +124,7 @@ export default function ClienteDashboard() {
                   >
                     <div className="min-w-0">
                       <p className="text-sm font-medium">{s.codigo}</p>
-                      <p className="text-xs text-muted-foreground">{formatDateBR(s.data_solicitacao)} • {getEntregadorName(s.entregador_id)}</p>
+                      <p className="text-xs text-muted-foreground">{formatDateBR(s.data_solicitacao)} • {getEntregadorNome(s.entregador_id)}</p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       {s.valor_total_taxas != null && (

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -10,10 +10,8 @@ import {
 } from "@/components/ui/table";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
-import type { Fatura, TipoAjuste } from "@/types/database";
-import { getLancamentosByFatura, getAjustesByFatura, getEntregasByFatura, STATUS_GERAL_VARIANT, TIPO_FATURAMENTO_LABELS } from "@/data/mockFaturas";
-import type { EntregaFatura, RotaEntregaFatura } from "@/data/mockFaturas";
-import { useGlobalStore } from "@/contexts/GlobalStore";
+import type { Fatura, TipoAjuste, EntregaFatura, RotaEntregaFatura } from "@/types/database";
+import { STATUS_GERAL_VARIANT, TIPO_FATURAMENTO_LABELS } from "@/lib/formatters";
 import { formatCurrency, formatDateBR, formatDateTimeBR } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
@@ -28,6 +26,16 @@ import { generateFaturaPDF } from "@/lib/generateFaturaPDF";
 import { RegistrarRepasseDialog } from "./RegistrarRepasseDialog";
 import { RegistrarPagamentoDialog } from "./RegistrarPagamentoDialog";
 import { AdicionarAjusteDialog } from "./AdicionarAjusteDialog";
+import {
+  useLancamentosByFatura,
+  useAjustesByFatura,
+  useHistoricoFatura,
+  useUpdateFatura,
+  useCreateAjuste,
+  useCreateHistoricoFatura,
+  useEntregasByFatura,
+} from "@/hooks/useFaturas";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface Props {
   fatura: Fatura | null;
@@ -37,7 +45,20 @@ interface Props {
 }
 
 export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate }: Props) {
-  const { entregasFatura } = useGlobalStore();
+  const { user } = useAuth();
+  const faturaId = fatura?.id ?? "";
+
+  // ── Queries reais ──
+  const { data: lancamentos = [] } = useLancamentosByFatura(faturaId);
+  const { data: ajustes = [] } = useAjustesByFatura(faturaId);
+  const { data: historico = [] } = useHistoricoFatura(faturaId);
+  const { data: entregas = [] } = useEntregasByFatura(faturaId);
+
+  // ── Mutations ──
+  const updateFatura = useUpdateFatura();
+  const createAjuste = useCreateAjuste();
+  const createHistorico = useCreateHistoricoFatura();
+
   const [repasseOpen, setRepasseOpen] = useState(false);
   const [pagamentoOpen, setPagamentoOpen] = useState(false);
   const [ajusteOpen, setAjusteOpen] = useState(false);
@@ -49,135 +70,166 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate 
 
   if (!fatura) return null;
 
-  const lancamentos = getLancamentosByFatura(fatura.id);
-  const ajustes = getAjustesByFatura(fatura.id);
-  const entregas = [...getEntregasByFatura(fatura.id), ...(entregasFatura[fatura.id] || [])];
   const saldo = fatura.saldo_liquido ?? 0;
-
   const saldoColor = saldo > 0 ? "text-emerald-500" : saldo < 0 ? "text-destructive" : "text-muted-foreground";
   const saldoLabel = saldo > 0 ? "Operação deve repassar à loja" : saldo < 0 ? "Loja deve pagar à operação" : "Quitado";
 
-  const handleRepasse = (valor: number, observacao: string) => {
+  const handleRepasse = async (valor: number, observacao: string) => {
     const novoSaldo = saldo - valor;
-    const updated: Fatura = {
-      ...fatura,
-      saldo_liquido: novoSaldo,
-      status_repasse: "Repassado",
-      status_geral: novoSaldo === 0 ? "Fechada" : fatura.status_geral,
-      historico: [
-        ...fatura.historico,
-        {
-          tipo: "repasse",
-          timestamp: new Date().toISOString(),
-          descricao: `Repasse de ${formatCurrency(valor)} registrado${observacao ? ` — ${observacao}` : ""}`,
+    try {
+      await updateFatura.mutateAsync({
+        id: fatura.id,
+        patch: {
+          saldo_liquido: novoSaldo,
+          status_repasse: "Repassado",
+          status_geral: novoSaldo === 0 ? "Fechada" : fatura.status_geral,
         },
-      ],
-      updated_at: new Date().toISOString(),
-    };
-    onFaturaUpdate?.(updated);
-    setRepasseOpen(false);
-    toast.success(`Repasse de ${formatCurrency(valor)} registrado com sucesso`);
+      });
+      await createHistorico.mutateAsync({
+        fatura_id: fatura.id,
+        tipo: "repasse",
+        descricao: `Repasse de ${formatCurrency(valor)} registrado${observacao ? ` — ${observacao}` : ""}`,
+        usuario_id: user?.id ?? null,
+        valor_anterior: saldo,
+        valor_novo: novoSaldo,
+        metadata: null,
+      });
+      setRepasseOpen(false);
+      toast.success(`Repasse de ${formatCurrency(valor)} registrado com sucesso`);
+    } catch (err) {
+      toast.error("Erro ao registrar repasse");
+    }
   };
 
-  const handleAjuste = (tipo: TipoAjuste, valor: number, motivo: string) => {
+  const handleAjuste = async (tipo: TipoAjuste, valor: number, motivo: string) => {
     const ajusteValor = tipo === "credito" ? valor : -valor;
     const novoSaldo = saldo + ajusteValor;
-    const updated: Fatura = {
-      ...fatura,
-      saldo_liquido: novoSaldo,
-      historico: [
-        ...fatura.historico,
-        {
-          tipo: "ajuste",
-          timestamp: new Date().toISOString(),
-          descricao: `Ajuste ${tipo === "credito" ? "crédito" : "débito"} de ${formatCurrency(valor)} — ${motivo}`,
-        },
-      ],
-      updated_at: new Date().toISOString(),
-    };
-    onFaturaUpdate?.(updated);
-    setAjusteOpen(false);
-    toast.success(`Ajuste de ${formatCurrency(valor)} (${tipo}) adicionado com sucesso`);
+    try {
+      await createAjuste.mutateAsync({
+        fatura_id: fatura.id,
+        solicitacao_id: null,
+        tipo,
+        valor,
+        motivo,
+        usuario_id: user?.id ?? "",
+      });
+      await updateFatura.mutateAsync({
+        id: fatura.id,
+        patch: { saldo_liquido: novoSaldo },
+      });
+      await createHistorico.mutateAsync({
+        fatura_id: fatura.id,
+        tipo: "ajuste",
+        descricao: `Ajuste ${tipo === "credito" ? "crédito" : "débito"} de ${formatCurrency(valor)} — ${motivo}`,
+        usuario_id: user?.id ?? null,
+        valor_anterior: saldo,
+        valor_novo: novoSaldo,
+        metadata: null,
+      });
+      setAjusteOpen(false);
+      toast.success(`Ajuste de ${formatCurrency(valor)} (${tipo}) adicionado com sucesso`);
+    } catch (err) {
+      toast.error("Erro ao adicionar ajuste");
+    }
   };
 
-  const handleFinalizar = () => {
-    const updated: Fatura = {
-      ...fatura,
-      status_geral: "Finalizada",
-      historico: [
-        ...fatura.historico,
-        {
-          tipo: "finalizada",
-          timestamp: new Date().toISOString(),
-          descricao: "Fatura finalizada — saldo zerado",
-        },
-      ],
-      updated_at: new Date().toISOString(),
-    };
-    onFaturaUpdate?.(updated);
-    toast.success("Fatura finalizada com sucesso");
+  const handleFinalizar = async () => {
+    try {
+      await updateFatura.mutateAsync({
+        id: fatura.id,
+        patch: { status_geral: "Finalizada" },
+      });
+      await createHistorico.mutateAsync({
+        fatura_id: fatura.id,
+        tipo: "finalizada",
+        descricao: "Fatura finalizada — saldo zerado",
+        usuario_id: user?.id ?? null,
+        valor_anterior: null,
+        valor_novo: null,
+        metadata: null,
+      });
+      toast.success("Fatura finalizada com sucesso");
+    } catch (err) {
+      toast.error("Erro ao finalizar fatura");
+    }
   };
 
-  const handleFechar = () => {
-    const updated: Fatura = {
-      ...fatura,
-      status_geral: "Fechada",
-      historico: [
-        ...fatura.historico,
-        {
-          tipo: "fechada",
-          timestamp: new Date().toISOString(),
-          descricao: `Fatura fechada — saldo: ${formatCurrency(saldo)}`,
-        },
-      ],
-      updated_at: new Date().toISOString(),
-    };
-    onFaturaUpdate?.(updated);
-    setFecharConfirmOpen(false);
-    toast.success("Fatura fechada com sucesso");
+  const handleFechar = async () => {
+    try {
+      await updateFatura.mutateAsync({
+        id: fatura.id,
+        patch: { status_geral: "Fechada" },
+      });
+      await createHistorico.mutateAsync({
+        fatura_id: fatura.id,
+        tipo: "fechada",
+        descricao: `Fatura fechada — saldo: ${formatCurrency(saldo)}`,
+        usuario_id: user?.id ?? null,
+        valor_anterior: null,
+        valor_novo: null,
+        metadata: null,
+      });
+      setFecharConfirmOpen(false);
+      toast.success("Fatura fechada com sucesso");
+    } catch (err) {
+      toast.error("Erro ao fechar fatura");
+    }
   };
 
-  const handleCobranca = () => {
-    const updated: Fatura = {
-      ...fatura,
-      status_cobranca: "Cobrado",
-      historico: [
-        ...fatura.historico,
-        {
-          tipo: "cobranca",
-          timestamp: new Date().toISOString(),
-          descricao: `Cobrança de ${formatCurrency(Math.abs(saldo))} registrada`,
-        },
-      ],
-      updated_at: new Date().toISOString(),
-    };
-    onFaturaUpdate?.(updated);
-    toast.success(`Cobrança de ${formatCurrency(Math.abs(saldo))} registrada`);
+  const handleCobranca = async () => {
+    try {
+      await updateFatura.mutateAsync({
+        id: fatura.id,
+        patch: { status_cobranca: "Cobrado" },
+      });
+      await createHistorico.mutateAsync({
+        fatura_id: fatura.id,
+        tipo: "cobranca",
+        descricao: `Cobrança de ${formatCurrency(Math.abs(saldo))} registrada`,
+        usuario_id: user?.id ?? null,
+        valor_anterior: null,
+        valor_novo: null,
+        metadata: null,
+      });
+      toast.success(`Cobrança de ${formatCurrency(Math.abs(saldo))} registrada`);
+    } catch (err) {
+      toast.error("Erro ao registrar cobrança");
+    }
   };
 
-  const handlePagamento = (valor: number, formaPagamento: string, observacao: string) => {
+  const handlePagamento = async (valor: number, formaPagamento: string, observacao: string) => {
     const novoSaldo = saldo < 0 ? saldo + valor : saldo - valor;
-    const updated: Fatura = {
-      ...fatura,
-      saldo_liquido: novoSaldo,
-      status_geral: novoSaldo === 0 ? "Finalizada" : fatura.status_geral,
-      historico: [
-        ...fatura.historico,
-        {
-          tipo: "pagamento",
-          timestamp: new Date().toISOString(),
-          descricao: `Pagamento de ${formatCurrency(valor)} registrado${observacao ? ` — ${observacao}` : ""}`,
+    try {
+      await updateFatura.mutateAsync({
+        id: fatura.id,
+        patch: {
+          saldo_liquido: novoSaldo,
+          status_geral: novoSaldo === 0 ? "Finalizada" : fatura.status_geral,
         },
-      ],
-      updated_at: new Date().toISOString(),
-    };
-    onFaturaUpdate?.(updated);
-    setPagamentoOpen(false);
-    toast.success(`Pagamento de ${formatCurrency(valor)} registrado com sucesso`);
+      });
+      await createHistorico.mutateAsync({
+        fatura_id: fatura.id,
+        tipo: "pagamento",
+        descricao: `Pagamento de ${formatCurrency(valor)} registrado${observacao ? ` — ${observacao}` : ""}`,
+        usuario_id: user?.id ?? null,
+        valor_anterior: saldo,
+        valor_novo: novoSaldo,
+        metadata: null,
+      });
+      setPagamentoOpen(false);
+      toast.success(`Pagamento de ${formatCurrency(valor)} registrado com sucesso`);
+    } catch (err) {
+      toast.error("Erro ao registrar pagamento");
+    }
   };
-  const handleGerarPDF = () => {
-    generateFaturaPDF(fatura, entregasFatura);
-    toast.success(`PDF da fatura ${fatura.numero} gerado com sucesso`);
+  const handleGerarPDF = async () => {
+    const entregasMap: Record<string, typeof entregas> = entregas.length > 0 ? { [fatura.id]: entregas } : {};
+    try {
+      await generateFaturaPDF(fatura, entregasMap, lancamentos, ajustes);
+      toast.success(`PDF da fatura ${fatura.numero} gerado com sucesso`);
+    } catch {
+      toast.error("Erro ao gerar PDF");
+    }
   };
 
   return (
@@ -189,6 +241,7 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate 
               <FileText className="h-5 w-5 text-primary" />
               Fatura {fatura.numero}
             </DialogTitle>
+          <DialogDescription className="sr-only">.</DialogDescription>
           </DialogHeader>
 
           <ScrollArea className="max-h-[calc(90vh-5rem)]">
@@ -388,17 +441,21 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate 
                   <CardTitle className="text-base flex items-center gap-2"><History className="h-4 w-4" /> Histórico</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3">
-                    {fatura.historico.map((h, i) => (
-                      <div key={i} className="flex items-start gap-3">
-                        <div className="mt-1 h-2 w-2 rounded-full bg-primary shrink-0" />
-                        <div>
-                          <p className="text-sm">{h.descricao}</p>
-                          <p className="text-xs text-muted-foreground">{formatDateTimeBR(h.timestamp)}</p>
+                  {historico.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Nenhum evento registrado.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {historico.map((h) => (
+                        <div key={h.id} className="flex items-start gap-3">
+                          <div className="mt-1 h-2 w-2 rounded-full bg-primary shrink-0" />
+                          <div>
+                            <p className="text-sm">{h.descricao}</p>
+                            <p className="text-xs text-muted-foreground">{formatDateTimeBR(h.created_at)}</p>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 

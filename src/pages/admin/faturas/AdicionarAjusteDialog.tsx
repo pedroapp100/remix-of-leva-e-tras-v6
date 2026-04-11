@@ -14,7 +14,7 @@ interface Props {
   fatura: Fatura;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onConfirm: (tipo: TipoAjuste, valor: number, motivo: string) => void;
+  onConfirm: (tipo: TipoAjuste, valor: number, motivo: string) => Promise<void> | void;
 }
 
 export function AdicionarAjusteDialog({ fatura, open, onOpenChange, onConfirm }: Props) {
@@ -25,16 +25,17 @@ export function AdicionarAjusteDialog({ fatura, open, onOpenChange, onConfirm }:
 
   const canSubmit = valor > 0 && motivo.trim().length >= 10;
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!canSubmit) return;
     setSubmitting(true);
-    setTimeout(() => {
-      onConfirm(tipo, valor, motivo.trim());
-      setSubmitting(false);
+    try {
+      await onConfirm(tipo, valor, motivo.trim());
       setTipo("credito");
       setValor(0);
       setMotivo("");
-    }, 400);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (

@@ -14,7 +14,7 @@ import { DataTable } from "@/components/shared/DataTable";
 import type { Column } from "@/components/shared/DataTable";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency, formatDateBR } from "@/lib/formatters";
-import { useGlobalStore } from "@/contexts/GlobalStore";
+import { useFaturas } from "@/hooks/useFaturas";
 import { cn } from "@/lib/utils";
 import { PrePagoFinanceiroView } from "./PrePagoFinanceiroView";
 import { useClienteId } from "@/hooks/useClienteId";
@@ -26,7 +26,7 @@ const fadeUp = {
 };
 
 export default function ClienteFinanceiroPage() {
-  const { faturas: allFaturasGlobal } = useGlobalStore();
+  const { data: allFaturasGlobal = [] } = useFaturas();
   const { clienteId: CLIENTE_ID, cliente } = useClienteId();
   const isPrePago = cliente?.modalidade === "pre_pago";
   const [search, setSearch] = useState("");
@@ -115,7 +115,7 @@ export default function ClienteFinanceiroPage() {
   }, [faturas]);
 
   if (isPrePago) {
-    return <PrePagoFinanceiroView clienteId={CLIENTE_ID} />;
+    return <PrePagoFinanceiroView clienteId={CLIENTE_ID!} />;
   }
 
   return (

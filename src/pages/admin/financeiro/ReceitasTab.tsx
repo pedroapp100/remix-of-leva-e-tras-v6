@@ -1,4 +1,4 @@
-import { useState, useMemo, lazy, Suspense } from "react";
+import { useState, useMemo, lazy, Suspense, useCallback } from "react";
 import { DataTable, SearchInput } from "@/components/shared";
 import { useLogStore } from "@/contexts/LogStore";
 import type { Column } from "@/components/shared/DataTable";
@@ -9,12 +9,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency, formatDateBR } from "@/lib/formatters";
 import { Plus, Pencil, FileText, DollarSign, Eye, X } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useCreateReceita, useUpdateReceita, useCategorias } from "@/hooks/useFinanceiro";
 import { NovaReceitaDialog } from "./NovaReceitaDialog";
 const FaturaDetailsModal = lazy(() => import("@/pages/admin/faturas/FaturaDetailsModal").then(m => ({ default: m.FaturaDetailsModal })));
 
 interface ReceitasTabProps {
   receitas: Receita[];
-  onUpdate: (updated: Receita[]) => void;
   faturas: Fatura[];
 }
 
@@ -26,14 +26,25 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "
   Vencida: "destructive",
 };
 
-export function ReceitasTab({ receitas, onUpdate, faturas = [] }: ReceitasTabProps) {
+export function ReceitasTab({ receitas, faturas = [] }: ReceitasTabProps) {
   const { addLog } = useLogStore();
+  const createReceita = useCreateReceita();
+  const updateReceita = useUpdateReceita();
+  const { data: allCategorias = [] } = useCategorias();
   const [search, setSearch] = useState("");
   const [categoriaFilter, setCategoriaFilter] = useState("todos");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingReceita, setEditingReceita] = useState<Receita | null>(null);
 
-  const categorias = useMemo(() => [...new Set(receitas.map((r) => r.categoria))].sort(), [receitas]);
+  const catMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    allCategorias.forEach((c) => { m[c.id] = c.nome; });
+    return m;
+  }, [allCategorias]);
+
+  const getCatNome = useCallback((r: Receita) => (r.categoria_id ? catMap[r.categoria_id] : null) ?? "Sem categoria", [catMap]);
+
+  const categorias = useMemo(() => [...new Set(receitas.map((r) => getCatNome(r)))].sort(), [receitas, getCatNome]);
 
   const faturasRecebidas = (faturas || []).filter(
     (f) => f.status_geral === "Paga" || f.status_geral === "Finalizada"
@@ -44,20 +55,24 @@ export function ReceitasTab({ receitas, onUpdate, faturas = [] }: ReceitasTabPro
 
   const filtered = receitas.filter(
     (r) => {
+      const catNome = getCatNome(r);
       const matchSearch = r.descricao.toLowerCase().includes(search.toLowerCase()) ||
-        r.categoria.toLowerCase().includes(search.toLowerCase());
-      const matchCategoria = categoriaFilter === "todos" || r.categoria === categoriaFilter;
+        catNome.toLowerCase().includes(search.toLowerCase());
+      const matchCategoria = categoriaFilter === "todos" || catNome === categoriaFilter;
       return matchSearch && matchCategoria;
     }
   );
 
   const handleSave = (receita: Receita) => {
     if (editingReceita) {
-      onUpdate(receitas.map((r) => (r.id === receita.id ? receita : r)));
-      addLog({ categoria: "financeiro", acao: "receita_editada", entidade_id: receita.id, descricao: `Receita "${receita.descricao}" editada — ${formatCurrency(receita.valor)}`, detalhes: { descricao: receita.descricao, valor: receita.valor, categoria: receita.categoria } });
+      updateReceita.mutate(
+        { id: receita.id, patch: receita as Parameters<typeof updateReceita.mutate>[0]["patch"] },
+        { onSuccess: () => addLog({ categoria: "financeiro", acao: "receita_editada", entidade_id: receita.id, descricao: `Receita "${receita.descricao}" editada — ${formatCurrency(receita.valor)}`, detalhes: { descricao: receita.descricao, valor: receita.valor, categoria_id: receita.categoria_id } }) }
+      );
     } else {
-      onUpdate([receita, ...receitas]);
-      addLog({ categoria: "financeiro", acao: "receita_criada", entidade_id: receita.id, descricao: `Receita "${receita.descricao}" lançada — ${formatCurrency(receita.valor)}`, detalhes: { descricao: receita.descricao, valor: receita.valor, categoria: receita.categoria } });
+      createReceita.mutate(receita as Parameters<typeof createReceita.mutate>[0], {
+        onSuccess: () => addLog({ categoria: "financeiro", acao: "receita_criada", entidade_id: receita.id, descricao: `Receita "${receita.descricao}" lançada — ${formatCurrency(receita.valor)}`, detalhes: { descricao: receita.descricao, valor: receita.valor, categoria_id: receita.categoria_id } }),
+      });
     }
     setEditingReceita(null);
   };
@@ -70,7 +85,7 @@ export function ReceitasTab({ receitas, onUpdate, faturas = [] }: ReceitasTabPro
   const columns: Column<Receita>[] = [
     { key: "data_recebimento", header: "Data", sortable: true, cell: (r) => <span className="text-sm">{formatDateBR(r.data_recebimento)}</span> },
     { key: "descricao", header: "Descrição", sortable: true, cell: (r) => <span className="font-medium">{r.descricao}</span> },
-    { key: "categoria", header: "Categoria", cell: (r) => <Badge variant="outline" className="text-xs">{r.categoria}</Badge> },
+    { key: "categoria_id", header: "Categoria", cell: (r) => <Badge variant="outline" className="text-xs">{getCatNome(r)}</Badge> },
     {
       key: "valor", header: "Valor", sortable: true,
       cell: (r) => <span className="font-semibold tabular-nums text-emerald-500">{formatCurrency(r.valor)}</span>,
@@ -98,7 +113,7 @@ export function ReceitasTab({ receitas, onUpdate, faturas = [] }: ReceitasTabPro
         <span className="font-semibold tabular-nums text-emerald-500">{formatCurrency(r.valor)}</span>
       </div>
       <div className="flex justify-between text-xs text-muted-foreground">
-        <Badge variant="outline" className="text-xs">{r.categoria}</Badge>
+        <Badge variant="outline" className="text-xs">{getCatNome(r)}</Badge>
         <span>{formatDateBR(r.data_recebimento)}</span>
       </div>
       <Button variant="outline" size="sm" className="w-full gap-1.5 mt-1" onClick={() => handleEdit(r)}>
@@ -218,7 +233,6 @@ export function ReceitasTab({ receitas, onUpdate, faturas = [] }: ReceitasTabPro
             fatura={viewingFatura}
             open={!!viewingFatura}
             onOpenChange={(open) => !open && setViewingFatura(null)}
-            onFaturaUpdate={() => {}}
           />
         )}
       </Suspense>

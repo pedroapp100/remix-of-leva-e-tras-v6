@@ -4,9 +4,10 @@ import { PageContainer, MetricCard, DataTable, SearchInput, StatusBadge, ExportD
 import type { Column } from "@/components/shared/DataTable";
 import type { Rota } from "@/types/database";
 import { TipoOperacaoBadge, getTipoOperacaoLabel } from "@/components/shared/TipoOperacaoBadge";
-import { getClienteName, getEntregadorName } from "@/data/mockSolicitacoes";
-import { MOCK_BAIRROS } from "@/data/mockSettings";
-import { useGlobalStore } from "@/contexts/GlobalStore";
+import { useSolicitacoes, useRotasWindow } from "@/hooks/useSolicitacoes";
+import { useClientes } from "@/hooks/useClientes";
+import { useEntregadores } from "@/hooks/useEntregadores";
+import { useBairros } from "@/hooks/useSettings";
 import { DatePickerWithRange } from "@/components/shared/DatePickerWithRange";
 import type { DateRange } from "react-day-picker";
 import { Button } from "@/components/ui/button";
@@ -17,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   Package, CheckCircle, Clock, MapPin, X, Eye, Truck, XCircle,
 } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { exportCSV, exportPDF } from "@/lib/exportTable";
 import { formatCurrency, formatDateBR } from "@/lib/formatters";
@@ -56,12 +57,19 @@ const fmt = (v: number | null | undefined) =>
   v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
 const fmtDate = (d: string) => new Date(d).toLocaleDateString("pt-BR");
 
-const getBairroName = (id: string) =>
-  MOCK_BAIRROS.find((b) => b.id === id)?.nome ?? "—";
+const getBairroName = (id: string, _bairros: { id: string; nome: string }[]) =>
+  _bairros.find((b) => b.id === id)?.nome ?? "—";
 
 export default function EntregasPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { solicitacoes, rotas } = useGlobalStore();
+  const { data: solicitacoes = [] } = useSolicitacoes();
+  const { data: rotas = [] } = useRotasWindow();
+  const { data: clientes = [] } = useClientes();
+  const { data: entregadores = [] } = useEntregadores();
+  const { data: bairros = [] } = useBairros();
+
+  const getClienteNome = (id: string) => clientes.find((c) => c.id === id)?.nome ?? id;
+  const getEntregadorNome = (id: string | null | undefined) => !id ? "—" : (entregadores.find((e) => e.id === id)?.nome ?? id);
 
   const [search, setSearch] = useState(searchParams.get("q") ?? "");
   const [activeTab, setActiveTab] = useState<string>(searchParams.get("tab") ?? "todas");
@@ -77,37 +85,53 @@ export default function EntregasPage() {
     setSearchParams(params, { replace: true });
   }, [search, activeTab, setSearchParams]);
 
-  // Build flat list of entregas (each rota = 1 entrega)
+  // Build flat list of entregas (each rota = 1 entrega) — O(n+m) with Map.
+  // Rotas without a matching solicitação in the active window are skipped gracefully.
   const entregas: EntregaView[] = useMemo(() => {
-    return rotas.map((rota) => {
-      const sol = solicitacoes.find((s) => s.id === rota.solicitacao_id);
-      return {
+    const solMap = new Map(solicitacoes.map((s) => [s.id, s]));
+    return rotas.flatMap((rota) => {
+      const sol = solMap.get(rota.solicitacao_id);
+      if (!sol) return []; // solicitação outside active window — skip
+      return [{
         id: rota.id,
         rota,
         solicitacao_id: rota.solicitacao_id,
-        codigo: sol?.codigo ?? "—",
-        cliente_id: sol?.cliente_id ?? "",
-        entregador_id: sol?.entregador_id,
-        tipo_operacao: sol?.tipo_operacao ?? "",
-        data_solicitacao: sol?.data_solicitacao ?? "",
-        data_conclusao: sol?.data_conclusao,
-        bairro_nome: getBairroName(rota.bairro_destino_id),
-      };
+        codigo: sol.codigo,
+        cliente_id: sol.cliente_id,
+        entregador_id: sol.entregador_id,
+        tipo_operacao: sol.tipo_operacao,
+        data_solicitacao: sol.data_solicitacao,
+        data_conclusao: sol.data_conclusao,
+        bairro_nome: getBairroName(rota.bairro_destino_id, bairros),
+      }];
     });
   }, [rotas, solicitacoes]);
 
-  // Unique tipo/entregador options for filters
-  const tipoOptions = useMemo(() => {
-    const tipos = [...new Set(entregas.map((e) => e.tipo_operacao))];
-    return tipos.map((t) => ({
-      value: t,
-      label: getTipoOperacaoLabel(t),
-    }));
-  }, [entregas]);
+  // Single-pass: options + metrics + status counts
+  const { tipoOptions, entregadorOptions, metrics, statusCounts } = useMemo(() => {
+    const tiposSet = new Set<string>();
+    const entregadorSet = new Set<string>();
+    let ativas = 0, concluidas = 0, canceladas = 0, totalTaxas = 0, totalRepasse = 0;
 
-  const entregadorOptions = useMemo(() => {
-    const ids = [...new Set(entregas.map((e) => e.entregador_id).filter(Boolean))] as string[];
-    return ids.map((id) => ({ value: id, label: getEntregadorName(id) }));
+    for (const e of entregas) {
+      tiposSet.add(e.tipo_operacao);
+      if (e.entregador_id) entregadorSet.add(e.entregador_id);
+
+      const st = e.rota.status;
+      if (st === "ativa") ativas++;
+      else if (st === "concluida") {
+        concluidas++;
+        totalTaxas += e.rota.taxa_resolvida ?? 0;
+        if (e.rota.receber_do_cliente) totalRepasse += e.rota.valor_a_receber ?? 0;
+      } else if (st === "cancelada") canceladas++;
+    }
+
+    return {
+      tipoOptions: [...tiposSet].map((t) => ({ value: t, label: getTipoOperacaoLabel(t) })),
+      entregadorOptions: [...entregadorSet].map((id) => ({ value: id, label: getEntregadorNome(id) })),
+      metrics: { total: entregas.length, ativas, concluidas, canceladas, totalTaxas, totalRepasse },
+      statusCounts: { todas: entregas.length, ativa: ativas, concluida: concluidas, cancelada: canceladas } as Record<string, number>,
+    };
   }, [entregas]);
 
   // Filter
@@ -115,7 +139,7 @@ export default function EntregasPage() {
     return entregas.filter((e) => {
       const matchSearch =
         e.codigo.toLowerCase().includes(search.toLowerCase()) ||
-        getClienteName(e.cliente_id).toLowerCase().includes(search.toLowerCase()) ||
+        getClienteNome(e.cliente_id).toLowerCase().includes(search.toLowerCase()) ||
         e.rota.responsavel.toLowerCase().includes(search.toLowerCase()) ||
         e.bairro_nome.toLowerCase().includes(search.toLowerCase());
       const matchTab = activeTab === "todas" || e.rota.status === activeTab;
@@ -139,27 +163,6 @@ export default function EntregasPage() {
     });
   }, [entregas, search, activeTab, dateRange, filterTipo, filterEntregador]);
 
-  // Metrics
-  const metrics = useMemo(() => {
-    const ativas = entregas.filter((e) => e.rota.status === "ativa").length;
-    const concluidas = entregas.filter((e) => e.rota.status === "concluida").length;
-    const canceladas = entregas.filter((e) => e.rota.status === "cancelada").length;
-    const totalTaxas = entregas
-      .filter((e) => e.rota.status === "concluida")
-      .reduce((sum, e) => sum + (e.rota.taxa_resolvida ?? 0), 0);
-    const totalRepasse = entregas
-      .filter((e) => e.rota.status === "concluida" && e.rota.receber_do_cliente)
-      .reduce((sum, e) => sum + (e.rota.valor_a_receber ?? 0), 0);
-    return { total: entregas.length, ativas, concluidas, canceladas, totalTaxas, totalRepasse };
-  }, [entregas]);
-
-  const statusCounts: Record<string, number> = {
-    todas: entregas.length,
-    ativa: metrics.ativas,
-    concluida: metrics.concluidas,
-    cancelada: metrics.canceladas,
-  };
-
   const statusVariant = (s: StatusRota): "default" | "secondary" | "destructive" | "outline" => {
     switch (s) {
       case "concluida": return "default";
@@ -179,7 +182,7 @@ export default function EntregasPage() {
     {
       key: "cliente_id",
       header: "Cliente",
-      cell: (r) => <span className="font-medium">{getClienteName(r.cliente_id)}</span>,
+      cell: (r) => <span className="font-medium">{getClienteNome(r.cliente_id)}</span>,
     },
     {
       key: "bairro_nome",
@@ -200,7 +203,7 @@ export default function EntregasPage() {
       key: "entregador_id",
       header: "Entregador",
       cell: (r) => (
-        <span className="text-muted-foreground">{getEntregadorName(r.entregador_id)}</span>
+        <span className="text-muted-foreground">{getEntregadorNome(r.entregador_id)}</span>
       ),
     },
     {
@@ -262,10 +265,10 @@ export default function EntregasPage() {
   const buildExportRows = () =>
     filtered.map((e) => [
       e.codigo,
-      getClienteName(e.cliente_id),
+      getClienteNome(e.cliente_id),
       e.bairro_nome,
       e.rota.responsavel || "—",
-      getEntregadorName(e.entregador_id),
+      getEntregadorNome(e.entregador_id),
       getTipoOperacaoLabel(e.tipo_operacao),
       e.rota.taxa_resolvida != null ? formatCurrency(e.rota.taxa_resolvida) : "—",
       e.rota.receber_do_cliente && e.rota.valor_a_receber != null ? formatCurrency(e.rota.valor_a_receber) : "—",
@@ -367,7 +370,7 @@ export default function EntregasPage() {
                   <StatusBadge status={r.rota.status} label={STATUS_ROTA_LABELS[r.rota.status]} />
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="font-medium">{getClienteName(r.cliente_id)}</span>
+                  <span className="font-medium">{getClienteNome(r.cliente_id)}</span>
                   <TipoOperacaoBadge tipoOperacao={r.tipo_operacao} />
                 </div>
                 <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -377,7 +380,7 @@ export default function EntregasPage() {
                   <span>{r.rota.responsavel || "—"}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm text-muted-foreground">
-                  <span>{getEntregadorName(r.entregador_id)}</span>
+                  <span>{getEntregadorNome(r.entregador_id)}</span>
                   <div className="flex items-center gap-2">
                     <span className="tabular-nums font-medium text-foreground">{fmt(r.rota.taxa_resolvida)}</span>
                     {r.rota.receber_do_cliente && (
@@ -415,6 +418,7 @@ export default function EntregasPage() {
               <Package className="h-5 w-5" />
               Detalhes da Entrega
             </DialogTitle>
+          <DialogDescription className="sr-only">.</DialogDescription>
           </DialogHeader>
           {viewEntrega && (
             <div className="space-y-4">
@@ -429,11 +433,11 @@ export default function EntregasPage() {
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <p className="text-muted-foreground">Cliente</p>
-                  <p className="font-medium">{getClienteName(viewEntrega.cliente_id)}</p>
+                  <p className="font-medium">{getClienteNome(viewEntrega.cliente_id)}</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Entregador</p>
-                  <p className="font-medium">{getEntregadorName(viewEntrega.entregador_id)}</p>
+                  <p className="font-medium">{getEntregadorNome(viewEntrega.entregador_id)}</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Destino (Bairro)</p>

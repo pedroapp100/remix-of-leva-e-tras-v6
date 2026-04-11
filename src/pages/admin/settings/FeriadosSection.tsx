@@ -1,12 +1,12 @@
 import { useState } from "react";
 import type { Feriado } from "@/types/database";
 import { useLogStore } from "@/contexts/LogStore";
-import { MOCK_FERIADOS } from "@/data/mockSettings";
+import { useFeriados, useUpsertFeriado, useDeleteFeriado } from "@/hooks/useSettings";
 import { Button } from "@/components/ui/button";
 import { Plus, Pencil, Trash2, CalendarDays } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -20,7 +20,9 @@ function formatDate(dateStr: string) {
 
 export function FeriadosSection() {
   const { addLog } = useLogStore();
-  const [feriados, setFeriados] = useState<Feriado[]>(MOCK_FERIADOS);
+  const { data: feriados = [] } = useFeriados();
+  const upsertFeriado = useUpsertFeriado();
+  const deleteFeriado = useDeleteFeriado();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Feriado | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Feriado | null>(null);
@@ -41,32 +43,25 @@ export function FeriadosSection() {
     setDialogOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!nome.trim()) { toast.error("Nome é obrigatório."); return; }
     if (!data) { toast.error("Data é obrigatória."); return; }
-    const now = new Date().toISOString();
 
     if (editing) {
-      setFeriados((prev) => prev.map((f) => f.id === editing.id
-        ? { ...f, nome: nome.trim(), data, recorrente, ativo }
-        : f));
+      await upsertFeriado.mutateAsync({ id: editing.id, nome: nome.trim(), data, recorrente, ativo });
       addLog({ categoria: "configuracao", acao: "feriado_editado", entidade_id: editing.id, descricao: `Feriado "${nome}" atualizado (${formatDate(data)})`, detalhes: { nome, data, recorrente, ativo } });
       toast.success("Feriado atualizado!");
     } else {
-      const newId = `fer-${Date.now()}`;
-      setFeriados((prev) => [...prev, {
-        id: newId, nome: nome.trim(), data,
-        recorrente, ativo, created_at: now,
-      }]);
-      addLog({ categoria: "configuracao", acao: "feriado_criado", entidade_id: newId, descricao: `Feriado "${nome}" cadastrado (${formatDate(data)})`, detalhes: { nome, data, recorrente } });
+      const inserted = await upsertFeriado.mutateAsync({ nome: nome.trim(), data, recorrente, ativo });
+      addLog({ categoria: "configuracao", acao: "feriado_criado", entidade_id: inserted?.id ?? "new", descricao: `Feriado "${nome}" cadastrado (${formatDate(data)})`, detalhes: { nome, data, recorrente } });
       toast.success("Feriado cadastrado!");
     }
     setDialogOpen(false);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!deleteTarget) return;
-    setFeriados((prev) => prev.filter((f) => f.id !== deleteTarget.id));
+    await deleteFeriado.mutateAsync(deleteTarget.id);
     addLog({ categoria: "configuracao", acao: "feriado_removido", entidade_id: deleteTarget.id, descricao: `Feriado "${deleteTarget.nome}" removido`, detalhes: null });
     toast.success("Feriado removido!");
     setDeleteTarget(null);
@@ -122,6 +117,7 @@ export function FeriadosSection() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{editing ? "Editar Feriado" : "Novo Feriado"}</DialogTitle>
+          <DialogDescription className="sr-only">.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">

@@ -2,7 +2,8 @@ import { useState } from "react";
 import { DataTable, SearchInput } from "@/components/shared";
 import type { Column } from "@/components/shared/DataTable";
 import type { Despesa } from "@/types/database";
-import { MOCK_DESPESAS, STATUS_DESPESA_VARIANT } from "@/data/mockFinanceiro";
+import { STATUS_DESPESA_VARIANT } from "@/lib/formatters";
+import { useDespesas } from "@/hooks/useFinanceiro";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -14,18 +15,19 @@ interface DespesasReportTabProps {
 }
 
 export function DespesasReportTab({ dateRange }: DespesasReportTabProps) {
-  const [search, setSearch] = useState("");
+  const { data: despesas = [] } = useDespesas();
+  const [search, setSearch] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("todos");
   const [categoriaFilter, setCategoriaFilter] = useState<string>("todas");
 
-  const categorias = [...new Set(MOCK_DESPESAS.map((d) => d.categoria))];
+  const categorias = [...new Set(despesas.map((d) => d.categoria_id ?? "Sem categoria"))];
 
-  const filtered = MOCK_DESPESAS.filter((d) => {
+  const filtered = despesas.filter((d) => {
     const matchSearch =
       d.descricao.toLowerCase().includes(search.toLowerCase()) ||
       d.fornecedor.toLowerCase().includes(search.toLowerCase());
     const matchStatus = statusFilter === "todos" || d.status === statusFilter;
-    const matchCategoria = categoriaFilter === "todas" || d.categoria === categoriaFilter;
+    const matchCategoria = categoriaFilter === "todas" || (d.categoria_id ?? "Sem categoria") === categoriaFilter;
     let matchDate = true;
     if (dateRange?.from) {
       const dt = new Date(d.vencimento);
@@ -36,7 +38,7 @@ export function DespesasReportTab({ dateRange }: DespesasReportTabProps) {
 
   const columns: Column<Despesa>[] = [
     { key: "descricao", header: "Descrição", sortable: true, cell: (d) => <span className="font-medium">{d.descricao}</span> },
-    { key: "categoria", header: "Categoria", sortable: true, cell: (d) => <Badge variant="outline" className="text-xs">{d.categoria}</Badge> },
+    { key: "categoria_id", header: "Categoria", sortable: true, cell: (d) => <Badge variant="outline" className="text-xs">{d.categoria_id ?? "—"}</Badge> },
     { key: "fornecedor", header: "Fornecedor", sortable: true, cell: (d) => <span>{d.fornecedor}</span> },
     { key: "vencimento", header: "Vencimento", sortable: true, cell: (d) => <span className="text-sm">{formatDateBR(d.vencimento)}</span> },
     { key: "valor", header: "Valor", sortable: true, cell: (d) => <span className="font-semibold tabular-nums">{formatCurrency(d.valor)}</span> },
@@ -50,7 +52,7 @@ export function DespesasReportTab({ dateRange }: DespesasReportTabProps) {
         <Badge variant={STATUS_DESPESA_VARIANT[d.status]} className="text-xs">{d.status}</Badge>
       </div>
       <div className="flex justify-between text-sm text-muted-foreground">
-        <span>{d.categoria}</span>
+        <span>{d.categoria_id ?? "—"}</span>
         <span className="font-semibold tabular-nums text-foreground">{formatCurrency(d.valor)}</span>
       </div>
     </Card>

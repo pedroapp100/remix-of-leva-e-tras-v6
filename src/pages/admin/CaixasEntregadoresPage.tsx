@@ -16,7 +16,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatCurrency } from "@/lib/formatters";
-import type { CaixaEntregador } from "@/data/mockCaixas";
+import type { CaixaEntregador } from "@/types/database";
 import { useCaixaStore } from "@/contexts/CaixaStore";
 import { AbrirCaixaDialog } from "./caixas/AbrirCaixaDialog";
 import { FecharCaixaDialog } from "./caixas/FecharCaixaDialog";

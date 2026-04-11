@@ -1,4 +1,4 @@
-import { PERMISSION_MODULES, MOCK_CARGOS } from "@/data/mockSettings";
+import { PERMISSION_MODULES } from "@/lib/permissions";
 import type { Cargo } from "@/types/database";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,7 +34,7 @@ function AccessBadge({ level }: { level: AccessLevel }) {
   );
 }
 
-export function PermissionMatrix({ cargos = MOCK_CARGOS }: PermissionMatrixProps) {
+export function PermissionMatrix({ cargos = [] }: PermissionMatrixProps) {
   return (
     <Card>
       <CardHeader>

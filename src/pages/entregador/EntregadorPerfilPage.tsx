@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/shared/PageContainer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,21 +6,35 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PhoneInput } from "@/components/shared/PhoneInput";
-import { MOCK_ENTREGADORES } from "@/data/mockEntregadores";
-
-const ENTREGADOR_ID = "ent-001";
+import { useEntregadorById, useUpdateEntregador } from "@/hooks/useEntregadores";
+import { useEntregadorId } from "@/hooks/useEntregadorId";
 
 export default function EntregadorPerfilPage() {
-  const entregador = MOCK_ENTREGADORES.find((e) => e.id === ENTREGADOR_ID)!;
+  const { entregadorId: ENTREGADOR_ID } = useEntregadorId();
+  const { data: entregador } = useEntregadorById(ENTREGADOR_ID ?? "");
+  const updateEntregador = useUpdateEntregador();
   const [form, setForm] = useState({
-    nome: entregador.nome,
-    email: entregador.email,
-    telefone: entregador.telefone,
-    documento: entregador.documento,
-    cidade: entregador.cidade,
-    bairro: entregador.bairro,
+    nome: "",
+    email: "",
+    telefone: "",
+    documento: "",
+    cidade: "",
+    bairro: "",
   });
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (entregador) {
+      setForm({
+        nome: entregador.nome ?? "",
+        email: entregador.email ?? "",
+        telefone: entregador.telefone ?? "",
+        documento: entregador.documento ?? "",
+        cidade: entregador.cidade ?? "",
+        bairro: entregador.bairro ?? "",
+      });
+    }
+  }, [entregador]);
 
   const handleChange = (field: string, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -28,9 +42,15 @@ export default function EntregadorPerfilPage() {
 
   const handleSave = async () => {
     setSaving(true);
-    await new Promise((r) => setTimeout(r, 600));
-    setSaving(false);
-    toast.success("Perfil atualizado com sucesso!");
+    try {
+      if (!ENTREGADOR_ID) return;
+      await updateEntregador.mutateAsync({ id: ENTREGADOR_ID, patch: { nome: form.nome, email: form.email, telefone: form.telefone, cidade: form.cidade, bairro: form.bairro } });
+      toast.success("Perfil atualizado com sucesso!");
+    } catch {
+      toast.error("Erro ao salvar perfil.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (

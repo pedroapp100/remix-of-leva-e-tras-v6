@@ -1,4 +1,6 @@
-import { createContext, useContext, ReactNode, useState, useCallback, useEffect } from "react";
+import { createContext, useContext, ReactNode, useState, useCallback, useEffect, useRef } from "react";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/contexts/AuthContext";
 
 export interface Notification {
   id: string;
@@ -20,113 +22,135 @@ interface NotificationContextType {
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
-const STORAGE_KEY = "leva-traz-notifications";
-
-const MOCK_NOTIFICATIONS: Notification[] = [
-  {
-    id: "n1",
-    title: "Solicitações pendentes",
-    message: "12 solicitações aguardando aprovação",
-    type: "warning",
-    read: false,
-    createdAt: new Date(Date.now() - 1000 * 60 * 5),
-    link: "/admin/solicitacoes",
-  },
-  {
-    id: "n2",
-    title: "Faturas vencidas",
-    message: "3 faturas com pagamento atrasado",
-    type: "error",
-    read: false,
-    createdAt: new Date(Date.now() - 1000 * 60 * 30),
-    link: "/admin/faturas",
-  },
-  {
-    id: "n3",
-    title: "Novo entregador cadastrado",
-    message: "Carlos Silva foi adicionado à equipe",
-    type: "info",
-    read: false,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2),
-    link: "/admin/entregadores",
-  },
-  {
-    id: "n4",
-    title: "Pagamento confirmado",
-    message: "Fatura #1042 paga por Empresa ABC",
-    type: "success",
-    read: false,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 5),
-    link: "/admin/faturas",
-  },
-  {
-    id: "n5",
-    title: "Entrega concluída",
-    message: "Entrega #3847 finalizada com sucesso",
-    type: "success",
-    read: true,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24),
-  },
-];
-
-function loadFromStorage(): Notification[] | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Array<Notification & { createdAt: string }>;
-    return parsed.map((n) => ({ ...n, createdAt: new Date(n.createdAt) }));
-  } catch {
-    return null;
-  }
-}
-
-function saveToStorage(notifications: Notification[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(notifications));
-  } catch {
-    // quota exceeded — silently ignore
-  }
+function rowToNotification(row: {
+  id: string;
+  title: string;
+  message: string;
+  type: string;
+  read: boolean;
+  link: string | null;
+  created_at: string;
+}): Notification {
+  return {
+    id: row.id,
+    title: row.title,
+    message: row.message,
+    type: row.type as Notification["type"],
+    read: row.read,
+    link: row.link ?? undefined,
+    createdAt: new Date(row.created_at),
+  };
 }
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
-  const [notifications, setNotifications] = useState<Notification[]>(
-    () => loadFromStorage() ?? MOCK_NOTIFICATIONS
+  const { user } = useAuth();
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+
+  // Carrega notificações do banco quando o usuário estiver disponível
+  useEffect(() => {
+    if (!user) {
+      setNotifications([]);
+      return;
+    }
+
+    supabase
+      .from("notifications")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(50)
+      .then(({ data }) => {
+        if (data) setNotifications(data.map(rowToNotification));
+      });
+  }, [user]);
+
+  // Subscrição realtime: recebe novas notificações e atualizações (mark as read)
+  useEffect(() => {
+    if (!user) return;
+
+    // Remove canal anterior se existir
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+    }
+
+    const channel = supabase
+      .channel(`notifications:${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          const newNotif = rowToNotification(payload.new as Parameters<typeof rowToNotification>[0]);
+          setNotifications((prev) => [newNotif, ...prev]);
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          const updated = rowToNotification(payload.new as Parameters<typeof rowToNotification>[0]);
+          setNotifications((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
+        }
+      )
+      .subscribe();
+
+    channelRef.current = channel;
+
+    return () => {
+      supabase.removeChannel(channel);
+      channelRef.current = null;
+    };
+  }, [user]);
+
+  const addNotification = useCallback(
+    async (notification: Omit<Notification, "id" | "read" | "createdAt">) => {
+      if (!user) return;
+      await supabase.from("notifications").insert({
+        user_id: user.id,
+        title: notification.title,
+        message: notification.message,
+        type: notification.type,
+        read: false,
+        link: notification.link ?? null,
+      });
+      // O realtime INSERT listener atualiza o estado local automaticamente
+    },
+    [user]
   );
 
-  // Persist on every change
-  useEffect(() => {
-    saveToStorage(notifications);
-  }, [notifications]);
+  const markAsRead = useCallback(
+    async (id: string) => {
+      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+      await supabase.from("notifications").update({ read: true }).eq("id", id);
+    },
+    []
+  );
 
-  const addNotification = useCallback((notification: Omit<Notification, "id" | "read" | "createdAt">) => {
-    const newNotif: Notification = {
-      ...notification,
-      id: `n-${Date.now()}-${Math.random()}`,
-      read: false,
-      createdAt: new Date(),
-    };
-    setNotifications((prev) => [newNotif, ...prev]);
-  }, []);
-
-  const markAsRead = useCallback((id: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
-    );
-  }, []);
-
-  const markAllAsRead = useCallback(() => {
+  const markAllAsRead = useCallback(async () => {
+    if (!user) return;
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-  }, []);
+    await supabase
+      .from("notifications")
+      .update({ read: true })
+      .eq("user_id", user.id)
+      .eq("read", false);
+  }, [user]);
 
-  // Listen for low prepaid balance events from GlobalStore
+  // Ouve eventos customizados de saldo baixo e nova fatura
   useEffect(() => {
-    const handler = (e: Event) => {
+    const handleSaldoBaixo = (e: Event) => {
       const detail = (e as CustomEvent).detail as {
-        clienteNome: string;
-        saldoApos: number;
-        limite: number;
         message: string;
-        clienteId: string;
       };
       addNotification({
         title: "Saldo pré-pago baixo",
@@ -135,16 +159,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         link: "/admin/clientes",
       });
     };
-    window.addEventListener("saldo-baixo-pre-pago", handler);
-    return () => window.removeEventListener("saldo-baixo-pre-pago", handler);
-  }, [addNotification]);
 
-  // Listen for new invoice generation
-  useEffect(() => {
-    const handler = (e: Event) => {
+    const handleNovaFatura = (e: Event) => {
       const detail = (e as CustomEvent).detail as {
-        faturaNumero: string;
-        clienteNome: string;
         message: string;
       };
       addNotification({
@@ -154,8 +171,27 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         link: "/admin/faturas",
       });
     };
-    window.addEventListener("nova-fatura-gerada", handler);
-    return () => window.removeEventListener("nova-fatura-gerada", handler);
+
+    const handleFaturaAutoFechada = (e: Event) => {
+      const detail = (e as CustomEvent).detail as {
+        message: string;
+      };
+      addNotification({
+        title: "Fatura fechada automaticamente",
+        message: detail.message,
+        type: "success",
+        link: "/admin/faturas",
+      });
+    };
+
+    window.addEventListener("saldo-baixo-pre-pago", handleSaldoBaixo);
+    window.addEventListener("nova-fatura-gerada", handleNovaFatura);
+    window.addEventListener("fatura-auto-fechada", handleFaturaAutoFechada);
+    return () => {
+      window.removeEventListener("saldo-baixo-pre-pago", handleSaldoBaixo);
+      window.removeEventListener("nova-fatura-gerada", handleNovaFatura);
+      window.removeEventListener("fatura-auto-fechada", handleFaturaAutoFechada);
+    };
   }, [addNotification]);
 
   const unreadCount = notifications.filter((n) => !n.read).length;

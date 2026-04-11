@@ -9,7 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Wallet } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
-import type { CaixaEntregador } from "@/data/mockCaixas";
+import type { CaixaEntregador } from "@/types/database";
 
 interface CaixasDoDiaTabProps {
   caixas: CaixaEntregador[];

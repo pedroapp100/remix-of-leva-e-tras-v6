@@ -2,11 +2,12 @@ import { useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { PageContainer, MetricCard, DataTable, SearchInput, StatusBadge } from "@/components/shared";
 import type { Column } from "@/components/shared/DataTable";
-import type { Solicitacao, StatusSolicitacao } from "@/types/database";
+import type { Solicitacao } from "@/types/database";
 import { STATUS_SOLICITACAO_LABELS } from "@/types/database";
 import { TipoOperacaoBadge } from "@/components/shared/TipoOperacaoBadge";
-import { getClienteName } from "@/data/mockSolicitacoes";
-import { useGlobalStore } from "@/contexts/GlobalStore";
+
+import { useSolicitacoesByEntregador, useUpdateSolicitacao, useRotasBySolicitacaoIds } from "@/hooks/useSolicitacoes";
+import { useClientes } from "@/hooks/useClientes";
 import { useConcluirComCaixa } from "@/hooks/useConcluirComCaixa";
 import { DatePickerWithRange } from "@/components/shared/DatePickerWithRange";
 import type { DateRange } from "react-day-picker";
@@ -19,6 +20,7 @@ import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/comp
 import { toast } from "sonner";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { lazy, Suspense } from "react";
+import { useEntregadorId } from "@/hooks/useEntregadorId";
 
 const ViewSolicitacaoDialog = lazy(() =>
   import("@/pages/admin/solicitacoes/ViewSolicitacaoDialog").then((m) => ({ default: m.ViewSolicitacaoDialog }))
@@ -26,8 +28,6 @@ const ViewSolicitacaoDialog = lazy(() =>
 const ConciliacaoDialog = lazy(() =>
   import("@/pages/admin/solicitacoes/ConciliacaoDialog").then((m) => ({ default: m.ConciliacaoDialog }))
 );
-
-const ENTREGADOR_ID = "ent-001";
 
 const fmt = (v: number | null | undefined) =>
   v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
@@ -41,25 +41,27 @@ const STATUS_TABS_DRIVER = [
 ];
 
 export default function EntregadorSolicitacoesPage() {
+  const { entregadorId: ENTREGADOR_ID } = useEntregadorId();
   const { addNotification } = useNotifications();
-  const { solicitacoes, updateSolicitacao, getRotasBySolicitacao } = useGlobalStore();
+  const { data: solicitacoes = [] } = useSolicitacoesByEntregador(ENTREGADOR_ID ?? "");
+  const updateSolMut = useUpdateSolicitacao();
+  const solIds = useMemo(() => solicitacoes.map((s) => s.id), [solicitacoes]);
+  const { data: allRotas = [] } = useRotasBySolicitacaoIds(solIds);
+  const { data: clientes = [] } = useClientes();
+  const getRotasBySolicitacao = (solId: string) => allRotas.filter(r => r.solicitacao_id === solId);
   const concluirComCaixa = useConcluirComCaixa();
+  const getClienteNome = (id: string) => clientes.find((c) => c.id === id)?.nome ?? id;
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState("todas");
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [viewSolicitacao, setViewSolicitacao] = useState<Solicitacao | null>(null);
   const [conciliacaoTarget, setConciliacaoTarget] = useState<Solicitacao | null>(null);
 
-  const minhas = useMemo(
-    () => solicitacoes.filter((s) => s.entregador_id === ENTREGADOR_ID),
-    [solicitacoes]
-  );
-
   const filtered = useMemo(() => {
-    return minhas.filter((s) => {
+    return solicitacoes.filter((s) => {
       const matchSearch =
         s.codigo.toLowerCase().includes(search.toLowerCase()) ||
-        getClienteName(s.cliente_id).toLowerCase().includes(search.toLowerCase());
+        getClienteNome(s.cliente_id).toLowerCase().includes(search.toLowerCase());
       const matchTab = activeTab === "todas" || s.status === activeTab;
 
       let matchDate = true;
@@ -77,52 +79,41 @@ export default function EntregadorSolicitacoesPage() {
 
       return matchSearch && matchTab && matchDate;
     });
-  }, [minhas, search, activeTab, dateRange]);
+  }, [solicitacoes, search, activeTab, dateRange]);
 
   const metrics = useMemo(() => {
-    const aceitas = minhas.filter((s) => s.status === "aceita").length;
-    const emAndamento = minhas.filter((s) => s.status === "em_andamento").length;
+    const aceitas = solicitacoes.filter((s) => s.status === "aceita").length;
+    const emAndamento = solicitacoes.filter((s) => s.status === "em_andamento").length;
     const hoje = new Date().toISOString().slice(0, 10);
-    const concluidasHoje = minhas.filter(
+    const concluidasHoje = solicitacoes.filter(
       (s) => s.status === "concluida" && s.data_conclusao?.startsWith(hoje)
     ).length;
-    return { aceitas, emAndamento, concluidasHoje, total: minhas.length };
-  }, [minhas]);
+    return { aceitas, emAndamento, concluidasHoje, total: solicitacoes.length };
+  }, [solicitacoes]);
 
   const statusCounts: Record<string, number> = {
-    todas: minhas.length,
+    todas: solicitacoes.length,
     aceita: metrics.aceitas,
     em_andamento: metrics.emAndamento,
-    concluida: minhas.filter((s) => s.status === "concluida").length,
+    concluida: solicitacoes.filter((s) => s.status === "concluida").length,
   };
 
   const handleStart = (sol: Solicitacao) => {
-    updateSolicitacao(sol.id, (s) => ({
-      ...s,
-      status: "em_andamento" as StatusSolicitacao,
+    updateSolMut.mutate({ id: sol.id, patch: {
+      status: "em_andamento",
       data_inicio: new Date().toISOString(),
-      historico: [
-        ...s.historico,
-        {
-          tipo: "em_andamento",
-          status_anterior: "aceita",
-          status_novo: "em_andamento",
-          timestamp: new Date().toISOString(),
-          descricao: "Entregador iniciou a coleta",
-        },
-      ],
-    }));
+    } });
     toast.success("Corrida iniciada! Boa entrega! 🚀");
     addNotification({
       title: "Corrida iniciada",
-      message: `Entregador iniciou a corrida ${sol.codigo} — ${getClienteName(sol.cliente_id)}.`,
+      message: `Entregador iniciou a corrida ${sol.codigo} — ${getClienteNome(sol.cliente_id)}.`,
       type: "info",
       link: "/admin/solicitacoes",
     });
   };
 
-  const handleConcluir = (sol: Solicitacao) => {
-    const result = concluirComCaixa(sol.id);
+  const handleConcluir = async (sol: Solicitacao) => {
+    const result = await concluirComCaixa(sol.id);
     if (!result.success) {
       toast.error(result.error ?? "Erro ao concluir entrega.");
       return;
@@ -130,7 +121,7 @@ export default function EntregadorSolicitacoesPage() {
     toast.success("Entrega concluída com sucesso! ✅");
     addNotification({
       title: "Entrega concluída",
-      message: `Corrida ${sol.codigo} foi concluída e conciliada — ${getClienteName(sol.cliente_id)}.`,
+      message: `Corrida ${sol.codigo} foi concluída e conciliada — ${getClienteNome(sol.cliente_id)}.`,
       type: "success",
       link: "/admin/solicitacoes",
     });
@@ -200,7 +191,7 @@ export default function EntregadorSolicitacoesPage() {
     {
       key: "cliente_id",
       header: "Cliente",
-      cell: (r) => <span className="font-medium">{getClienteName(r.cliente_id)}</span>,
+      cell: (r) => <span className="font-medium">{getClienteNome(r.cliente_id)}</span>,
     },
     {
       key: "tipo_operacao",
@@ -284,7 +275,7 @@ export default function EntregadorSolicitacoesPage() {
                   <StatusBadge status={r.status} label={STATUS_SOLICITACAO_LABELS[r.status]} />
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="font-medium">{getClienteName(r.cliente_id)}</span>
+                  <span className="font-medium">{getClienteNome(r.cliente_id)}</span>
                   <TipoOperacaoBadge tipoOperacao={r.tipo_operacao} />
                 </div>
                 <div className="flex items-center justify-between text-sm text-muted-foreground">

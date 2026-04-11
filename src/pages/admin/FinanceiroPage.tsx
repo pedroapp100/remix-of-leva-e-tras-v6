@@ -1,13 +1,12 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { PageContainer, MetricCard } from "@/components/shared";
-import type { Despesa } from "@/types/database";
-import { MOCK_DESPESAS, MOCK_RECEITAS, MOCK_LIVRO_CAIXA, FLUXO_CAIXA_MENSAL, DESPESAS_POR_CATEGORIA } from "@/data/mockFinanceiro";
-import { MOCK_FATURAS } from "@/data/mockFaturas";
-import type { Receita } from "@/types/database";
+import type { LivroCaixaEntry } from "@/types/database";
+import { useDespesas, useReceitas, useCategorias } from "@/hooks/useFinanceiro";
+import { useFaturas } from "@/hooks/useFaturas";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { DollarSign, TrendingDown, Clock, CheckCircle, Receipt, BookOpen } from "lucide-react";
+import { DollarSign, TrendingDown, Clock, CheckCircle, Receipt, BookOpen, RefreshCw } from "lucide-react";
 import { formatCurrency, formatDateBR } from "@/lib/formatters";
 import { ExportDropdown } from "@/components/shared/ExportDropdown";
 import { exportCSV, exportPDF } from "@/lib/exportTable";
@@ -15,24 +14,73 @@ import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer,
 import { DespesasTab } from "./financeiro/DespesasTab";
 import { ReceitasTab } from "./financeiro/ReceitasTab";
 import { LivroCaixaTab } from "./financeiro/LivroCaixaTab";
+import { DespesasRecorrentesTab } from "./financeiro/DespesasRecorrentesTab";
 
 export default function FinanceiroPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [despesas, setDespesas] = useState<Despesa[]>(MOCK_DESPESAS);
-  const [receitas, setReceitas] = useState<Receita[]>(MOCK_RECEITAS);
+  const { data: despesas = [] } = useDespesas();
+  const { data: receitas = [] } = useReceitas();
+  const { data: allCategorias = [] } = useCategorias();
+  const { data: faturas = [] } = useFaturas();
   const activeFinTab = searchParams.get("tab") ?? "despesas";
+
+  const catMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    allCategorias.forEach((c) => { m[c.id] = c.nome; });
+    return m;
+  }, [allCategorias]);
+
+  const getCatNome = useCallback((catId: string | null) => (catId ? catMap[catId] : null) ?? "Sem categoria", [catMap]);
 
   const setActiveFinTab = (tab: string) => {
     setSearchParams(tab !== "despesas" ? { tab } : {}, { replace: true });
   };
 
-  const metrics = useMemo(() => {
-    const totalDespesas = despesas.reduce((s, d) => s + d.valor, 0);
-    const pendentes = despesas.filter((d) => d.status === "Pendente" || d.status === "Atrasado").reduce((s, d) => s + d.valor, 0);
-    const pagas = despesas.filter((d) => d.status === "Pago").reduce((s, d) => s + d.valor, 0);
-    const totalReceitas = receitas.reduce((s, r) => s + r.valor, 0);
-    return { totalDespesas, pendentes, pagas, totalReceitas };
-  }, [despesas]);
+  const CHART_FILLS = ["hsl(var(--primary))", "hsl(var(--chart-2))", "hsl(var(--chart-4))", "hsl(var(--chart-3))", "hsl(var(--chart-5))", "hsl(var(--muted-foreground))"];
+
+  // Single-pass: metrics + fluxo mensal + despesas por categoria
+  const { metrics, fluxoCaixaMensal, despesasPorCategoria } = useMemo(() => {
+    const now = new Date();
+    const monthBuckets: Record<string, { mes: string; receitas: number; despesas: number }> = {};
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const label = d.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }).replace(" de ", "/").replace(".", "");
+      monthBuckets[key] = { mes: label.charAt(0).toUpperCase() + label.slice(1), receitas: 0, despesas: 0 };
+    }
+
+    let totalDespesas = 0, pendentes = 0, pagas = 0;
+    const catGrouped: Record<string, number> = {};
+
+    for (const d of despesas) {
+      totalDespesas += d.valor;
+      if (d.status === "Pendente" || d.status === "Atrasado") pendentes += d.valor;
+      else if (d.status === "Pago") pagas += d.valor;
+
+      const mKey = d.vencimento?.slice(0, 7);
+      if (mKey && monthBuckets[mKey]) monthBuckets[mKey].despesas += d.valor;
+
+      const catNome = getCatNome(d.categoria_id);
+      catGrouped[catNome] = (catGrouped[catNome] ?? 0) + d.valor;
+    }
+
+    let totalReceitas = 0;
+    for (const r of receitas) {
+      totalReceitas += r.valor;
+      const mKey = r.data_recebimento?.slice(0, 7);
+      if (mKey && monthBuckets[mKey]) monthBuckets[mKey].receitas += r.valor;
+    }
+
+    return {
+      metrics: { totalDespesas, pendentes, pagas, totalReceitas },
+      fluxoCaixaMensal: Object.values(monthBuckets),
+      despesasPorCategoria: Object.entries(catGrouped).map(([categoria, valor], i) => ({
+        categoria, valor, fill: CHART_FILLS[i % CHART_FILLS.length],
+      })),
+    };
+  }, [despesas, receitas, getCatNome]);
+
+  const livroCaixaEntries: LivroCaixaEntry[] = [];
 
   return (
     <PageContainer
@@ -42,15 +90,15 @@ export default function FinanceiroPage() {
         <ExportDropdown
           onExportPDF={() => {
             const allData = [
-              ...despesas.map((d) => ["Despesa", d.descricao, d.categoria, d.fornecedor, formatDateBR(d.vencimento), formatCurrency(d.valor), d.status]),
-              ...receitas.map((r) => ["Receita", r.descricao, r.categoria, "", formatDateBR(r.data_recebimento), formatCurrency(r.valor), ""]),
+              ...despesas.map((d) => ["Despesa", d.descricao, getCatNome(d.categoria_id), d.fornecedor, formatDateBR(d.vencimento), formatCurrency(d.valor), d.status]),
+              ...receitas.map((r) => ["Receita", r.descricao, getCatNome(r.categoria_id), "", formatDateBR(r.data_recebimento), formatCurrency(r.valor), ""]),
             ];
             exportPDF({ title: "Financeiro", subtitle: "Despesas e Receitas", headers: ["Tipo", "Descrição", "Categoria", "Fornecedor", "Data", "Valor", "Status"], rows: allData, filename: "financeiro" });
           }}
           onExportExcel={() => {
             const allData = [
-              ...despesas.map((d) => ["Despesa", d.descricao, d.categoria, d.fornecedor, formatDateBR(d.vencimento), formatCurrency(d.valor), d.status]),
-              ...receitas.map((r) => ["Receita", r.descricao, r.categoria, "", formatDateBR(r.data_recebimento), formatCurrency(r.valor), ""]),
+              ...despesas.map((d) => ["Despesa", d.descricao, getCatNome(d.categoria_id), d.fornecedor, formatDateBR(d.vencimento), formatCurrency(d.valor), d.status]),
+              ...receitas.map((r) => ["Receita", r.descricao, getCatNome(r.categoria_id), "", formatDateBR(r.data_recebimento), formatCurrency(r.valor), ""]),
             ];
             exportCSV({ title: "Financeiro", headers: ["Tipo", "Descrição", "Categoria", "Fornecedor", "Data", "Valor", "Status"], rows: allData, filename: "financeiro" });
           }}
@@ -74,7 +122,7 @@ export default function FinanceiroPage() {
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={FLUXO_CAIXA_MENSAL} barGap={4}>
+              <BarChart data={fluxoCaixaMensal} barGap={4}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="mes" tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} />
                 <YAxis tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
@@ -99,7 +147,7 @@ export default function FinanceiroPage() {
             <ResponsiveContainer width="100%" height={260}>
               <PieChart>
                 <Pie
-                  data={DESPESAS_POR_CATEGORIA}
+                  data={despesasPorCategoria}
                   dataKey="valor"
                   nameKey="categoria"
                   cx="50%"
@@ -110,7 +158,7 @@ export default function FinanceiroPage() {
                   label={({ categoria, percent }) => `${categoria} ${(percent * 100).toFixed(0)}%`}
                   labelLine={false}
                 >
-                  {DESPESAS_POR_CATEGORIA.map((entry, index) => (
+                  {despesasPorCategoria.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.fill} />
                   ))}
                 </Pie>
@@ -135,18 +183,24 @@ export default function FinanceiroPage() {
               <TabsTrigger value="receitas" className="gap-1.5">
                 <Receipt className="h-4 w-4" /> Receitas
               </TabsTrigger>
+              <TabsTrigger value="recorrentes" className="gap-1.5">
+                <RefreshCw className="h-4 w-4" /> Recorrentes
+              </TabsTrigger>
               <TabsTrigger value="livro-caixa" className="gap-1.5">
                 <BookOpen className="h-4 w-4" /> Livro Caixa
               </TabsTrigger>
             </TabsList>
             <TabsContent value="despesas" className="mt-4">
-              <DespesasTab despesas={despesas} onUpdate={setDespesas} />
+              <DespesasTab despesas={despesas} />
             </TabsContent>
             <TabsContent value="receitas" className="mt-4">
-              <ReceitasTab receitas={receitas} onUpdate={setReceitas} faturas={MOCK_FATURAS} />
+              <ReceitasTab receitas={receitas} faturas={faturas} />
+            </TabsContent>
+            <TabsContent value="recorrentes" className="mt-4">
+              <DespesasRecorrentesTab />
             </TabsContent>
             <TabsContent value="livro-caixa" className="mt-4">
-              <LivroCaixaTab entries={MOCK_LIVRO_CAIXA} />
+              <LivroCaixaTab entries={livroCaixaEntries} />
             </TabsContent>
           </Tabs>
         </CardContent>

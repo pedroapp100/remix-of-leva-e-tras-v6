@@ -1,14 +1,14 @@
-import { lazy, Suspense } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
+import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
+import { QueryClient, QueryClientProvider, type Query } from "@tanstack/react-query";
+import { BrowserRouter, Route, Routes, Navigate, useLocation } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth, ROLE_REDIRECTS } from "@/contexts/AuthContext";
 import { ThemeProvider } from "@/contexts/ThemeProvider";
-import { UserStoreProvider } from "@/data/mockUsers";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { BrandedLoader } from "@/components/shared/BrandedLoader";
+import { toast } from "sonner";
 import Index from "./pages/Index";
 
 const ProtectedAppShell = lazy(() =>
@@ -57,10 +57,34 @@ const EntregadorCaixaPage = lazy(() => import("./pages/entregador/EntregadorCaix
 
 const NotFound = lazy(() => import("./pages/NotFound"));
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 2,
+      staleTime: 5 * 60_000,
+      refetchOnWindowFocus: false,
+    },
+    mutations: {
+      onError: (error: Error) => {
+        toast.error(error.message || "Erro ao salvar dados");
+      },
+    },
+  },
+});
 
 function RouteFallback() {
   return <BrandedLoader fullPage size="lg" text="Carregando..." />;
+}
+
+/** Wraps each page in its own ErrorBoundary so a crash in one page doesn't take down the whole app */
+function PageBoundary({ children }: { children: ReactNode }) {
+  return (
+    <ErrorBoundary>
+      <Suspense fallback={<RouteFallback />}>
+        {children}
+      </Suspense>
+    </ErrorBoundary>
+  );
 }
 
 function RootRedirect() {
@@ -70,17 +94,27 @@ function RootRedirect() {
   return <Navigate to={ROLE_REDIRECTS[role!] || "/admin"} replace />;
 }
 
+function RouteAnnouncer() {
+  const location = useLocation();
+  const [announcement, setAnnouncement] = useState("");
+  useEffect(() => {
+    const title = document.title;
+    setAnnouncement(title ? `Navegou para ${title}` : "Página carregada");
+  }, [location.pathname]);
+  return <div aria-live="polite" aria-atomic="true" role="status" className="sr-only">{announcement}</div>;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider>
       <TooltipProvider>
         <Toaster />
         <Sonner />
-        <BrowserRouter>
-          <UserStoreProvider>
+        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <AuthProvider>
               <ErrorBoundary>
                 <Suspense fallback={<RouteFallback />}>
+                  <RouteAnnouncer />
                   <Routes>
                   {/* Public */}
                   <Route path="/" element={<RootRedirect />} />
@@ -90,37 +124,37 @@ const App = () => (
 
                   {/* Admin */}
                   <Route path="/admin" element={<ProtectedAppShell allowedRoles={["admin"]}><AdminLayout /></ProtectedAppShell>}>
-                    <Route index element={<AdminDashboard />} />
-                    <Route path="solicitacoes" element={<SolicitacoesPage />} />
-                    <Route path="clientes" element={<ClientesPage />} />
-                    <Route path="entregadores" element={<EntregadoresPage />} />
-                    <Route path="entregas" element={<EntregasPage />} />
-                    <Route path="caixas-entregadores" element={<CaixasEntregadoresPage />} />
-                    <Route path="faturas" element={<FaturasPage />} />
-                    <Route path="financeiro" element={<FinanceiroPage />} />
-                    <Route path="relatorios" element={<RelatoriosPage />} />
-                    <Route path="logs" element={<LogsPage />} />
-                    <Route path="configuracoes" element={<SettingsPage />} />
+                    <Route index element={<PageBoundary><AdminDashboard /></PageBoundary>} />
+                    <Route path="solicitacoes" element={<PageBoundary><SolicitacoesPage /></PageBoundary>} />
+                    <Route path="clientes" element={<PageBoundary><ClientesPage /></PageBoundary>} />
+                    <Route path="entregadores" element={<PageBoundary><EntregadoresPage /></PageBoundary>} />
+                    <Route path="entregas" element={<PageBoundary><EntregasPage /></PageBoundary>} />
+                    <Route path="caixas-entregadores" element={<PageBoundary><CaixasEntregadoresPage /></PageBoundary>} />
+                    <Route path="faturas" element={<PageBoundary><FaturasPage /></PageBoundary>} />
+                    <Route path="financeiro" element={<PageBoundary><FinanceiroPage /></PageBoundary>} />
+                    <Route path="relatorios" element={<PageBoundary><RelatoriosPage /></PageBoundary>} />
+                    <Route path="logs" element={<PageBoundary><LogsPage /></PageBoundary>} />
+                    <Route path="configuracoes" element={<PageBoundary><SettingsPage /></PageBoundary>} />
                   </Route>
 
                   {/* Cliente */}
                   <Route path="/cliente" element={<ProtectedAppShell allowedRoles={["cliente"]}><ClientLayout /></ProtectedAppShell>}>
-                    <Route index element={<ClienteDashboard />} />
-                    <Route path="solicitacoes" element={<MinhasSolicitacoesPage />} />
-                    <Route path="financeiro" element={<ClienteFinanceiroPage />} />
-                    <Route path="simulador" element={<SimuladorClientePage />} />
-                    <Route path="perfil" element={<ClientePerfilPage />} />
+                    <Route index element={<PageBoundary><ClienteDashboard /></PageBoundary>} />
+                    <Route path="solicitacoes" element={<PageBoundary><MinhasSolicitacoesPage /></PageBoundary>} />
+                    <Route path="financeiro" element={<PageBoundary><ClienteFinanceiroPage /></PageBoundary>} />
+                    <Route path="simulador" element={<PageBoundary><SimuladorClientePage /></PageBoundary>} />
+                    <Route path="perfil" element={<PageBoundary><ClientePerfilPage /></PageBoundary>} />
                   </Route>
 
                   {/* Entregador */}
                   <Route path="/entregador" element={<ProtectedAppShell allowedRoles={["entregador"]}><DriverLayout /></ProtectedAppShell>}>
-                    <Route index element={<EntregadorDashboard />} />
-                    <Route path="solicitacoes" element={<EntregadorSolicitacoesPage />} />
-                    <Route path="corridas" element={<EntregadorCorridasPage />} />
-                    <Route path="historico" element={<EntregadorHistoricoPage />} />
-                    <Route path="financeiro" element={<EntregadorFinanceiroPage />} />
-                    <Route path="caixa" element={<EntregadorCaixaPage />} />
-                    <Route path="perfil" element={<EntregadorPerfilPage />} />
+                    <Route index element={<PageBoundary><EntregadorDashboard /></PageBoundary>} />
+                    <Route path="solicitacoes" element={<PageBoundary><EntregadorSolicitacoesPage /></PageBoundary>} />
+                    <Route path="corridas" element={<PageBoundary><EntregadorCorridasPage /></PageBoundary>} />
+                    <Route path="historico" element={<PageBoundary><EntregadorHistoricoPage /></PageBoundary>} />
+                    <Route path="financeiro" element={<PageBoundary><EntregadorFinanceiroPage /></PageBoundary>} />
+                    <Route path="caixa" element={<PageBoundary><EntregadorCaixaPage /></PageBoundary>} />
+                    <Route path="perfil" element={<PageBoundary><EntregadorPerfilPage /></PageBoundary>} />
                   </Route>
 
                     {/* Redirects for convenience */}
@@ -138,7 +172,6 @@ const App = () => (
                 </Suspense>
               </ErrorBoundary>
             </AuthProvider>
-          </UserStoreProvider>
         </BrowserRouter>
       </TooltipProvider>
     </ThemeProvider>

@@ -1,22 +1,10 @@
 import { Badge } from "@/components/ui/badge";
-import { MOCK_TIPOS_OPERACAO } from "@/data/mockSettings";
+import { useTiposOperacao } from "@/hooks/useSettings";
 import type { TipoOperacaoConfig } from "@/types/database";
 
-const tipoMap = new Map<string, TipoOperacaoConfig>(
-  MOCK_TIPOS_OPERACAO.map((t) => [t.id, t])
-);
-
-export function getTipoOperacaoConfig(id: string): TipoOperacaoConfig | undefined {
-  return tipoMap.get(id);
-}
-
-export function getTipoOperacaoLabel(id: string): string {
-  return tipoMap.get(id)?.nome ?? id;
-}
-
-export function getTipoOperacaoCor(id: string): string {
-  return tipoMap.get(id)?.cor ?? "#6b7280";
-}
+// Fallback helpers when called outside React (e.g. in column definitions — prefer using the component)
+export function getTipoOperacaoLabel(id: string): string { return id; }
+export function getTipoOperacaoCor(id: string): string { return "#6b7280"; }
 
 interface TipoOperacaoBadgeProps {
   tipoOperacao: string;
@@ -24,8 +12,10 @@ interface TipoOperacaoBadgeProps {
 }
 
 export function TipoOperacaoBadge({ tipoOperacao, className }: TipoOperacaoBadgeProps) {
-  const cor = getTipoOperacaoCor(tipoOperacao);
-  const label = getTipoOperacaoLabel(tipoOperacao);
+  const { data: tipos = [] } = useTiposOperacao();
+  const tipo = tipos.find((t) => t.id === tipoOperacao);
+  const cor = tipo?.cor ?? "#6b7280";
+  const label = tipo?.nome ?? tipoOperacao;
 
   return (
     <Badge

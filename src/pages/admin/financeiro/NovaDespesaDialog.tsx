@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,12 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { CurrencyInput } from "@/components/shared";
 import type { Despesa } from "@/types/database";
+import { useCategorias } from "@/hooks/useFinanceiro";
 import { toast } from "sonner";
-
-const CATEGORIAS = [
-  "Aluguel", "Combustível", "Manutenção", "Telecomunicações",
-  "Seguros", "Materiais", "Serviços", "Software", "Utilidades", "Marketing", "Outros",
-];
 
 interface NovaDespesaDialogProps {
   open: boolean;
@@ -21,8 +17,10 @@ interface NovaDespesaDialogProps {
 }
 
 export function NovaDespesaDialog({ open, onOpenChange, onSave }: NovaDespesaDialogProps) {
+  const { data: categorias = [] } = useCategorias();
+  const categsDespesa = categorias.filter((c) => c.tipo === "despesa" || c.tipo === "ambos");
   const [descricao, setDescricao] = useState("");
-  const [categoria, setCategoria] = useState("");
+  const [categoriaId, setCategoriaId] = useState("");
   const [fornecedor, setFornecedor] = useState("");
   const [vencimento, setVencimento] = useState("");
   const [valor, setValor] = useState(0);
@@ -30,7 +28,7 @@ export function NovaDespesaDialog({ open, onOpenChange, onSave }: NovaDespesaDia
 
   const resetForm = () => {
     setDescricao("");
-    setCategoria("");
+    setCategoriaId("");
     setFornecedor("");
     setVencimento("");
     setValor(0);
@@ -38,7 +36,7 @@ export function NovaDespesaDialog({ open, onOpenChange, onSave }: NovaDespesaDia
   };
 
   const handleSave = () => {
-    if (!descricao.trim() || !categoria || !fornecedor.trim() || !vencimento || valor <= 0) {
+    if (!descricao.trim() || !categoriaId || !fornecedor.trim() || !vencimento || valor <= 0) {
       toast.error("Preencha todos os campos obrigatórios.");
       return;
     }
@@ -47,7 +45,7 @@ export function NovaDespesaDialog({ open, onOpenChange, onSave }: NovaDespesaDia
     const newDespesa: Despesa = {
       id: `desp-${Date.now()}`,
       descricao: descricao.trim(),
-      categoria,
+      categoria_id: categoriaId,
       fornecedor: fornecedor.trim(),
       vencimento,
       valor,
@@ -70,6 +68,7 @@ export function NovaDespesaDialog({ open, onOpenChange, onSave }: NovaDespesaDia
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Nova Despesa</DialogTitle>
+        <DialogDescription className="sr-only">.</DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 py-2">
@@ -81,11 +80,11 @@ export function NovaDespesaDialog({ open, onOpenChange, onSave }: NovaDespesaDia
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
               <Label>Categoria *</Label>
-              <Select value={categoria} onValueChange={setCategoria}>
+              <Select value={categoriaId} onValueChange={setCategoriaId}>
                 <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                 <SelectContent>
-                  {CATEGORIAS.map((c) => (
-                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                  {categsDespesa.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

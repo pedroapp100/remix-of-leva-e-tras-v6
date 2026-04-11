@@ -4,8 +4,8 @@ import { PageContainer, MetricCard, DataTable, SearchInput, StatusBadge } from "
 import type { Column } from "@/components/shared/DataTable";
 import type { Fatura, StatusGeral } from "@/types/database";
 import { STATUS_GERAL_LABELS } from "@/types/database";
-import { STATUS_GERAL_VARIANT, TIPO_FATURAMENTO_LABELS } from "@/data/mockFaturas";
-import { useGlobalStore } from "@/contexts/GlobalStore";
+import { STATUS_GERAL_VARIANT, TIPO_FATURAMENTO_LABELS, formatCurrency, formatDateBR } from "@/lib/formatters";
+import { useFaturas } from "@/hooks/useFaturas";
 import { DatePickerWithRange } from "@/components/shared/DatePickerWithRange";
 import type { DateRange } from "react-day-picker";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +14,6 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { FileText, AlertTriangle, CheckCircle, Clock, Eye, Pencil, DollarSign, X } from "lucide-react";
-import { formatCurrency, formatDateBR } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 import { ExportDropdown } from "@/components/shared/ExportDropdown";
 import { exportCSV, exportPDF } from "@/lib/exportTable";
@@ -25,7 +24,7 @@ type TabFilter = "ativas" | "finalizadas";
 
 export default function FaturasPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { faturas, updateFatura } = useGlobalStore();
+  const { data: faturas = [] } = useFaturas();
   const [search, setSearch] = useState(searchParams.get("q") ?? "");
   const [activeTab, setActiveTab] = useState<TabFilter>((searchParams.get("tab") as TabFilter) ?? "ativas");
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
@@ -39,16 +38,19 @@ export default function FaturasPage() {
     setSearchParams(params, { replace: true });
   }, [search, activeTab, setSearchParams]);
 
-  // ── Metrics ──
+  // ── Single-pass metrics ──
   const metrics = useMemo(() => {
-    const abertas = faturas.filter((f) => f.status_geral === "Aberta").length;
-    const vencidas = faturas.filter((f) => f.status_geral === "Vencida");
-    const valorVencido = vencidas.reduce((s, f) => s + (f.saldo_liquido ?? 0), 0);
-    const finalizadas = faturas.filter((f) => f.status_geral === "Finalizada").length;
-    const saldoTotal = faturas
-      .filter((f) => f.status_geral !== "Finalizada")
-      .reduce((s, f) => s + (f.saldo_liquido ?? 0), 0);
-    return { abertas, vencidas: vencidas.length, valorVencido, finalizadas, saldoTotal };
+    let abertas = 0, vencidas = 0, valorVencido = 0, finalizadas = 0, saldoTotal = 0;
+
+    for (const f of faturas) {
+      const st = f.status_geral;
+      if (st === "Aberta") abertas++;
+      else if (st === "Vencida") { vencidas++; valorVencido += f.saldo_liquido ?? 0; }
+      else if (st === "Finalizada") { finalizadas++; continue; }
+      saldoTotal += f.saldo_liquido ?? 0;
+    }
+
+    return { abertas, vencidas, valorVencido, finalizadas, saldoTotal, ativas: abertas + vencidas };
   }, [faturas]);
 
   // ── Filtered data ──
@@ -246,13 +248,13 @@ export default function FaturasPage() {
               <TabsTrigger value="ativas" className="gap-1.5">
                 <FileText className="h-4 w-4" /> Ativas
                 <Badge variant="secondary" className="ml-1 text-xs h-5 px-1.5">
-                  {faturas.filter((f) => f.status_geral !== "Finalizada").length}
+                  {metrics.ativas}
                 </Badge>
               </TabsTrigger>
               <TabsTrigger value="finalizadas" className="gap-1.5">
                 <CheckCircle className="h-4 w-4" /> Finalizadas
                 <Badge variant="secondary" className="ml-1 text-xs h-5 px-1.5">
-                  {faturas.filter((f) => f.status_geral === "Finalizada").length}
+                  {metrics.finalizadas}
                 </Badge>
               </TabsTrigger>
             </TabsList>
@@ -293,10 +295,6 @@ export default function FaturasPage() {
           fatura={selectedFatura}
           open={!!selectedFatura}
           onOpenChange={(open) => !open && setSelectedFatura(null)}
-          onFaturaUpdate={(updated) => {
-            updateFatura(updated.id, () => updated);
-            setSelectedFatura(updated);
-          }}
         />
       </Suspense>
     </PageContainer>

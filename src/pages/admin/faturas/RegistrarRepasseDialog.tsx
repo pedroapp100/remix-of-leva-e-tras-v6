@@ -15,7 +15,7 @@ interface Props {
   fatura: Fatura;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onConfirm: (valor: number, observacao: string) => void;
+  onConfirm: (valor: number, observacao: string) => Promise<void> | void;
 }
 
 export function RegistrarRepasseDialog({ fatura, open, onOpenChange, onConfirm }: Props) {
@@ -24,15 +24,16 @@ export function RegistrarRepasseDialog({ fatura, open, onOpenChange, onConfirm }
   const [observacao, setObservacao] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (valor <= 0) return;
     setSubmitting(true);
-    setTimeout(() => {
-      onConfirm(valor, observacao);
-      setSubmitting(false);
+    try {
+      await onConfirm(valor, observacao);
       setValor(0);
       setObservacao("");
-    }, 400);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (

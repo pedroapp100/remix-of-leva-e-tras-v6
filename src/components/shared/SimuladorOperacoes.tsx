@@ -7,13 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Calculator, MapPin, Zap, RotateCcw, Clock, AlertTriangle, CheckCircle2, Info, Plus, Trash2 } from "lucide-react";
-import { MOCK_BAIRROS, MOCK_REGIOES, MOCK_TABELA_PRECOS, MOCK_TAXAS_EXTRAS, MOCK_CLIENTES_SELECT, MOCK_TIPOS_OPERACAO } from "@/data/mockSettings";
+import { useBairros, useRegioes, useTiposOperacao, useTaxasExtras } from "@/hooks/useSettings";
+import { useClientes, useTabelaPrecos } from "@/hooks/useClientes";
 import type { TabelaPrecoCliente } from "@/types/database";
 
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-
-// Tipos de operação dinâmicos — apenas ativos
-const TIPOS_ATIVOS = MOCK_TIPOS_OPERACAO.filter((t) => t.ativo);
 
 interface RotaSimulada {
   id: string;
@@ -28,8 +26,18 @@ interface SimuladorOperacoesProps {
 }
 
 export function SimuladorOperacoes({ clienteId: fixedClienteId, showClienteSelector = false }: SimuladorOperacoesProps) {
-  const [selectedCliente, setSelectedCliente] = useState(fixedClienteId || MOCK_CLIENTES_SELECT[0]?.id || "");
-  const clienteId = fixedClienteId || selectedCliente;
+  const { data: clientes = [] } = useClientes();
+  const { data: bairros = [] } = useBairros();
+  const { data: regioes = [] } = useRegioes();
+  const { data: tiposOperacao = [] } = useTiposOperacao();
+  const { data: taxasExtras = [] } = useTaxasExtras();
+
+  const TIPOS_ATIVOS = useMemo(() => tiposOperacao.filter((t) => t.ativo), [tiposOperacao]);
+
+  const [selectedCliente, setSelectedCliente] = useState(fixedClienteId || "");
+  const clienteId = fixedClienteId || selectedCliente || clientes[0]?.id || "";
+
+  const { data: tabelaPrecos = [] } = useTabelaPrecos(clienteId);
 
   const [tipoOperacao, setTipoOperacao] = useState(TIPOS_ATIVOS[0]?.id ?? "");
   const [incluirUrgencia, setIncluirUrgencia] = useState(false);
@@ -55,7 +63,7 @@ export function SimuladorOperacoes({ clienteId: fixedClienteId, showClienteSelec
 
   // Hierarchical price lookup
   const findPrecoRegra = (bairroId: string): TabelaPrecoCliente | null => {
-    const clientePrecos = MOCK_TABELA_PRECOS.filter((p) => p.cliente_id === clienteId && p.ativo);
+    const clientePrecos = tabelaPrecos.filter((p) => p.ativo);
 
     // 1. Bairro + tipo específico
     let match = clientePrecos.find(
@@ -64,7 +72,7 @@ export function SimuladorOperacoes({ clienteId: fixedClienteId, showClienteSelec
     if (match) return match;
 
     // 2. Região + tipo
-    const bairro = MOCK_BAIRROS.find((b) => b.id === bairroId);
+    const bairro = bairros.find((b) => b.id === bairroId);
     if (bairro) {
       match = clientePrecos.find(
         (p) =>
@@ -90,9 +98,9 @@ export function SimuladorOperacoes({ clienteId: fixedClienteId, showClienteSelec
       .filter((r) => r.bairroId)
       .map((rota) => {
         const regra = findPrecoRegra(rota.bairroId);
-        const bairro = MOCK_BAIRROS.find((b) => b.id === rota.bairroId);
+        const bairro = bairros.find((b) => b.id === rota.bairroId);
         const bairroNome = bairro?.nome || "—";
-        const regiao = bairro ? MOCK_REGIOES.find((r) => r.id === bairro.region_id) : null;
+        const regiao = bairro ? regioes.find((r) => r.id === bairro.region_id) : null;
 
         if (!regra) {
           return {
@@ -140,7 +148,7 @@ export function SimuladorOperacoes({ clienteId: fixedClienteId, showClienteSelec
         taxaUrgencia = regra?.taxa_urgencia || 0;
       }
       if (!taxaUrgencia) {
-        const taxaUrgConfig = MOCK_TAXAS_EXTRAS.find((t) => t.nome.toLowerCase().includes("urgência") && t.ativo);
+        const taxaUrgConfig = taxasExtras.find((t) => t.nome.toLowerCase().includes("urgência") && t.ativo);
         taxaUrgencia = taxaUrgConfig?.valor_padrao || 0;
       }
     }
@@ -152,7 +160,7 @@ export function SimuladorOperacoes({ clienteId: fixedClienteId, showClienteSelec
       total: subtotalRotas + taxaUrgencia,
       temRotas: rotasCalc.length > 0,
     };
-  }, [rotas, tipoOperacao, incluirUrgencia, clienteId]);
+  }, [rotas, tipoOperacao, incluirUrgencia, clienteId, tabelaPrecos, bairros, regioes, taxasExtras]);
 
   const resetForm = () => {
     setTipoOperacao(TIPOS_ATIVOS[0]?.id ?? "");
@@ -183,7 +191,7 @@ export function SimuladorOperacoes({ clienteId: fixedClienteId, showClienteSelec
                   <SelectValue placeholder="Selecione o cliente" />
                 </SelectTrigger>
                 <SelectContent>
-                  {MOCK_CLIENTES_SELECT.map((c) => (
+                  {clientes.map((c) => (
                     <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
                   ))}
                 </SelectContent>
@@ -213,7 +221,7 @@ export function SimuladorOperacoes({ clienteId: fixedClienteId, showClienteSelec
               })}
             </div>
             {(() => {
-              const tipoAtual = TIPOS_ATIVOS.find((t) => t.id === tipoOperacao);
+              const tipoAtual = tiposOperacao.find((t) => t.id === tipoOperacao);
               if (!tipoAtual) return null;
               const diasLabel = tipoAtual.dias_semana.length > 0
                 ? tipoAtual.dias_semana.map((d) => d.charAt(0).toUpperCase() + d.slice(1)).join(", ")
@@ -260,8 +268,8 @@ export function SimuladorOperacoes({ clienteId: fixedClienteId, showClienteSelec
                       <SelectValue placeholder="Selecione o bairro de destino" />
                     </SelectTrigger>
                     <SelectContent>
-                      {MOCK_BAIRROS.map((b) => {
-                        const reg = MOCK_REGIOES.find((r) => r.id === b.region_id);
+                      {bairros.map((b) => {
+                        const reg = regioes.find((r) => r.id === b.region_id);
                         return (
                           <SelectItem key={b.id} value={b.id}>
                             {b.nome} {reg ? `(${reg.name})` : ""}

@@ -3,11 +3,12 @@ import { useSearchParams } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { PageContainer, MetricCard, DataTable, SearchInput, StatusBadge, PermissionGuard } from "@/components/shared";
 import type { Column } from "@/components/shared/DataTable";
-import type { Solicitacao, StatusSolicitacao, Rota } from "@/types/database";
+import type { Solicitacao, StatusSolicitacao } from "@/types/database";
 import { STATUS_SOLICITACAO_LABELS } from "@/types/database";
 import { TipoOperacaoBadge } from "@/components/shared/TipoOperacaoBadge";
-import { getClienteName, getEntregadorName, STATUS_TABS } from "@/data/mockSolicitacoes";
-import { useGlobalStore } from "@/contexts/GlobalStore";
+import { useSolicitacoes, useSolicitacoesPageable, useUpdateSolicitacao, useCreateSolicitacaoWithRotas, useRotasBySolicitacaoIds } from "@/hooks/useSolicitacoes";
+import { useClientes } from "@/hooks/useClientes";
+import { useEntregadores } from "@/hooks/useEntregadores";
 import { useConcluirComCaixa } from "@/hooks/useConcluirComCaixa";
 import { DatePickerWithRange } from "@/components/shared/DatePickerWithRange";
 import type { DateRange } from "react-day-picker";
@@ -16,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, ClipboardList, Clock, CheckCircle, Truck, Eye, UserPlus, Play, X, Trash2, Pencil, CheckCheck, Calculator, ClipboardCheck, History, ArrowLeftRight } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { SimuladorOperacoes } from "@/components/shared/SimuladorOperacoes";
 import { toast } from "sonner";
 import { useNotifications } from "@/contexts/NotificationContext";
@@ -43,14 +44,71 @@ const fmtDate = (d: string) => new Date(d).toLocaleDateString("pt-BR");
 
 export default function SolicitacoesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { solicitacoes, addSolicitacao, updateSolicitacao, getRotasBySolicitacao, addPagamentos } = useGlobalStore();
+  const { data: solicitacoes = [] } = useSolicitacoes();
+  const updateSolMut = useUpdateSolicitacao();
+  const createSolMut = useCreateSolicitacaoWithRotas();
+  const { data: clientes = [] } = useClientes();
+  const { data: entregadores = [] } = useEntregadores();
   const concluirComCaixa = useConcluirComCaixa();
   const { addNotification } = useNotifications();
+
+  const getClienteNome = (id: string) => clientes.find((c) => c.id === id)?.nome ?? id;
+  const getEntregadorNome = (id: string | null | undefined) => !id ? "—" : (entregadores.find((e) => e.id === id)?.nome ?? id);
+  const STATUS_TABS = [
+    { value: "todas", label: "Todas" },
+    { value: "pendente", label: "Pendentes" },
+    { value: "aceita", label: "Aceitas" },
+    { value: "em_andamento", label: "Em Andamento" },
+    { value: "concluida", label: "Concluídas" },
+    { value: "cancelada", label: "Canceladas" },
+    { value: "rejeitada", label: "Rejeitadas" },
+  ] as const;
 
   // Initialize state from URL params
   const [search, setSearch] = useState(searchParams.get("q") ?? "");
   const [activeTab, setActiveTab] = useState<string>(searchParams.get("tab") ?? "todas");
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
+
+  // Server-side pagination state
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 25;
+
+  // Reset to page 0 whenever filters change
+  useEffect(() => { setPage(0); }, [search, activeTab, dateRange]);
+
+  // Compute matched cliente IDs for name search (client-side lookup from cached list)
+  const matchedClienteIds = useMemo(() => {
+    if (!search.trim() || clientes.length === 0) return [];
+    return clientes
+      .filter((c) => c.nome.toLowerCase().includes(search.toLowerCase()))
+      .map((c) => c.id);
+  }, [search, clientes]);
+
+  // Default 90-day window (same as useSolicitacoes) — overridden by user's date picker
+  const defaultDateFrom = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 90);
+    return d.toISOString().slice(0, 10);
+  }, []);
+
+  const dateFrom = dateRange?.from ? dateRange.from.toISOString().slice(0, 10) : defaultDateFrom;
+  const dateTo = dateRange?.to ? dateRange.to.toISOString().slice(0, 10) : undefined;
+
+  // Server-side paginated table data
+  const { data: pagedResult, isFetching: isTableFetching } = useSolicitacoesPageable({
+    page,
+    pageSize: PAGE_SIZE,
+    status: activeTab,
+    search: search.trim() || undefined,
+    clienteIds: matchedClienteIds.length > 0 ? matchedClienteIds : undefined,
+    dateFrom,
+    dateTo,
+  });
+
+  // Rotas scoped to current page's solicitation IDs (max 25 at a time)
+  const pagedSolIds = useMemo(() => pagedResult?.data.map((s) => s.id) ?? [], [pagedResult?.data]);
+  const { data: pagedRotas = [] } = useRotasBySolicitacaoIds(pagedSolIds);
+  const getRotasBySolicitacao = (solId: string) => pagedRotas.filter(r => r.solicitacao_id === solId);
 
   // Sync state → URL
   useEffect(() => {
@@ -70,64 +128,41 @@ export default function SolicitacoesPage() {
   const [simuladorOpen, setSimuladorOpen] = useState(false);
   const [adminConciliacaoTarget, setAdminConciliacaoTarget] = useState<Solicitacao | null>(null);
 
-  const filtered = useMemo(() => {
-    return solicitacoes.filter((s) => {
-      const matchSearch = s.codigo.toLowerCase().includes(search.toLowerCase()) ||
-        getClienteName(s.cliente_id).toLowerCase().includes(search.toLowerCase());
-      const matchTab = activeTab === "todas" || s.status === activeTab;
-      
-      // Date range filter
-      let matchDate = true;
-      if (dateRange?.from) {
-        const solDate = new Date(s.data_solicitacao);
-        const from = new Date(dateRange.from);
-        from.setHours(0, 0, 0, 0);
-        matchDate = solDate >= from;
-        if (dateRange.to) {
-          const to = new Date(dateRange.to);
-          to.setHours(23, 59, 59, 999);
-          matchDate = matchDate && solDate <= to;
+  // useSolicitacoes (90-day windowed cache) is used only for metrics, tab counts, and code generation.
+  // The table itself is powered by useSolicitacoesPageable (server-side paginated).
+
+  // Single-pass metrics + status counts
+  const { metrics, statusCounts } = useMemo(() => {
+    const hoje = new Date().toISOString().slice(0, 10);
+    const counts: Record<string, number> = { todas: 0, pendente: 0, aceita: 0, em_andamento: 0, concluida: 0, cancelada: 0, rejeitada: 0 };
+    let concluidasHoje = 0;
+    let tempoTotal = 0;
+    let tempoCount = 0;
+
+    for (const s of solicitacoes) {
+      counts.todas++;
+      counts[s.status] = (counts[s.status] ?? 0) + 1;
+
+      if (s.status === "concluida") {
+        if (s.data_conclusao?.startsWith(hoje)) concluidasHoje++;
+        if (s.data_inicio && s.data_conclusao) {
+          tempoTotal += (new Date(s.data_conclusao).getTime() - new Date(s.data_inicio).getTime()) / 60000;
+          tempoCount++;
         }
       }
-      
-      return matchSearch && matchTab && matchDate;
-    });
-  }, [solicitacoes, search, activeTab, dateRange]);
+    }
 
-  // Dynamic metrics
-  const metrics = useMemo(() => {
-    const pendentes = solicitacoes.filter((s) => s.status === "pendente").length;
-    const aceitas = solicitacoes.filter((s) => s.status === "aceita").length;
-    const emAndamento = solicitacoes.filter((s) => s.status === "em_andamento").length;
-    
-    const hoje = new Date().toISOString().slice(0, 10);
-    const concluidasHoje = solicitacoes.filter((s) => s.status === "concluida" && s.data_conclusao?.startsWith(hoje)).length;
-    
-    // Tempo médio dinâmico (em minutos)
-    const concluidas = solicitacoes.filter((s) => s.status === "concluida" && s.data_inicio && s.data_conclusao);
     let tempoMedio = "—";
-    if (concluidas.length > 0) {
-      const totalMin = concluidas.reduce((sum, s) => {
-        const inicio = new Date(s.data_inicio!).getTime();
-        const fim = new Date(s.data_conclusao!).getTime();
-        return sum + (fim - inicio) / 60000;
-      }, 0);
-      const avg = Math.round(totalMin / concluidas.length);
+    if (tempoCount > 0) {
+      const avg = Math.round(tempoTotal / tempoCount);
       tempoMedio = avg >= 60 ? `${Math.floor(avg / 60)}h${avg % 60 > 0 ? String(avg % 60).padStart(2, "0") : ""}` : `${avg}min`;
     }
 
-    return { pendentes, aceitas, emAndamento, concluidasHoje, tempoMedio };
+    return {
+      metrics: { pendentes: counts.pendente, aceitas: counts.aceita, emAndamento: counts.em_andamento, concluidasHoje, tempoMedio },
+      statusCounts: counts,
+    };
   }, [solicitacoes]);
-
-  const statusCounts: Record<string, number> = {
-    todas: solicitacoes.length,
-    pendente: metrics.pendentes,
-    aceita: metrics.aceitas,
-    em_andamento: metrics.emAndamento,
-    concluida: solicitacoes.filter((s) => s.status === "concluida").length,
-    cancelada: solicitacoes.filter((s) => s.status === "cancelada").length,
-    rejeitada: solicitacoes.filter((s) => s.status === "rejeitada").length,
-  };
 
   // Actions
   const handleLaunch = (data: { clienteId: string; tipoOperacao: string; tipoColeta?: string; pontoColeta: string; entregadorId?: string; dataRetroativa?: string; retroativoConcluida?: boolean; rotas: { id?: string; bairro_destino_id?: string; responsavel?: string; telefone?: string; observacoes?: string; receber_do_cliente?: boolean; valor_a_receber?: number; taxa_resolvida: number | null; taxas_extras?: { nome: string; valor: number }[] }[] }) => {
@@ -135,18 +170,22 @@ export default function SolicitacoesPage() {
     const dateForCode = data.dataRetroativa ? data.dataRetroativa.slice(0, 10) : new Date().toISOString().slice(0, 10);
     const codigo = `LT-${dateForCode.replace(/-/g, "")}-${String(solicitacoes.length + 1).padStart(5, "0")}`;
     
-    const valorTotalTaxas = data.rotas.reduce((sum, r) => {
-      const taxa = r.taxa_resolvida ?? 0;
-      const extras = (r.taxas_extras ?? []).reduce((s, e) => s + e.valor, 0);
-      return sum + taxa + extras;
-    }, 0);
-
-    const solId = `sol-${Date.now()}`;
     const isRetroativoConcluida = !!data.retroativoConcluida;
 
-    const novasRotas: Rota[] = data.rotas.map((r, idx) => ({
-      id: r.id || `rota-${Date.now()}-${idx}`,
-      solicitacao_id: solId,
+    // Determine status and dates based on retroativoConcluida
+    let status: StatusSolicitacao = data.entregadorId ? "aceita" : "pendente";
+    let dataInicio: string | null = null;
+    let dataConclusao: string | null = null;
+
+    if (isRetroativoConcluida) {
+      status = "concluida";
+      const baseDate = new Date(now);
+      dataInicio = new Date(baseDate.getTime() + 30 * 60000).toISOString();
+      dataConclusao = new Date(baseDate.getTime() + 60 * 60000).toISOString();
+    }
+
+    const rotaInserts = data.rotas.map((r) => ({
+      solicitacao_id: "", // will be set by hook
       bairro_destino_id: r.bairro_destino_id || "",
       responsavel: r.responsavel || "",
       telefone: r.telefone || "",
@@ -158,79 +197,56 @@ export default function SolicitacoesPage() {
       status: isRetroativoConcluida ? "concluida" as const : "ativa" as const,
     }));
 
-    // Determine status and dates based on retroativoConcluida
-    let status: StatusSolicitacao = data.entregadorId ? "aceita" : "pendente";
-    let dataInicio: string | null = null;
-    let dataConclusao: string | null = null;
-    const historico: any[] = [
-      { tipo: "criacao", timestamp: now, descricao: "Solicitação criada (retroativo)" },
-    ];
-
-    if (isRetroativoConcluida) {
-      status = "concluida";
-      // Simulate: started 30min after creation, concluded 60min after
-      const baseDate = new Date(now);
-      dataInicio = new Date(baseDate.getTime() + 30 * 60000).toISOString();
-      dataConclusao = new Date(baseDate.getTime() + 60 * 60000).toISOString();
-      if (data.entregadorId) {
-        historico.push({ tipo: "aceita", status_anterior: "pendente", status_novo: "aceita", timestamp: now, descricao: `Atribuída a ${getEntregadorName(data.entregadorId)}` });
-      }
-      historico.push({ tipo: "em_andamento", status_anterior: "aceita", status_novo: "em_andamento", timestamp: dataInicio, descricao: "Entregador iniciou coleta" });
-      historico.push({ tipo: "concluida", status_anterior: "em_andamento", status_novo: "concluida", timestamp: dataConclusao, descricao: "Entrega concluída (retroativo)" });
-    } else {
-      if (data.entregadorId) {
-        historico.push({ tipo: "aceita", status_anterior: "pendente", status_novo: "aceita", timestamp: now, descricao: `Atribuída a ${getEntregadorName(data.entregadorId)}` });
-      }
-    }
-
-    const newSol: Solicitacao = {
-      id: solId, codigo, cliente_id: data.clienteId,
-      entregador_id: data.entregadorId || null,
-      status,
-      tipo_operacao: data.tipoOperacao as Solicitacao["tipo_operacao"],
-      ponto_coleta: data.pontoColeta, data_solicitacao: now, data_inicio: dataInicio, data_conclusao: dataConclusao,
-      valor_total_taxas: valorTotalTaxas, valor_total_repasse: null, justificativa: null,
-      retroativo: !!data.dataRetroativa,
-      historico,
-      created_at: now, updated_at: new Date().toISOString(),
-    };
-    addSolicitacao(newSol, novasRotas);
-    toast.success(`Solicitação ${codigo} criada!`);
-    if (data.entregadorId) {
-      addNotification({
-        title: "Nova corrida atribuída",
-        message: `Solicitação ${codigo} foi atribuída a ${getEntregadorName(data.entregadorId)}.`,
-        type: "info",
-        link: "/entregador/solicitacoes",
-      });
-    }
+    createSolMut.mutate({
+      sol: {
+        codigo,
+        cliente_id: data.clienteId,
+        entregador_id: data.entregadorId || null,
+        status,
+        tipo_operacao: data.tipoOperacao,
+        ponto_coleta: data.pontoColeta,
+        data_solicitacao: now,
+        data_inicio: dataInicio,
+        data_conclusao: dataConclusao,
+        justificativa: null,
+        retroativo: !!data.dataRetroativa,
+      },
+      rotas: rotaInserts,
+    }, {
+      onSuccess: () => {
+        toast.success(`Solicitação ${codigo} criada!`);
+        if (data.entregadorId) {
+          addNotification({
+            title: "Nova corrida atribuída",
+            message: `Solicitação ${codigo} foi atribuída a ${getEntregadorNome(data.entregadorId)}.`,
+            type: "info",
+            link: "/entregador/solicitacoes",
+          });
+        }
+      },
+      onError: (err) => toast.error(`Erro ao criar solicitação: ${err.message}`),
+    });
   };
 
   const handleAssign = (solId: string, entregadorId: string) => {
     const sol = solicitacoes.find((s) => s.id === solId);
-    updateSolicitacao(solId, (s) => ({
-      ...s, entregador_id: entregadorId, status: "aceita" as StatusSolicitacao,
-      historico: [...s.historico, { tipo: "aceita", status_anterior: s.status, status_novo: "aceita", timestamp: new Date().toISOString(), descricao: `Atribuída a ${getEntregadorName(entregadorId)}` }],
-    }));
+    updateSolMut.mutate({ id: solId, patch: { entregador_id: entregadorId, status: "aceita" } });
     toast.success("Entregador atribuído!");
     addNotification({
       title: "Nova corrida atribuída",
-      message: `Solicitação ${sol?.codigo ?? solId} foi atribuída a ${getEntregadorName(entregadorId)}.`,
+      message: `Solicitação ${sol?.codigo ?? solId} foi atribuída a ${getEntregadorNome(entregadorId)}.`,
       type: "info",
       link: "/entregador/solicitacoes",
     });
   };
 
   const handleStartDelivery = (sol: Solicitacao) => {
-    updateSolicitacao(sol.id, (s) => ({
-      ...s, status: "em_andamento" as StatusSolicitacao, data_inicio: new Date().toISOString(),
-      historico: [...s.historico, { tipo: "em_andamento", status_anterior: "aceita", status_novo: "em_andamento", timestamp: new Date().toISOString(), descricao: "Entregador iniciou coleta" }],
-    }));
+    updateSolMut.mutate({ id: sol.id, patch: { status: "em_andamento", data_inicio: new Date().toISOString() } });
     toast.success("Entrega iniciada!");
   };
 
-  const handleConcluir = (sol: Solicitacao) => {
-    const result = concluirComCaixa(sol.id);
+  const handleConcluir = async (sol: Solicitacao) => {
+    const result = await concluirComCaixa(sol.id);
     if (!result.success) {
       toast.error(result.error ?? "Erro ao concluir solicitação.");
       return;
@@ -242,10 +258,7 @@ export default function SolicitacoesPage() {
     if (!justifyTarget) return;
     const { sol, action } = justifyTarget;
     const newStatus = action === "cancelar" ? "cancelada" : "rejeitada";
-    updateSolicitacao(sol.id, (s) => ({
-      ...s, status: newStatus as StatusSolicitacao, justificativa,
-      historico: [...s.historico, { tipo: newStatus, status_anterior: s.status, status_novo: newStatus, timestamp: new Date().toISOString(), descricao: `${newStatus === "cancelada" ? "Cancelada" : "Rejeitada"}: ${justificativa}` }],
-    }));
+    updateSolMut.mutate({ id: sol.id, patch: { status: newStatus, justificativa } });
     toast.success(`Solicitação ${newStatus}!`);
     setJustifyTarget(null);
   };
@@ -254,24 +267,13 @@ export default function SolicitacoesPage() {
     if (!transferTarget) return;
     const sol = transferTarget;
     const previousEntregadorId = sol.entregador_id;
-    const previousName = getEntregadorName(previousEntregadorId);
-    const newName = getEntregadorName(newEntregadorId);
-    updateSolicitacao(sol.id, (s) => ({
-      ...s,
+    const previousName = getEntregadorNome(previousEntregadorId);
+    const newName = getEntregadorNome(newEntregadorId);
+    updateSolMut.mutate({ id: sol.id, patch: {
       entregador_id: newEntregadorId,
-      status: "aceita" as StatusSolicitacao,
-      data_inicio: s.status === "em_andamento" ? null : s.data_inicio,
-      historico: [
-        ...s.historico,
-        {
-          tipo: "aceita",
-          status_anterior: s.status,
-          status_novo: "aceita",
-          timestamp: new Date().toISOString(),
-          descricao: `Transferida de ${previousName} para ${newName}: ${transferMotivo}`,
-        },
-      ],
-    }));
+      status: "aceita",
+      data_inicio: sol.status === "em_andamento" ? null : sol.data_inicio,
+    } });
     toast.success(`Solicitação transferida para ${newName}!`);
     addNotification({
       title: "Corrida transferida",
@@ -355,7 +357,7 @@ export default function SolicitacoesPage() {
     },
     {
       key: "cliente_id", header: "Cliente",
-      cell: (r) => <span className="font-medium">{getClienteName(r.cliente_id)}</span>,
+      cell: (r) => <span className="font-medium">{getClienteNome(r.cliente_id)}</span>,
     },
     {
       key: "tipo_operacao", header: "Tipo",
@@ -363,7 +365,7 @@ export default function SolicitacoesPage() {
     },
     {
       key: "entregador_id", header: "Entregador",
-      cell: (r) => <span className="text-muted-foreground">{getEntregadorName(r.entregador_id)}</span>,
+      cell: (r) => <span className="text-muted-foreground">{getEntregadorNome(r.entregador_id)}</span>,
     },
     {
       key: "rotas", header: "Rotas",
@@ -461,13 +463,20 @@ export default function SolicitacoesPage() {
           </div>
 
           <DataTable
-            data={filtered}
+            data={pagedResult?.data ?? []}
             columns={columns}
             onRowClick={(r) => setViewSolicitacao(r)}
+            loading={isTableFetching && !pagedResult}
             emptyTitle="Nenhuma solicitação encontrada"
             emptySubtitle="Crie a primeira solicitação para começar."
             emptyActionLabel="Nova Solicitação"
             onEmptyAction={() => setLaunchOpen(true)}
+            externalPagination={{
+              page,
+              pageCount: pagedResult?.pageCount ?? 1,
+              total: pagedResult?.total ?? 0,
+              onPageChange: setPage,
+            }}
             renderMobileCard={(r) => (
               <div className="rounded-lg border border-border bg-card p-4 space-y-3">
                 <div className="flex items-center justify-between">
@@ -475,11 +484,11 @@ export default function SolicitacoesPage() {
                   <StatusBadge status={r.status} label={STATUS_SOLICITACAO_LABELS[r.status]} />
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="font-medium">{getClienteName(r.cliente_id)}</span>
+                  <span className="font-medium">{getClienteNome(r.cliente_id)}</span>
                   <TipoOperacaoBadge tipoOperacao={r.tipo_operacao} />
                 </div>
                 <div className="flex items-center justify-between text-sm text-muted-foreground">
-                  <span>{getEntregadorName(r.entregador_id)}</span>
+                  <span>{getEntregadorNome(r.entregador_id)}</span>
                   <div className="flex items-center gap-2">
                     <Badge variant="secondary" className="tabular-nums text-xs">{getRotasBySolicitacao(r.id).length} rotas</Badge>
                     <span className="tabular-nums">{fmt(r.valor_total_taxas)}</span>
@@ -553,6 +562,7 @@ export default function SolicitacoesPage() {
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Simulador de Operações</DialogTitle>
+          <DialogDescription className="sr-only">.</DialogDescription>
           </DialogHeader>
           <SimuladorOperacoes showClienteSelector />
         </DialogContent>

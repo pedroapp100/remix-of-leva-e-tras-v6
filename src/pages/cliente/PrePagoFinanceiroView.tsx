@@ -10,7 +10,9 @@ import type { Column } from "@/components/shared/DataTable";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { formatCurrency, formatDateBR } from "@/lib/formatters";
-import { useGlobalStore } from "@/contexts/GlobalStore";
+import { useSolicitacoesByCliente, useRotasBySolicitacaoIds } from "@/hooks/useSolicitacoes";
+import { useClienteSaldoMap } from "@/hooks/useClientes";
+import { useRecargasByCliente } from "@/hooks/useFinanceiro";
 import { cn } from "@/lib/utils";
 
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.1 } } };
@@ -34,18 +36,21 @@ interface PrePagoFinanceiroViewProps {
 }
 
 export function PrePagoFinanceiroView({ clienteId }: PrePagoFinanceiroViewProps) {
-  const { solicitacoes, rotas, getClienteSaldo, getRecargasByCliente } = useGlobalStore();
+  const { data: solicitacoes = [] } = useSolicitacoesByCliente(clienteId);
+  const solIds = useMemo(() => solicitacoes.map((s) => s.id), [solicitacoes]);
+  const { data: rotas = [] } = useRotasBySolicitacaoIds(solIds);
+  const { getClienteSaldo } = useClienteSaldoMap();
+  const { data: recargas = [] } = useRecargasByCliente(clienteId);
 
   const saldo = getClienteSaldo(clienteId);
   const BASE_DEPOSIT = 600;
 
   // Build unified history from completed solicitações + recargas
   const extrato = useMemo(() => {
-    const recargas = getRecargasByCliente(clienteId);
 
     // Debits from concluded solicitations
     const concluidas = solicitacoes
-      .filter((s) => s.cliente_id === clienteId && s.status === "concluida")
+      .filter((s) => s.status === "concluida")
       .map((s): ExtratoItem & { _ts: number } => {
         const rotasSol = rotas.filter((r) => r.solicitacao_id === s.id);
         const numRotas = rotasSol.length;
@@ -88,7 +93,7 @@ export function PrePagoFinanceiroView({ clienteId }: PrePagoFinanceiroViewProps)
 
     // Return most recent first (without _ts)
     return all.reverse().map(({ _ts, ...rest }) => rest);
-  }, [solicitacoes, rotas, clienteId, getRecargasByCliente]);
+  }, [solicitacoes, rotas, recargas]);
 
   const totalRecargas = extrato.filter((e) => e.tipo === "credito").reduce((s, e) => s + e.valor, 0);
   const taxasConsumidas = extrato.filter((e) => e.tipo === "debito").reduce((s, e) => s + e.valor, 0);

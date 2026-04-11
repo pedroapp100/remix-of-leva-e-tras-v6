@@ -1,5 +1,19 @@
 import type { Role } from "@/types/database";
-import { PERMISSION_MODULES, MOCK_CARGOS } from "@/data/mockSettings";
+import type { Cargo } from "@/types/database";
+
+// ── Permission Modules (static configuration) ──
+export const PERMISSION_MODULES = [
+  { module: "Dashboard", permissions: [{ key: "dashboard.view", label: "Visualizar" }] },
+  { module: "Solicitações", permissions: [{ key: "solicitacoes.view", label: "Visualizar" }, { key: "solicitacoes.create", label: "Criar" }, { key: "solicitacoes.edit", label: "Editar" }, { key: "solicitacoes.delete", label: "Excluir" }] },
+  { module: "Clientes", permissions: [{ key: "clientes.view", label: "Visualizar" }, { key: "clientes.create", label: "Criar" }, { key: "clientes.edit", label: "Editar" }, { key: "clientes.delete", label: "Excluir" }] },
+  { module: "Entregadores", permissions: [{ key: "entregadores.view", label: "Visualizar" }, { key: "entregadores.create", label: "Criar" }, { key: "entregadores.edit", label: "Editar" }, { key: "entregadores.delete", label: "Excluir" }] },
+  { module: "Faturas", permissions: [{ key: "faturas.view", label: "Visualizar" }, { key: "faturas.create", label: "Criar" }, { key: "faturas.edit", label: "Editar" }] },
+  { module: "Financeiro", permissions: [{ key: "financeiro.view", label: "Visualizar" }, { key: "financeiro.edit", label: "Editar" }] },
+  { module: "Relatórios", permissions: [{ key: "relatorios.view", label: "Visualizar" }, { key: "relatorios.export", label: "Exportar" }] },
+  { module: "Logs", permissions: [{ key: "logs.view", label: "Visualizar" }, { key: "logs.export", label: "Exportar" }] },
+  { module: "Configurações", permissions: [{ key: "configuracoes.view", label: "Visualizar" }, { key: "configuracoes.edit", label: "Editar" }] },
+  { module: "Usuários", permissions: [{ key: "usuarios.view", label: "Visualizar" }, { key: "usuarios.create", label: "Criar" }, { key: "usuarios.edit", label: "Editar" }, { key: "usuarios.delete", label: "Excluir" }] },
+];
 
 // ── Permission keys derived from PERMISSION_MODULES ──
 export type PermissionKey = string; // e.g. "dashboard.view", "clientes.edit"
@@ -33,16 +47,19 @@ export const SIDEBAR_PERMISSION_MAP: Record<string, string> = {
 
 // ── Default permissions per role ──
 // Admin gets full permissions from their cargo, cliente/entregador get their own fixed set
-export function getPermissionsForRole(role: Role, cargoId?: string): string[] {
+export function getPermissionsForRole(role: Role, cargoId?: string, cargos: Cargo[] = []): string[] {
   if (role === "admin") {
-    // If cargoId provided, use that cargo's permissions
+    const allPerms = getAllPermissions();
+    // If cargoId provided, use that cargo's permissions as base, but ensure all admin perms are included
     if (cargoId) {
-      const cargo = MOCK_CARGOS.find(c => c.id === cargoId);
-      if (cargo) return cargo.permissions;
+      const cargo = cargos.find(c => c.id === cargoId);
+      if (cargo) {
+        const merged = new Set([...cargo.permissions, ...allPerms]);
+        return Array.from(merged);
+      }
     }
-    // Default: admin geral (cargo-1)
-    const adminCargo = MOCK_CARGOS.find(c => c.id === "cargo-1");
-    return adminCargo?.permissions ?? getAllPermissions();
+    // Default: full admin access
+    return allPerms;
   }
 
   if (role === "cliente") {

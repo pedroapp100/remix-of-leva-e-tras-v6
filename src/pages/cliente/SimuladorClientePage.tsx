@@ -9,7 +9,7 @@ export default function SimuladorClientePage() {
       title="Simulador de Operações"
       subtitle="Simule o custo das suas entregas antes de solicitar."
     >
-      <SimuladorOperacoes clienteId={clienteId} />
+      <SimuladorOperacoes clienteId={clienteId ?? undefined} />
     </PageContainer>
   );
 }

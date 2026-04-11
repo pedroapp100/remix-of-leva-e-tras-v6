@@ -13,7 +13,8 @@ import { ClientesReportTab } from "./relatorios/ClientesReportTab";
 import { ReceitasReportTab } from "./relatorios/ReceitasReportTab";
 import { DespesasPrevistasTab } from "./relatorios/DespesasPrevistasTab";
 import { ComissoesTab } from "./relatorios/ComissoesTab";
-import { MOCK_RECEITAS, MOCK_DESPESAS, MOCK_COMISSOES } from "@/data/mockFinanceiro";
+import { useDespesas, useReceitas } from "@/hooks/useFinanceiro";
+import { useAllComissoes } from "@/hooks/useComissao";
 import { formatCurrency, formatDateBR } from "@/lib/formatters";
 import { exportCSV, exportPDF } from "@/lib/exportTable";
 import { subDays, startOfMonth, endOfMonth, subMonths, startOfYear } from "date-fns";
@@ -50,6 +51,9 @@ function getDateRangeFromPeriod(period: QuickPeriod): DateRange | undefined {
 export default function RelatoriosPage() {
   const [activePeriod, setActivePeriod] = useState<QuickPeriod>(null);
   const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>();
+  const { data: despesas = [] } = useDespesas();
+  const { data: receitas = [] } = useReceitas();
+  const comissoes = useAllComissoes();
 
   const dateRange = useMemo(() => {
     if (activePeriod === "custom") return customDateRange;
@@ -74,17 +78,17 @@ export default function RelatoriosPage() {
   const hasActiveFilter = activePeriod !== null;
 
   const handleExport = (format: "csv" | "pdf") => {
-    const comRows = MOCK_COMISSOES.map((c) => [
+    const comRows = comissoes.map((c) => [
       c.nome, String(c.entregas), formatCurrency(c.valor_gerado),
       c.tipo_comissao === "percentual" ? `${c.taxa}%` : `R$ ${c.taxa}/entrega`,
       formatCurrency(c.comissao),
     ]);
-    const despRows = MOCK_DESPESAS.map((d) => [
-      d.descricao, d.categoria, d.fornecedor, formatDateBR(d.vencimento),
+    const despRows = despesas.map((d) => [
+      d.descricao, d.categoria_id ?? "", d.fornecedor, formatDateBR(d.vencimento),
       formatCurrency(d.valor), d.status,
     ]);
-    const recRows = MOCK_RECEITAS.map((r) => [
-      r.descricao, r.categoria, formatDateBR(r.data_recebimento), formatCurrency(r.valor),
+    const recRows = receitas.map((r) => [
+      r.descricao, r.categoria_id ?? "", formatDateBR(r.data_recebimento), formatCurrency(r.valor),
     ]);
 
     const headers = ["Seção", "Col1", "Col2", "Col3", "Col4", "Col5"];

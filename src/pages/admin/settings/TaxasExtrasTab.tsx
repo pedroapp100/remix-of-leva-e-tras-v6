@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { MOCK_TAXAS_EXTRAS } from "@/data/mockSettings";
+import { useTaxasExtras, useUpsertTaxaExtra } from "@/hooks/useSettings";
+import { supabase } from "@/lib/supabase";
 import { useLogStore } from "@/contexts/LogStore";
 import type { TaxaExtraConfig } from "@/types/database";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -8,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { DataTable } from "@/components/shared/DataTable";
 import type { Column } from "@/components/shared/DataTable";
@@ -21,7 +22,8 @@ const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", curren
 
 export function TaxasExtrasTab() {
   const { addLog } = useLogStore();
-  const [taxas, setTaxas] = useState<TaxaExtraConfig[]>(MOCK_TAXAS_EXTRAS);
+  const { data: taxas = [], refetch } = useTaxasExtras();
+  const upsertTaxa = useUpsertTaxaExtra();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<TaxaExtraConfig | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<TaxaExtraConfig | null>(null);
@@ -47,7 +49,7 @@ export function TaxasExtrasTab() {
     setFormOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!nome.trim()) {
       toast.error("Informe o nome da taxa.");
       return;
@@ -56,46 +58,33 @@ export function TaxasExtrasTab() {
       toast.error("Informe um valor padrão válido.");
       return;
     }
-
+    const data = { nome: nome.trim(), valor_padrao: valorPadrao, ativo };
     if (editing) {
-      setTaxas((prev) =>
-        prev.map((t) =>
-          t.id === editing.id ? { ...t, nome: nome.trim(), valor_padrao: valorPadrao, ativo } : t
-        )
-      );
+      await upsertTaxa.mutateAsync({ ...data, id: editing.id });
       addLog({ categoria: "configuracao", acao: "taxa_extra_editada", entidade_id: editing.id, descricao: `Taxa extra "${nome}" atualizada — ${fmt(valorPadrao)}`, detalhes: { nome, valor_padrao: valorPadrao, ativo } });
       toast.success("Taxa extra atualizada!");
     } else {
-      const newTaxa: TaxaExtraConfig = {
-        id: `te-cfg-${Date.now()}`,
-        nome: nome.trim(),
-        valor_padrao: valorPadrao,
-        ativo,
-      };
-      setTaxas((prev) => [...prev, newTaxa]);
-      addLog({ categoria: "configuracao", acao: "taxa_extra_criada", entidade_id: newTaxa.id, descricao: `Taxa extra "${nome}" cadastrada — ${fmt(valorPadrao)}`, detalhes: { nome, valor_padrao: valorPadrao } });
+      const inserted = await upsertTaxa.mutateAsync(data);
+      addLog({ categoria: "configuracao", acao: "taxa_extra_criada", entidade_id: inserted?.id ?? "new", descricao: `Taxa extra "${nome}" cadastrada — ${fmt(valorPadrao)}`, detalhes: { nome, valor_padrao: valorPadrao } });
       toast.success("Taxa extra cadastrada!");
     }
     setFormOpen(false);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!deleteTarget) return;
-    setTaxas((prev) => prev.filter((t) => t.id !== deleteTarget.id));
+    await supabase.from("taxas_extras_config").delete().eq("id", deleteTarget.id);
     addLog({ categoria: "configuracao", acao: "taxa_extra_removida", entidade_id: deleteTarget.id, descricao: `Taxa extra "${deleteTarget.nome}" removida`, detalhes: null });
     toast.success("Taxa extra removida!");
+    refetch();
     setDeleteTarget(null);
   };
 
-  const toggleAtivo = (id: string) => {
-    setTaxas((prev) =>
-      prev.map((t) => {
-        if (t.id !== id) return t;
-        const toggled = { ...t, ativo: !t.ativo };
-        addLog({ categoria: "configuracao", acao: "taxa_extra_toggle", entidade_id: id, descricao: `Taxa extra "${t.nome}" ${toggled.ativo ? "ativada" : "desativada"}`, detalhes: { ativo: toggled.ativo } });
-        return toggled;
-      })
-    );
+  const toggleAtivo = async (id: string) => {
+    const t = taxas.find((tx) => tx.id === id);
+    if (!t) return;
+    await upsertTaxa.mutateAsync({ ...t, ativo: !t.ativo });
+    addLog({ categoria: "configuracao", acao: "taxa_extra_toggle", entidade_id: id, descricao: `Taxa extra "${t.nome}" ${!t.ativo ? "ativada" : "desativada"}`, detalhes: { ativo: !t.ativo } });
   };
 
   const columns: Column<TaxaExtraConfig>[] = [
@@ -208,6 +197,7 @@ export function TaxasExtrasTab() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{editing ? "Editar Taxa Extra" : "Nova Taxa Extra"}</DialogTitle>
+          <DialogDescription className="sr-only">.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">

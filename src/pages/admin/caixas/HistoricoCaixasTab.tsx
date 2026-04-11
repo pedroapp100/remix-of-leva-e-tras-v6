@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatCurrency } from "@/lib/formatters";
-import type { CaixaEntregador } from "@/data/mockCaixas";
+import type { CaixaEntregador } from "@/types/database";
 import type { DateRange } from "react-day-picker";
 
 const STATUS_OPTIONS = [

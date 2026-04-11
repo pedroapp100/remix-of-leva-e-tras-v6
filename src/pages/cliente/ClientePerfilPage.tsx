@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/shared/PageContainer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,31 +7,53 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PhoneInput } from "@/components/shared/PhoneInput";
 import { useClienteId } from "@/hooks/useClienteId";
+import { useUpdateCliente } from "@/hooks/useClientes";
 
 export default function ClientePerfilPage() {
-  const { cliente: clienteData } = useClienteId();
-  const cliente = clienteData!;
+  const { clienteId, cliente } = useClienteId();
+  const updateCliente = useUpdateCliente();
   const [form, setForm] = useState({
-    nome: cliente.nome,
-    email: cliente.email,
-    telefone: cliente.telefone,
-    endereco: cliente.endereco,
-    bairro: cliente.bairro,
-    cidade: cliente.cidade,
-    uf: cliente.uf,
-    chavePix: cliente.chavePix ?? "",
+    nome: "",
+    email: "",
+    telefone: "",
+    endereco: "",
+    bairro: "",
+    cidade: "",
+    uf: "",
+    chave_pix: "",
   });
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (cliente) {
+      setForm({
+        nome: cliente.nome ?? "",
+        email: cliente.email ?? "",
+        telefone: cliente.telefone ?? "",
+        endereco: cliente.endereco ?? "",
+        bairro: cliente.bairro ?? "",
+        cidade: cliente.cidade ?? "",
+        uf: cliente.uf ?? "",
+        chave_pix: cliente.chave_pix ?? "",
+      });
+    }
+  }, [cliente]);
 
   const handleChange = (field: string, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleSave = async () => {
+    if (!clienteId) return;
     setSaving(true);
-    await new Promise((r) => setTimeout(r, 600));
-    setSaving(false);
-    toast.success("Perfil atualizado com sucesso!");
+    try {
+      await updateCliente.mutateAsync({ id: clienteId, patch: form });
+      toast.success("Perfil atualizado com sucesso!");
+    } catch {
+      toast.error("Erro ao salvar perfil.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -55,8 +77,8 @@ export default function ClientePerfilPage() {
               <PhoneInput value={form.telefone} onChange={(v) => handleChange("telefone", v)} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="chavePix">Chave PIX</Label>
-              <Input id="chavePix" value={form.chavePix} onChange={(e) => handleChange("chavePix", e.target.value)} placeholder="CPF, email ou chave aleatória" />
+              <Label htmlFor="chave_pix">Chave PIX</Label>
+              <Input id="chave_pix" value={form.chave_pix} onChange={(e) => handleChange("chave_pix", e.target.value)} placeholder="CPF, email ou chave aleatória" />
             </div>
           </div>
 

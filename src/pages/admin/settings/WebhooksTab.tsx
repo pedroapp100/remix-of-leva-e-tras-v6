@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabase";
 import { DataTable, SearchInput, ConfirmDialog, StatusBadge, PermissionGuard } from "@/components/shared";
 import type { Column } from "@/components/shared/DataTable";
 import { Button } from "@/components/ui/button";
@@ -9,32 +11,23 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Plus, Pencil, Trash2, X, Webhook, Copy, Eye, EyeOff, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import { create } from "zustand";
 
 /* ── Types ── */
-type WebhookStatus = "ativo" | "inativo";
+type WebhookStatus = "ativo" | "inativo" | "erro";
 
 interface WebhookEntry {
   id: string;
   nome: string;
   url: string;
-  secret: string;
+  secret_hash: string | null;
   eventos: string[];
   status: WebhookStatus;
+  ultimo_erro: string | null;
   created_at: string;
   updated_at: string;
-  last_triggered_at: string | null;
-}
-
-/* ── Store ── */
-interface WebhookStore {
-  webhooks: WebhookEntry[];
-  addWebhook: (w: WebhookEntry) => void;
-  updateWebhook: (id: string, data: Partial<Omit<WebhookEntry, "id">>) => void;
-  deleteWebhook: (id: string) => void;
 }
 
 const EVENTOS_DISPONIVEIS = [
@@ -65,49 +58,53 @@ const EVENTOS_DISPONIVEIS = [
   { value: "entregador.criado", label: "Entregador criado" },
 ];
 
-const useWebhookStore = create<WebhookStore>((set) => ({
-  webhooks: [
-    {
-      id: "wh-1",
-      nome: "ERP Integration",
-      url: "https://api.erp.example.com/webhooks/leva-traz",
-      secret: "whsec_abc123def456",
-      eventos: ["solicitacao.criada", "solicitacao.concluida", "fatura.gerada"],
-      status: "ativo",
-      created_at: "2025-01-15T10:00:00Z",
-      updated_at: "2025-03-20T14:30:00Z",
-      last_triggered_at: "2025-03-29T18:45:00Z",
+/* ── React Query hook ── */
+function useWebhooks() {
+  const qc = useQueryClient();
+
+  const { data: webhooks = [] } = useQuery<WebhookEntry[]>({
+    queryKey: ["webhooks"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("webhooks")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data as WebhookEntry[]) ?? [];
     },
-    {
-      id: "wh-2",
-      nome: "Notificações Slack",
-      url: "https://hooks.slack.com/services/T00/B00/xxxx",
-      secret: "whsec_slack789",
-      eventos: ["solicitacao.criada", "entrega.concluida"],
-      status: "ativo",
-      created_at: "2025-02-10T08:00:00Z",
-      updated_at: "2025-02-10T08:00:00Z",
-      last_triggered_at: "2025-03-29T20:10:00Z",
+  });
+
+  const addMut = useMutation({
+    mutationFn: async (w: Omit<WebhookEntry, "id" | "created_at" | "updated_at" | "ultimo_erro">) => {
+      const { error } = await supabase.from("webhooks").insert({ ...w, ultimo_erro: null });
+      if (error) throw error;
     },
-    {
-      id: "wh-3",
-      nome: "Analytics (desativado)",
-      url: "https://analytics.example.com/hook",
-      secret: "whsec_analytics000",
-      eventos: ["entrega.iniciada", "entrega.concluida"],
-      status: "inativo",
-      created_at: "2025-01-20T12:00:00Z",
-      updated_at: "2025-03-01T09:00:00Z",
-      last_triggered_at: null,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["webhooks"] }),
+  });
+
+  const updateMut = useMutation({
+    mutationFn: async ({ id, ...data }: { id: string } & Partial<Omit<WebhookEntry, "id" | "created_at" | "updated_at">>) => {
+      const { error } = await supabase.from("webhooks").update(data).eq("id", id);
+      if (error) throw error;
     },
-  ],
-  addWebhook: (w) => set((s) => ({ webhooks: [...s.webhooks, w] })),
-  updateWebhook: (id, data) =>
-    set((s) => ({
-      webhooks: s.webhooks.map((w) => (w.id === id ? { ...w, ...data, updated_at: new Date().toISOString() } : w)),
-    })),
-  deleteWebhook: (id) => set((s) => ({ webhooks: s.webhooks.filter((w) => w.id !== id) })),
-}));
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["webhooks"] }),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("webhooks").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["webhooks"] }),
+  });
+
+  return {
+    webhooks,
+    addWebhook: addMut.mutateAsync,
+    updateWebhook: updateMut.mutateAsync,
+    deleteWebhook: deleteMut.mutateAsync,
+  };
+}
 
 /* ── Form ── */
 interface WebhookFormData {
@@ -121,15 +118,17 @@ interface WebhookFormData {
 const emptyForm: WebhookFormData = { nome: "", url: "", secret: "", eventos: [], status: "ativo" };
 
 function generateSecret() {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   let result = "whsec_";
-  for (let i = 0; i < 24; i++) result += chars.charAt(Math.floor(Math.random() * chars.length));
+  for (let i = 0; i < 24; i++) result += chars.charAt(bytes[i] % chars.length);
   return result;
 }
 
 /* ── Component ── */
 export function WebhooksTab() {
-  const { webhooks, addWebhook, updateWebhook, deleteWebhook } = useWebhookStore();
+  const { webhooks, addWebhook, updateWebhook, deleteWebhook } = useWebhooks();
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("todos");
@@ -159,7 +158,7 @@ export function WebhooksTab() {
     setForm({
       nome: wh.nome,
       url: wh.url,
-      secret: wh.secret,
+      secret: wh.secret_hash || "",
       eventos: [...wh.eventos],
       status: wh.status,
     });
@@ -167,7 +166,7 @@ export function WebhooksTab() {
     setDialogOpen(true);
   }
 
-  function handleSave() {
+  async function handleSave() {
     if (!form.nome.trim() || !form.url.trim()) {
       toast.error("Preencha o nome e a URL do webhook.");
       return;
@@ -183,37 +182,41 @@ export function WebhooksTab() {
       return;
     }
 
-    if (editingId) {
-      updateWebhook(editingId, {
-        nome: form.nome.trim(),
-        url: form.url.trim(),
-        secret: form.secret,
-        eventos: form.eventos,
-        status: form.status,
-      });
-      toast.success("Webhook atualizado com sucesso.");
-    } else {
-      const newWh: WebhookEntry = {
-        id: `wh-${Date.now()}`,
-        nome: form.nome.trim(),
-        url: form.url.trim(),
-        secret: form.secret,
-        eventos: form.eventos,
-        status: form.status,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        last_triggered_at: null,
-      };
-      addWebhook(newWh);
-      toast.success("Webhook criado com sucesso.");
+    try {
+      if (editingId) {
+        await updateWebhook({
+          id: editingId,
+          nome: form.nome.trim(),
+          url: form.url.trim(),
+          secret_hash: form.secret,
+          eventos: form.eventos,
+          status: form.status,
+        });
+        toast.success("Webhook atualizado com sucesso.");
+      } else {
+        await addWebhook({
+          nome: form.nome.trim(),
+          url: form.url.trim(),
+          secret_hash: form.secret,
+          eventos: form.eventos,
+          status: form.status,
+        });
+        toast.success("Webhook criado com sucesso.");
+      }
+      setDialogOpen(false);
+    } catch {
+      toast.error("Erro ao salvar webhook.");
     }
-    setDialogOpen(false);
   }
 
-  function handleDelete() {
+  async function handleDelete() {
     if (!deleteId) return;
-    deleteWebhook(deleteId);
-    toast.success("Webhook removido.");
+    try {
+      await deleteWebhook(deleteId);
+      toast.success("Webhook removido.");
+    } catch {
+      toast.error("Erro ao remover webhook.");
+    }
     setDeleteId(null);
   }
 
@@ -390,6 +393,7 @@ export function WebhooksTab() {
               <Webhook className="h-5 w-5" />
               {editingId ? "Editar Webhook" : "Novo Webhook"}
             </DialogTitle>
+          <DialogDescription className="sr-only">.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">

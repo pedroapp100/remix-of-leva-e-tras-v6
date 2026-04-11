@@ -1,3 +1,4 @@
+import React from "react";
 import {
   LayoutDashboard,
   ClipboardList,
@@ -17,7 +18,12 @@ import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
-import { useGlobalStore } from "@/contexts/GlobalStore";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { fetchSolicitacoesPendentesCount } from "@/services/solicitacoes";
+import { fetchFaturasVencidasCount } from "@/services/faturas";
+import { fetchClientes } from "@/services/clientes";
+import { fetchEntregadores } from "@/services/entregadores";
+import { fetchFaturas } from "@/services/faturas";
 
 import {
   Sidebar,
@@ -49,14 +55,40 @@ export function AdminSidebar() {
   const collapsed = state === "collapsed";
   const location = useLocation();
   const { logout } = useAuth();
+  const qc = useQueryClient();
 
-  const handleNavClick = () => {
+  // Prefetch map: on hover, warm up the query cache for the target page
+  const prefetchMap: Record<string, () => void> = React.useMemo(() => ({
+    "/admin/clientes": () => qc.prefetchQuery({ queryKey: ["clientes"], queryFn: fetchClientes, staleTime: 120_000 }),
+    "/admin/entregadores": () => qc.prefetchQuery({ queryKey: ["entregadores"], queryFn: fetchEntregadores, staleTime: 120_000 }),
+    "/admin/faturas": () => qc.prefetchQuery({ queryKey: ["faturas"], queryFn: fetchFaturas, staleTime: 120_000 }),
+  }), [qc]);
+
+  const handlePrefetch = React.useCallback((url: string) => {
+    prefetchMap[url]?.();
+  }, [prefetchMap]);
+
+  // Fecha sidebar mobile automaticamente ao mudar de rota
+  React.useEffect(() => {
     if (isMobile) setOpenMobile(false);
-  };
-  const { solicitacoes, faturas } = useGlobalStore();
+  }, [location.pathname, isMobile, setOpenMobile]);
 
-  const solicitacoesPendentes = solicitacoes.filter(s => s.status === "pendente").length;
-  const faturasVencidas = faturas.filter(f => f.status_geral === "Vencida" || (f.data_vencimento && new Date(f.data_vencimento) < new Date() && f.status_geral !== "Paga")).length;
+  const handleLogout = () => {
+    if (isMobile) setOpenMobile(false);
+    logout();
+  };
+  const { data: solicitacoesPendentes = 0 } = useQuery({
+    queryKey: ["solicitacoes", "pendentes-count"],
+    queryFn: fetchSolicitacoesPendentesCount,
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+  });
+  const { data: faturasVencidas = 0 } = useQuery({
+    queryKey: ["faturas", "vencidas-count"],
+    queryFn: fetchFaturasVencidasCount,
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+  });
   const { canAccessSidebarItem, hasPermission } = usePermissions();
 
   const visibleNavItems = navItems.filter(item => canAccessSidebarItem(item.title));
@@ -89,7 +121,7 @@ export function AdminSidebar() {
                   : item.title === "Faturas" ? faturasVencidas
                   : 0;
                 return (
-                  <SidebarMenuItem key={item.title} className={collapsed ? "flex justify-center" : ""}>
+                  <SidebarMenuItem key={item.title} className={collapsed ? "flex justify-center" : ""} onMouseEnter={() => handlePrefetch(item.url)}>
                     <SidebarMenuButton
                       asChild
                       isActive={active}
@@ -105,7 +137,6 @@ export function AdminSidebar() {
                         end={item.url === "/admin"}
                         className={`${collapsed ? "flex items-center justify-center" : ""} relative`}
                         activeClassName=""
-                        onClick={handleNavClick}
                       >
                         <item.icon className="shrink-0 !h-5 !w-5" />
                         {!collapsed && <span className="text-lg font-medium">{item.title}</span>}
@@ -138,7 +169,7 @@ export function AdminSidebar() {
                   : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
               } rounded-lg ${collapsed ? "h-10 w-10 justify-center p-0" : "h-10"}`}
             >
-              <NavLink to="/admin/configuracoes" className={collapsed ? "flex items-center justify-center" : ""} activeClassName="" onClick={handleNavClick}>
+              <NavLink to="/admin/configuracoes" className={collapsed ? "flex items-center justify-center" : ""} activeClassName="">
                 <Settings className="shrink-0 !h-5 !w-5" />
                 {!collapsed && <span className="text-lg font-medium">Configurações</span>}
               </NavLink>
@@ -147,7 +178,7 @@ export function AdminSidebar() {
           )}
           <SidebarMenuItem className={collapsed ? "flex justify-center" : ""}>
             <SidebarMenuButton
-              onClick={logout}
+              onClick={handleLogout}
               tooltip="Sair"
               className={`text-sidebar-foreground/70 hover:bg-destructive/10 hover:text-destructive cursor-pointer rounded-lg ${collapsed ? "h-10 w-10 justify-center p-0" : "h-10"}`}
             >

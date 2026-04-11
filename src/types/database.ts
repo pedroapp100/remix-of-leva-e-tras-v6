@@ -99,6 +99,7 @@ export interface Cargo {
   name: string;
   description?: string | null;
   permissions: string[];
+  sistema?: boolean;
 }
 
 export interface Cliente {
@@ -111,7 +112,7 @@ export interface Cliente {
   bairro: string;
   cidade: string;
   uf: string;
-  chavePix?: string | null;
+  chave_pix?: string | null;
   status: "ativo" | "inativo" | "bloqueado";
   modalidade: Modalidade;
   ativar_faturamento_automatico: boolean;
@@ -279,7 +280,7 @@ export interface Fatura {
 export interface Despesa {
   id: string;
   descricao: string;
-  categoria: string;
+  categoria_id: string | null;
   fornecedor: string;
   vencimento: string;
   valor: number;
@@ -294,7 +295,7 @@ export interface Despesa {
 export interface Receita {
   id: string;
   descricao: string;
-  categoria: string;
+  categoria_id: string | null;
   cliente_id?: string | null;
   data_recebimento: string;
   valor: number;
@@ -336,6 +337,30 @@ export interface UserPreference {
   user_id: string;
   key: string;
   value: unknown;
+}
+
+// ── Fatura entrega types ──────────────────────────────────────────────────────
+
+export interface RotaEntregaFatura {
+  bairro_destino: string;
+  responsavel: string;
+  telefone: string;
+  taxa: number;
+  valor_receber: number | null;
+  status: "concluida" | "cancelada";
+}
+
+export interface EntregaFatura {
+  solicitacao_id: string;
+  codigo: string;
+  entregador_nome: string;
+  data_conclusao: string;
+  total_rotas: number;
+  valor_taxas: number;
+  valor_recebido_cliente: number;
+  status: "concluida" | "cancelada";
+  ponto_coleta: string;
+  rotas: RotaEntregaFatura[];
 }
 
 // ── Logs / Auditoria ──
@@ -404,6 +429,47 @@ export interface RecargaPrePago {
   observacao: string;
   registrado_por: string;
   created_at: string;
+}
+
+// ── Livro Caixa ──
+
+export interface LivroCaixaEntry {
+  id: string;
+  data: string;
+  tipo: "entrada" | "saida";
+  descricao: string;
+  categoria: string;
+  valor: number;
+  saldo_acumulado: number;
+}
+
+// ── Caixa de Entregadores ──
+
+export type StatusCaixa = "aberto" | "fechado" | "divergente";
+
+export interface RecebimentoDinheiro {
+  id: string;
+  solicitacao_codigo: string;
+  cliente_nome: string;
+  valor_recebido: number;
+  hora: string;
+}
+
+export interface CaixaEntregador {
+  id: string;
+  entregador_id: string;
+  entregador_nome: string;
+  data: string;
+  troco_inicial: number;
+  recebimentos: RecebimentoDinheiro[];
+  total_recebido: number;
+  total_esperado: number;
+  valor_devolvido: number | null;
+  diferenca: number | null;
+  status: StatusCaixa;
+  observacoes: string | null;
+  created_at: string;
+  closed_at: string | null;
 }
 
 // ── Gestão de Usuários ──

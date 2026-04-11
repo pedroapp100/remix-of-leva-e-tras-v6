@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { CaixaStoreProvider } from "@/contexts/CaixaStore";
-import { GlobalStoreProvider } from "@/contexts/GlobalStore";
 import { LogStoreProvider } from "@/contexts/LogStore";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 import { OnboardingOverlay, OnboardingProvider, OnboardingTooltip, WelcomeModal } from "@/onboarding";
@@ -16,18 +15,16 @@ export function ProtectedAppShell({ allowedRoles, children }: ProtectedAppShellP
   return (
     <ProtectedRoute allowedRoles={allowedRoles}>
       <LogStoreProvider>
-        <GlobalStoreProvider>
-          <CaixaStoreProvider>
-            <NotificationProvider>
-              <OnboardingProvider>
-                <WelcomeModal />
-                <OnboardingOverlay />
-                <OnboardingTooltip />
-                {children}
-              </OnboardingProvider>
-            </NotificationProvider>
-          </CaixaStoreProvider>
-        </GlobalStoreProvider>
+        <CaixaStoreProvider>
+          <NotificationProvider>
+            <OnboardingProvider>
+              <WelcomeModal />
+              <OnboardingOverlay />
+              <OnboardingTooltip />
+              {children}
+            </OnboardingProvider>
+          </NotificationProvider>
+        </CaixaStoreProvider>
       </LogStoreProvider>
     </ProtectedRoute>
   );

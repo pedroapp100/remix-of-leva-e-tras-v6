@@ -1,3 +1,4 @@
+import React from "react";
 import { Outlet } from "react-router-dom";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppHeader } from "./AppHeader";
@@ -33,8 +34,14 @@ function DriverSidebar() {
   const location = useLocation();
   const { logout } = useAuth();
 
-  const handleNavClick = () => {
+  // Fecha sidebar mobile automaticamente ao mudar de rota
+  React.useEffect(() => {
     if (isMobile) setOpenMobile(false);
+  }, [location.pathname, isMobile, setOpenMobile]);
+
+  const handleLogout = () => {
+    if (isMobile) setOpenMobile(false);
+    logout();
   };
 
   const isActive = (path: string) => {
@@ -76,7 +83,6 @@ function DriverSidebar() {
                         end={item.url === "/entregador"}
                         className={collapsed ? "flex items-center justify-center" : ""}
                         activeClassName=""
-                        onClick={handleNavClick}
                       >
                         <item.icon className="shrink-0 !h-5 !w-5" />
                         {!collapsed && <span className="text-lg font-medium">{item.title}</span>}
@@ -103,7 +109,7 @@ function DriverSidebar() {
                   : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
               } rounded-lg ${collapsed ? "h-10 w-10 justify-center p-0" : "h-10"}`}
             >
-              <NavLink to="/entregador/perfil" className={collapsed ? "flex items-center justify-center" : ""} activeClassName="" onClick={handleNavClick}>
+              <NavLink to="/entregador/perfil" className={collapsed ? "flex items-center justify-center" : ""} activeClassName="">
                 <User className="shrink-0 !h-5 !w-5" />
                 {!collapsed && <span className="text-lg font-medium">Meu Perfil</span>}
               </NavLink>
@@ -111,7 +117,7 @@ function DriverSidebar() {
           </SidebarMenuItem>
           <SidebarMenuItem className={collapsed ? "flex justify-center" : ""}>
             <SidebarMenuButton
-              onClick={logout}
+              onClick={handleLogout}
               tooltip="Sair"
               className={`text-sidebar-foreground/70 hover:bg-destructive/10 hover:text-destructive cursor-pointer rounded-lg ${collapsed ? "h-10 w-10 justify-center p-0" : "h-10"}`}
             >
@@ -130,11 +136,12 @@ export function DriverLayout() {
     <>
       <OnboardingRoleSync />
       <SidebarProvider>
+        <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:p-4 focus:bg-background focus:text-foreground">Pular para o conteúdo</a>
         <div className="min-h-screen flex flex-col w-full">
           <AppHeader />
           <div className="flex flex-1 w-full">
             <DriverSidebar />
-            <main className="flex-1 overflow-auto p-3 sm:p-4 md:p-6">
+            <main id="main-content" className="flex-1 overflow-auto p-3 sm:p-4 md:p-6">
               <Outlet />
             </main>
           </div>

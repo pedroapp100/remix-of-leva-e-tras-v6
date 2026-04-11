@@ -1,14 +1,19 @@
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
-import type { Fatura } from "@/types/database";
-import { getLancamentosByFatura, getAjustesByFatura, getEntregasByFatura, TIPO_FATURAMENTO_LABELS } from "@/data/mockFaturas";
-import type { EntregaFatura } from "@/data/mockFaturas";
+import type { Fatura, EntregaFatura, LancamentoFinanceiro, AjusteFinanceiro } from "@/types/database";
+import { TIPO_FATURAMENTO_LABELS } from "@/lib/formatters";
 import { formatCurrency, formatDateBR, formatDateTimeBR } from "@/lib/formatters";
 
-export function generateFaturaPDF(
+export async function generateFaturaPDF(
   fatura: Fatura,
   entregasExtras: Record<string, EntregaFatura[]> = {},
+  lancamentosData: LancamentoFinanceiro[] = [],
+  ajustesData: AjusteFinanceiro[] = [],
 ) {
+  const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+    import("jspdf"),
+    import("jspdf-autotable"),
+  ]);
+  type JsPDFWithAutoTable = InstanceType<typeof jsPDF> & { lastAutoTable: { finalY: number } };
+
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
   const margin = 14;
@@ -61,7 +66,7 @@ export function generateFaturaPDF(
   doc.text("Resumo Financeiro", margin, y);
   y += 6;
 
-  const ajustes = getAjustesByFatura(fatura.id);
+  const ajustes = ajustesData;
   const totalAjustes = ajustes.reduce((sum, a) => sum + (a.tipo === "credito" ? a.valor : -a.valor), 0);
   const saldo = fatura.saldo_liquido ?? 0;
 
@@ -80,10 +85,10 @@ export function generateFaturaPDF(
     bodyStyles: { fontSize: 9 },
     columnStyles: { 1: { halign: "right" } },
   });
-  y = (doc as any).lastAutoTable.finalY + 8;
+  y = (doc as JsPDFWithAutoTable).lastAutoTable.finalY + 8;
 
   // ── Entregas ──
-  const entregas = [...getEntregasByFatura(fatura.id), ...(entregasExtras[fatura.id] || [])];
+  const entregas = [...(entregasExtras[fatura.id] || [])];
   if (entregas.length > 0) {
     if (y > 240) { doc.addPage(); y = margin; }
     doc.setFontSize(12);
@@ -113,11 +118,11 @@ export function generateFaturaPDF(
       ]],
       footStyles: { fillColor: [241, 245, 249], fontStyle: "bold", fontSize: 9 },
     });
-    y = (doc as any).lastAutoTable.finalY + 8;
+    y = (doc as JsPDFWithAutoTable).lastAutoTable.finalY + 8;
   }
 
   // ── Lançamentos ──
-  const lancamentos = getLancamentosByFatura(fatura.id);
+  const lancamentos = lancamentosData;
   if (lancamentos.length > 0) {
     if (y > 240) { doc.addPage(); y = margin; }
     doc.setFontSize(12);
@@ -130,7 +135,7 @@ export function generateFaturaPDF(
       margin: { left: margin, right: margin },
       head: [["Descrição", "Tipo", "Valor", "Status"]],
       body: lancamentos.map((l) => [
-        l.descricao,
+        l.descricao ?? "",
         l.tipo === "credito_loja" ? "Crédito Loja" : l.tipo === "receita_operacao" ? "Receita Op." : l.tipo === "debito_loja" ? "Débito Loja" : "Ajuste",
         `${l.sinal === "debito" ? "- " : ""}${formatCurrency(l.valor)}`,
         l.status_liquidacao === "liquidado" ? "Liquidado" : l.status_liquidacao === "estornado" ? "Estornado" : "Pendente",
@@ -140,7 +145,7 @@ export function generateFaturaPDF(
       bodyStyles: { fontSize: 9 },
       columnStyles: { 2: { halign: "right" } },
     });
-    y = (doc as any).lastAutoTable.finalY + 8;
+    y = (doc as JsPDFWithAutoTable).lastAutoTable.finalY + 8;
   }
 
   // ── Ajustes ──
@@ -166,7 +171,7 @@ export function generateFaturaPDF(
       bodyStyles: { fontSize: 9 },
       columnStyles: { 2: { halign: "right" } },
     });
-    y = (doc as any).lastAutoTable.finalY + 8;
+    y = (doc as JsPDFWithAutoTable).lastAutoTable.finalY + 8;
   }
 
   // ── Histórico ──

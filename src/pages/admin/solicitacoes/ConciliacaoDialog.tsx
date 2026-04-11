@@ -1,8 +1,7 @@
 import { useState, useMemo } from "react";
-import type { Rota, PagamentoSolicitacao } from "@/types/database";
-import { MOCK_FORMAS_PAGAMENTO, MOCK_BAIRROS } from "@/data/mockSettings";
-import { MOCK_CLIENTES } from "@/data/mockClientes";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import type { Rota } from "@/types/database";
+import { useFormasPagamento, useBairros } from "@/hooks/useSettings";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -12,7 +11,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CurrencyInput } from "@/components/shared/CurrencyInput";
 import { Plus, Trash2, AlertTriangle, CheckCircle, Info, Store, User } from "lucide-react";
 import { toast } from "sonner";
-import { useGlobalStore } from "@/contexts/GlobalStore";
+import { useCreatePagamentos } from "@/hooks/useSolicitacoes";
+import { useClienteSaldoMap, useClientes } from "@/hooks/useClientes";
 
 interface PagamentoLinha {
   id: string;
@@ -35,13 +35,17 @@ interface ConciliacaoDialogProps {
   isDriverView?: boolean;
 }
 
-const getBairroName = (id: string) => MOCK_BAIRROS.find((b) => b.id === id)?.nome ?? id;
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-const formasAtivas = MOCK_FORMAS_PAGAMENTO.filter((f) => f.enabled);
 
 export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clienteId, solicitacaoId, isEditing = false, isConcluding = false, isDriverView = false }: ConciliacaoDialogProps) {
-  const { addPagamentos, getClienteSaldo } = useGlobalStore();
-  const cliente = useMemo(() => clienteId ? MOCK_CLIENTES.find((c) => c.id === clienteId) : null, [clienteId]);
+  const createPagamentosMut = useCreatePagamentos();
+  const { getClienteSaldo } = useClienteSaldoMap();
+  const { data: clientes = [] } = useClientes();
+  const { data: formasPagamento = [] } = useFormasPagamento();
+  const { data: bairros = [] } = useBairros();
+  const getBairroName = (id: string) => bairros.find((b) => b.id === id)?.nome ?? id;
+  const formasAtivas = formasPagamento.filter((f) => f.enabled);
+  const cliente = useMemo(() => clienteId ? clientes.find((c) => c.id === clienteId) : null, [clienteId, clientes]);
   const isPrePago = cliente?.modalidade === "pre_pago";
   const isFaturado = cliente?.modalidade === "faturado";
 
@@ -61,7 +65,7 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
   const addPagamento = (rotaId: string) => {
     setPagamentosPorRota((prev) => ({
       ...prev,
-      [rotaId]: [...(prev[rotaId] || []), { id: `pag-${Date.now()}-${Math.random()}`, forma_pagamento_id: formasAtivas[0]?.id ?? "", valor: 0, pertence_a: "operacao" }],
+      [rotaId]: [...(prev[rotaId] || []), { id: crypto.randomUUID(), forma_pagamento_id: formasAtivas[0]?.id ?? "", valor: 0, pertence_a: "operacao" }],
     }));
   };
 
@@ -107,19 +111,16 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
 
     // Persist payments to global store
     if (solicitacaoId) {
-      const now = new Date().toISOString();
-      const persistedPagamentos: PagamentoSolicitacao[] = allPagamentos.map((pag) => ({
-        id: pag.id,
+      const persistedPagamentos = allPagamentos.map((pag) => ({
         solicitacao_id: solicitacaoId,
         rota_id: Object.entries(pagamentosPorRota).find(([, pags]) => pags.some((p) => p.id === pag.id))?.[0] ?? "",
         forma_pagamento_id: pag.forma_pagamento_id,
         valor: pag.valor,
         pertence_a: pag.pertence_a,
-        observacao: null,
-        created_by: null,
-        created_at: now,
+        observacao: null as string | null,
+        created_by: null as string | null,
       }));
-      addPagamentos(persistedPagamentos);
+      createPagamentosMut.mutate(persistedPagamentos);
     }
 
     onConcluir();
@@ -134,6 +135,7 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
             {isDriverView ? "Registro de Recebimentos" : "Conciliação de Pagamentos"}
             {isEditing && <Badge variant="outline" className="text-xs">Editando</Badge>}
           </DialogTitle>
+        <DialogDescription className="sr-only">.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-2">

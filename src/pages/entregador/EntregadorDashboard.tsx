@@ -7,11 +7,10 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency, formatDateBR } from "@/lib/formatters";
-import { useGlobalStore } from "@/contexts/GlobalStore";
+import { useSolicitacoes } from "@/hooks/useSolicitacoes";
+import { useClientes } from "@/hooks/useClientes";
 import { useComissao } from "@/hooks/useComissao";
-import { getClienteName } from "@/data/mockSolicitacoes";
-
-const ENTREGADOR_ID = "ent-001";
+import { useEntregadorId } from "@/hooks/useEntregadorId";
 
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.1 } } };
 const fadeUp = {
@@ -20,28 +19,36 @@ const fadeUp = {
 };
 
 export default function EntregadorDashboard() {
-  const { solicitacoes } = useGlobalStore();
+  const { entregadorId: ENTREGADOR_ID } = useEntregadorId();
+  const { data: solicitacoes = [] } = useSolicitacoes();
+  const { data: clientes = [] } = useClientes();
+  const getClienteNome = (id: string) => clientes.find((c) => c.id === id)?.nome ?? id;
   const comissaoData = useComissao(ENTREGADOR_ID);
 
-  const metrics = useMemo(() => {
-    const minhas = solicitacoes.filter((s) => s.entregador_id === ENTREGADOR_ID);
+  const { metrics, recentEntregas } = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
+    let corridasAtivas = 0, concluidasHoje = 0;
+    const concluidas: typeof solicitacoes = [];
 
-    const corridasAtivas = minhas.filter((s) => s.status === "em_andamento" || s.status === "aceita").length;
-    const concluidasHoje = minhas.filter((s) => s.status === "concluida" && s.data_conclusao?.slice(0, 10) === today).length;
+    for (const s of solicitacoes) {
+      if (s.entregador_id !== ENTREGADOR_ID) continue;
+      if (s.status === "em_andamento" || s.status === "aceita") corridasAtivas++;
+      if (s.status === "concluida") {
+        if (s.data_conclusao?.slice(0, 10) === today) concluidasHoje++;
+        concluidas.push(s);
+      }
+    }
 
     const comissaoMes = comissaoData?.comissao ?? 0;
     const comissaoDia = comissaoMes > 0 ? Math.round((comissaoMes / 22) * 100) / 100 : 0;
 
-    return { corridasAtivas, concluidasHoje, comissaoDia, comissaoMes };
-  }, [solicitacoes, comissaoData]);
+    concluidas.sort((a, b) => new Date(b.data_conclusao!).getTime() - new Date(a.data_conclusao!).getTime());
 
-  const recentEntregas = useMemo(() => {
-    return solicitacoes
-      .filter((s) => s.entregador_id === ENTREGADOR_ID && s.status === "concluida")
-      .sort((a, b) => new Date(b.data_conclusao!).getTime() - new Date(a.data_conclusao!).getTime())
-      .slice(0, 5);
-  }, [solicitacoes]);
+    return {
+      metrics: { corridasAtivas, concluidasHoje, comissaoDia, comissaoMes },
+      recentEntregas: concluidas.slice(0, 5),
+    };
+  }, [solicitacoes, comissaoData]);
 
   return (
     <PageContainer title="Dashboard" subtitle="Suas corridas e comissões de hoje.">
@@ -82,7 +89,7 @@ export default function EntregadorDashboard() {
                   >
                     <div className="min-w-0">
                       <p className="text-sm font-medium">{s.codigo}</p>
-                      <p className="text-xs text-muted-foreground">{getClienteName(s.cliente_id)} • {formatDateBR(s.data_conclusao!)}</p>
+                      <p className="text-xs text-muted-foreground">{getClienteNome(s.cliente_id)} • {formatDateBR(s.data_conclusao!)}</p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <StatusBadge status={s.status} />

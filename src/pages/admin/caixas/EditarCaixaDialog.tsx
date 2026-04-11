@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { CurrencyInput } from "@/components/shared/CurrencyInput";
 import { formatCurrency } from "@/lib/formatters";
-import type { CaixaEntregador } from "@/data/mockCaixas";
+import type { CaixaEntregador } from "@/types/database";
 
 interface EditarCaixaDialogProps {
   open: boolean;
@@ -37,6 +37,7 @@ export function EditarCaixaDialog({ open, onOpenChange, caixa, onConfirm }: Edit
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Editar Caixa — {caixa.entregador_nome}</DialogTitle>
+        <DialogDescription className="sr-only">.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="grid grid-cols-2 gap-3 text-sm">

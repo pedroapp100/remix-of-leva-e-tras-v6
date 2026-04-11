@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { MetricCard } from "@/components/shared";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { MOCK_RECEITAS, MOCK_DESPESAS, FLUXO_CAIXA_MENSAL } from "@/data/mockFinanceiro";
+import { useDespesas, useReceitas } from "@/hooks/useFinanceiro";
 import { formatCurrency } from "@/lib/formatters";
 import { DollarSign, TrendingDown, TrendingUp, Percent } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -21,9 +21,12 @@ const chartTooltipStyle = {
 const axisTickStyle = { fontSize: 12, fill: "hsl(var(--muted-foreground))" };
 
 export function ResumoFinanceiroTab({ dateRange }: ResumoFinanceiroTabProps) {
+  const { data: allReceitas = [] } = useReceitas();
+  const { data: allDespesas = [] } = useDespesas();
+
   const metrics = useMemo(() => {
-    let receitas = MOCK_RECEITAS;
-    let despesas = MOCK_DESPESAS;
+    let receitas = allReceitas;
+    let despesas = allDespesas;
     if (dateRange?.from) {
       receitas = receitas.filter((r) => {
         const d = new Date(r.data_recebimento);
@@ -39,14 +42,21 @@ export function ResumoFinanceiroTab({ dateRange }: ResumoFinanceiroTabProps) {
     const lucro = totalReceitas - totalDespesas;
     const margem = totalReceitas > 0 ? (lucro / totalReceitas) * 100 : 0;
     return { totalReceitas, totalDespesas, lucro, margem };
-  }, [dateRange]);
+  }, [allReceitas, allDespesas, dateRange]);
 
-  const evolutionData = FLUXO_CAIXA_MENSAL.map((m) => ({
-    mes: m.mes,
-    receitas: m.receitas,
-    despesas: m.despesas,
-    lucro: m.receitas - m.despesas,
-  }));
+  const evolutionData = useMemo(() => {
+    const months: Record<string, { mes: string; receitas: number; despesas: number; lucro: number }> = {};
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const label = d.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }).replace(" de ", "/").replace(".", "");
+      months[key] = { mes: label.charAt(0).toUpperCase() + label.slice(1), receitas: 0, despesas: 0, lucro: 0 };
+    }
+    allReceitas.forEach((r) => { const k = r.data_recebimento?.slice(0, 7); if (k && months[k]) months[k].receitas += r.valor; });
+    allDespesas.forEach((d) => { const k = d.vencimento?.slice(0, 7); if (k && months[k]) { months[k].despesas += d.valor; } });
+    return Object.values(months).map((m) => ({ ...m, lucro: m.receitas - m.despesas }));
+  }, [allReceitas, allDespesas]);
 
   return (
     <div className="space-y-4">
@@ -63,7 +73,7 @@ export function ResumoFinanceiroTab({ dateRange }: ResumoFinanceiroTabProps) {
         </CardHeader>
         <CardContent>
           <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={evolutionData}>
+              <BarChart data={evolutionData}>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
               <XAxis dataKey="mes" tick={axisTickStyle} />
               <YAxis tick={axisTickStyle} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />

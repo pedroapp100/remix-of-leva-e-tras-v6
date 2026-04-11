@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import type { Entregador, TipoVeiculo, TipoComissao } from "@/types/database";
 import { TIPO_VEICULO_LABELS } from "@/types/database";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -80,6 +80,7 @@ export function EntregadorFormDialog({ open, onOpenChange, editing, onSave }: En
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editing ? "Editar Entregador" : "Novo Entregador"}</DialogTitle>
+        <DialogDescription className="sr-only">.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-2">

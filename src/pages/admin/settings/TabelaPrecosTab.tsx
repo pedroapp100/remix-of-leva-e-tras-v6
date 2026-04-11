@@ -3,13 +3,15 @@ import { DataTable, SearchInput } from "@/components/shared";
 import { useLogStore } from "@/contexts/LogStore";
 import type { Column } from "@/components/shared/DataTable";
 import type { TabelaPrecoCliente } from "@/types/database";
-import { MOCK_TABELA_PRECOS, MOCK_BAIRROS, MOCK_REGIOES, MOCK_CLIENTES_SELECT, MOCK_TIPOS_OPERACAO } from "@/data/mockSettings";
+import type { TabelaPrecoInsert } from "@/services/clientes";
+import { useBairros, useRegioes, useTiposOperacao } from "@/hooks/useSettings";
+import { useClientes, useTabelaPrecos, useUpsertTabelaPreco, useDeleteTabelaPreco } from "@/hooks/useClientes";
 import { Button } from "@/components/ui/button";
 import { Plus, Pencil, Trash2, CircleDot, ArrowUp, ArrowDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,28 +20,35 @@ import { CurrencyInput } from "@/components/shared/CurrencyInput";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { toast } from "sonner";
 
-const TIPO_OP_MAP = Object.fromEntries(MOCK_TIPOS_OPERACAO.map((t) => [t.id, t]));
-const TIPO_OP_LABELS: Record<string, string> = { ...Object.fromEntries(MOCK_TIPOS_OPERACAO.map((t) => [t.id, t.nome])), todos: "Todos" };
-
 interface TabelaPrecosTabProps {
   initialClienteId?: string;
 }
 
 export function TabelaPrecosTab({ initialClienteId }: TabelaPrecosTabProps) {
   const { addLog } = useLogStore();
-  const [precos, setPrecos] = useState<TabelaPrecoCliente[]>(MOCK_TABELA_PRECOS);
+  const { data: clientes = [] } = useClientes();
+  const { data: bairros = [] } = useBairros();
+  const { data: regioes = [] } = useRegioes();
+  const { data: tiposOperacao = [] } = useTiposOperacao();
+
+  const TIPO_OP_MAP = useMemo(() => Object.fromEntries(tiposOperacao.map((t) => [t.id, t])), [tiposOperacao]);
+  const TIPO_OP_LABELS: Record<string, string> = useMemo(() => ({ ...Object.fromEntries(tiposOperacao.map((t) => [t.id, t.nome])), todos: "Todos" }), [tiposOperacao]);
+
   const [selectedCliente, setSelectedCliente] = useState<string>(
-    initialClienteId && MOCK_CLIENTES_SELECT.some(c => c.id === initialClienteId)
+    initialClienteId && clientes.some(c => c.id === initialClienteId)
       ? initialClienteId
-      : MOCK_CLIENTES_SELECT[0].id
+      : clientes[0]?.id ?? ""
   );
+
+  const { data: precos = [] } = useTabelaPrecos(selectedCliente);
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<TabelaPrecoCliente | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<TabelaPrecoCliente | null>(null);
 
   const [bairroId, setBairroId] = useState("");
   const [regiaoId, setRegiaoId] = useState("");
-  const [tipoOp, setTipoOp] = useState(MOCK_TIPOS_OPERACAO[0]?.id ?? "");
+  const [tipoOp, setTipoOp] = useState(tiposOperacao[0]?.id ?? "");
   const [taxaBase, setTaxaBase] = useState(0);
   const [taxaRetorno, setTaxaRetorno] = useState(0);
   const [taxaEspera, setTaxaEspera] = useState(0);
@@ -47,23 +56,23 @@ export function TabelaPrecosTab({ initialClienteId }: TabelaPrecosTabProps) {
   const [ativo, setAtivo] = useState(true);
   const [observacao, setObservacao] = useState("");
 
-  const clientePrecos = useMemo(() => precos.filter((p) => p.cliente_id === selectedCliente), [precos, selectedCliente]);
+  const clientePrecos = precos;
 
-  const getBairroName = (id: string | null) => id ? MOCK_BAIRROS.find((b) => b.id === id)?.nome ?? "—" : "Todos";
-  const getRegiaoName = (id: string | null) => id ? MOCK_REGIOES.find((r) => r.id === id)?.name ?? "—" : "—";
+  const getBairroName = (id: string | null | undefined) => id ? bairros.find((b) => b.id === id)?.nome ?? "—" : "Todos";
+  const getRegiaoName = (id: string | null | undefined) => id ? regioes.find((r) => r.id === id)?.name ?? "—" : "—";
   const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
   const coverage = useMemo(() => {
-    const totalBairros = MOCK_BAIRROS.length;
+    const totalBairros = bairros.length;
     const coveredBairros = new Set(clientePrecos.filter((p) => p.ativo && p.bairro_destino_id).map((p) => p.bairro_destino_id)).size;
     const hasRegionRules = clientePrecos.some((p) => p.ativo && p.regiao_id && !p.bairro_destino_id);
     if (coveredBairros === 0 && !hasRegionRules) return { color: "text-destructive", label: "Sem cobertura" };
     if (coveredBairros >= totalBairros || hasRegionRules) return { color: "text-emerald-500", label: "Cobertura completa" };
     return { color: "text-amber-500", label: `Cobertura parcial (${coveredBairros}/${totalBairros})` };
-  }, [clientePrecos]);
+  }, [clientePrecos, bairros]);
 
   const openCreate = () => {
-    setEditing(null); setBairroId(""); setRegiaoId(""); setTipoOp(MOCK_TIPOS_OPERACAO[0]?.id ?? "");
+    setEditing(null); setBairroId(""); setRegiaoId(""); setTipoOp(tiposOperacao[0]?.id ?? "");
     setTaxaBase(0); setTaxaRetorno(0); setTaxaEspera(0); setTaxaUrgencia(0);
     setAtivo(true); setObservacao(""); setDialogOpen(true);
   };
@@ -75,31 +84,28 @@ export function TabelaPrecosTab({ initialClienteId }: TabelaPrecosTabProps) {
     setObservacao(p.observacao ?? ""); setDialogOpen(true);
   };
 
+  const upsertPreco = useUpsertTabelaPreco();
+  const removePreco = useDeleteTabelaPreco();
+
   const handleSave = () => {
     if (taxaBase <= 0) { toast.error("Taxa base deve ser maior que zero."); return; }
-    const now = new Date().toISOString();
-    if (editing) {
-      setPrecos((prev) => prev.map((p) => p.id === editing.id ? {
-        ...p, bairro_destino_id: bairroId || null, regiao_id: regiaoId || null,
-        tipo_operacao: tipoOp as TabelaPrecoCliente["tipo_operacao"],
-        taxa_base: taxaBase, taxa_retorno: taxaRetorno, taxa_espera: taxaEspera,
-        taxa_urgencia: taxaUrgencia, ativo, observacao: observacao || null, updated_at: now,
-      } : p));
-      addLog({ categoria: "configuracao", acao: "preco_editado", entidade_id: editing.id, descricao: `Regra de preço atualizada — taxa base ${fmt(taxaBase)}`, detalhes: { bairro: getBairroName(bairroId || null), taxa_base: taxaBase } });
-      toast.success("Regra de preço atualizada!");
-    } else {
-      const newId = `tp-${Date.now()}`;
-      setPrecos((prev) => [...prev, {
-        id: newId, cliente_id: selectedCliente,
-        bairro_destino_id: bairroId || null, regiao_id: regiaoId || null,
-        tipo_operacao: tipoOp as TabelaPrecoCliente["tipo_operacao"],
-        taxa_base: taxaBase, taxa_retorno: taxaRetorno, taxa_espera: taxaEspera,
-        taxa_urgencia: taxaUrgencia, ativo, prioridade: clientePrecos.length + 1,
-        observacao: observacao || null, created_at: now, updated_at: now,
-      }]);
-      addLog({ categoria: "configuracao", acao: "preco_criado", entidade_id: newId, descricao: `Regra de preço criada — taxa base ${fmt(taxaBase)}`, detalhes: { bairro: getBairroName(bairroId || null), taxa_base: taxaBase } });
-      toast.success("Regra de preço criada!");
-    }
+    const payload = {
+      cliente_id: selectedCliente,
+      bairro_destino_id: bairroId || null,
+      regiao_id: regiaoId || null,
+      tipo_operacao: tipoOp as TabelaPrecoCliente["tipo_operacao"],
+      taxa_base: taxaBase, taxa_retorno: taxaRetorno, taxa_espera: taxaEspera,
+      taxa_urgencia: taxaUrgencia, ativo, observacao: observacao || null,
+      ...(editing ? { id: editing.id } : { prioridade: clientePrecos.length + 1 }),
+    };
+    upsertPreco.mutate(payload as TabelaPrecoInsert & { id?: string }, {
+      onSuccess: () => {
+        const action = editing ? "preco_editado" : "preco_criado";
+        const desc = editing ? `Regra de preço atualizada — taxa base ${fmt(taxaBase)}` : `Regra de preço criada — taxa base ${fmt(taxaBase)}`;
+        addLog({ categoria: "configuracao", acao: action, entidade_id: editing?.id ?? "", descricao: desc, detalhes: { bairro: getBairroName(bairroId || null), taxa_base: taxaBase } });
+        toast.success(editing ? "Regra de preço atualizada!" : "Regra de preço criada!");
+      },
+    });
     setDialogOpen(false);
   };
 
@@ -109,20 +115,20 @@ export function TabelaPrecosTab({ initialClienteId }: TabelaPrecosTabProps) {
     if ((direction === "up" && idx <= 0) || (direction === "down" && idx >= sorted.length - 1)) return;
     const swapIdx = direction === "up" ? idx - 1 : idx + 1;
     const tempPriority = sorted[idx].prioridade;
-    setPrecos((prev) => prev.map((p) => {
-      if (p.id === sorted[idx].id) return { ...p, prioridade: sorted[swapIdx].prioridade };
-      if (p.id === sorted[swapIdx].id) return { ...p, prioridade: tempPriority };
-      return p;
-    }));
+    upsertPreco.mutate({ id: sorted[idx].id, prioridade: sorted[swapIdx].prioridade } as TabelaPrecoInsert & { id?: string });
+    upsertPreco.mutate({ id: sorted[swapIdx].id, prioridade: tempPriority } as TabelaPrecoInsert & { id?: string });
     toast.success("Prioridade atualizada!");
   };
 
   const handleDelete = () => {
     if (!deleteTarget) return;
-    setPrecos((prev) => prev.filter((p) => p.id !== deleteTarget.id));
-    addLog({ categoria: "configuracao", acao: "preco_removido", entidade_id: deleteTarget.id, descricao: `Regra de preço removida — ${getBairroName(deleteTarget.bairro_destino_id)}`, detalhes: null });
-    toast.success("Regra removida!");
-    setDeleteTarget(null);
+    removePreco.mutate({ id: deleteTarget.id, clienteId: deleteTarget.cliente_id }, {
+      onSuccess: () => {
+        addLog({ categoria: "configuracao", acao: "preco_removido", entidade_id: deleteTarget.id, descricao: `Regra de preço removida — ${getBairroName(deleteTarget.bairro_destino_id)}`, detalhes: null });
+        toast.success("Regra removida!");
+        setDeleteTarget(null);
+      },
+    });
   };
 
   const columns: Column<TabelaPrecoCliente>[] = [
@@ -185,7 +191,7 @@ export function TabelaPrecosTab({ initialClienteId }: TabelaPrecosTabProps) {
           <div className="flex-1 max-w-xs">
             <Select value={selectedCliente} onValueChange={setSelectedCliente}>
               <SelectTrigger><SelectValue placeholder="Selecione o cliente" /></SelectTrigger>
-              <SelectContent>{MOCK_CLIENTES_SELECT.map((c) => (<SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>))}</SelectContent>
+              <SelectContent>{clientes.map((c) => (<SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>))}</SelectContent>
             </Select>
           </div>
           <div className={`flex items-center gap-2 text-sm font-medium ${coverage.color}`}>
@@ -224,7 +230,7 @@ export function TabelaPrecosTab({ initialClienteId }: TabelaPrecosTabProps) {
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editing ? "Editar Regra de Preço" : "Nova Regra de Preço"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editing ? "Editar Regra de Preço" : "Nova Regra de Preço"}</DialogTitle><DialogDescription className="sr-only">.</DialogDescription></DialogHeader>
           <div className="space-y-4 py-2">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -233,7 +239,7 @@ export function TabelaPrecosTab({ initialClienteId }: TabelaPrecosTabProps) {
                   <SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos</SelectItem>
-                    {MOCK_BAIRROS.map((b) => (<SelectItem key={b.id} value={b.id}>{b.nome}</SelectItem>))}
+                    {bairros.map((b) => (<SelectItem key={b.id} value={b.id}>{b.nome}</SelectItem>))}
                   </SelectContent>
                 </Select>
               </div>
@@ -243,7 +249,7 @@ export function TabelaPrecosTab({ initialClienteId }: TabelaPrecosTabProps) {
                   <SelectTrigger><SelectValue placeholder="Nenhuma" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Nenhuma</SelectItem>
-                    {MOCK_REGIOES.map((r) => (<SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>))}
+                    {regioes.map((r) => (<SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>))}
                   </SelectContent>
                 </Select>
               </div>
@@ -253,7 +259,7 @@ export function TabelaPrecosTab({ initialClienteId }: TabelaPrecosTabProps) {
               <Select value={tipoOp} onValueChange={setTipoOp}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {MOCK_TIPOS_OPERACAO.filter((t) => t.ativo).map((t) => (
+                  {tiposOperacao.filter((t) => t.ativo).map((t) => (
                     <SelectItem key={t.id} value={t.id}>
                       <div className="flex items-center gap-2">
                         <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: t.cor }} />

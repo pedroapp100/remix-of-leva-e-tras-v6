@@ -1,6 +1,6 @@
 import type { Entregador } from "@/types/database";
-import { MOCK_ENTREGADORES } from "@/data/mockEntregadores";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { useEntregadores } from "@/hooks/useEntregadores";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { AvatarWithFallback } from "@/components/shared";
 import { Badge } from "@/components/ui/badge";
@@ -14,13 +14,15 @@ interface AssignDriverDialogProps {
 }
 
 export function AssignDriverDialog({ open, onOpenChange, onAssign, excludeEntregadorId }: AssignDriverDialogProps) {
-  const ativos = MOCK_ENTREGADORES.filter((e) => e.status === "ativo" && e.id !== excludeEntregadorId);
+  const { data: entregadoresData = [] } = useEntregadores();
+  const ativos = entregadoresData.filter((e) => e.status === "ativo" && e.id !== excludeEntregadorId);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Atribuir Entregador</DialogTitle>
+        <DialogDescription className="sr-only">.</DialogDescription>
         </DialogHeader>
         <div className="space-y-2 py-2">
           {ativos.map((e) => (

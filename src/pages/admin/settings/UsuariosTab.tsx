@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { useUserStore } from "@/data/mockUsers";
-import { MOCK_CARGOS } from "@/data/mockSettings";
+import { useAdminProfiles, useUpdateProfile, useDeactivateProfile } from "@/hooks/useUsers";
+import { useCargos } from "@/hooks/useSettings";
+import { supabase } from "@/lib/supabase";
 import { DataTable, SearchInput, ConfirmDialog, StatusBadge, PermissionGuard } from "@/components/shared";
 import type { Column } from "@/components/shared/DataTable";
 import { Button } from "@/components/ui/button";
@@ -10,10 +11,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Plus, Pencil, Trash2, UserCog, X } from "lucide-react";
 import { toast } from "sonner";
-import type { UserAccount, UserStatus } from "@/types/database";
+import type { UserStatus } from "@/types/database";
+import type { ProfileRow } from "@/services/users";
 
 interface UserFormData {
   nome: string;
@@ -23,11 +25,13 @@ interface UserFormData {
   status: UserStatus;
 }
 
-const emptyForm: UserFormData = { nome: "", email: "", password: "", cargo_id: "cargo-1", status: "ativo" };
+const emptyForm: UserFormData = { nome: "", email: "", password: "", cargo_id: "", status: "ativo" };
 
 export function UsuariosTab() {
-  const { addUser, updateUser, deleteUser, getAdminUsers } = useUserStore();
-  const adminUsers = getAdminUsers();
+  const { data: adminUsers = [], refetch } = useAdminProfiles();
+  const updateProfile = useUpdateProfile();
+  const deactivateProfile = useDeactivateProfile();
+  const { data: cargos = [] } = useCargos();
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("todos");
@@ -40,12 +44,13 @@ export function UsuariosTab() {
     const matchSearch =
       u.nome.toLowerCase().includes(search.toLowerCase()) ||
       u.email.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = statusFilter === "todos" || u.status === statusFilter;
+    const userStatus = u.ativo ? "ativo" : "inativo";
+    const matchStatus = statusFilter === "todos" || userStatus === statusFilter;
     return matchSearch && matchStatus;
   });
 
   const getCargoName = (cargoId?: string | null) =>
-    MOCK_CARGOS.find((c) => c.id === cargoId)?.name ?? "—";
+    cargos.find((c) => c.id === cargoId)?.name ?? "—";
 
   function openCreate() {
     setEditingId(null);
@@ -53,33 +58,33 @@ export function UsuariosTab() {
     setDialogOpen(true);
   }
 
-  function openEdit(user: UserAccount) {
+  function openEdit(user: ProfileRow) {
     setEditingId(user.id);
     setForm({
       nome: user.nome,
-      email: user.email,
+      email: user.email ?? "",
       password: "",
-      cargo_id: user.cargo_id ?? "cargo-1",
-      status: user.status,
+      cargo_id: user.cargo_id ?? "",
+      status: (user.ativo ? "ativo" : "inativo") as UserStatus,
     });
     setDialogOpen(true);
   }
 
-  function handleSave() {
+  async function handleSave() {
     if (!form.nome.trim() || !form.email.trim()) {
       toast.error("Preencha nome e email.");
       return;
     }
 
     if (editingId) {
-      const data: Partial<Omit<UserAccount, "id">> = {
-        nome: form.nome.trim(),
-        email: form.email.trim().toLowerCase(),
-        cargo_id: form.cargo_id,
-        status: form.status,
-      };
-      if (form.password.trim()) data.password = form.password.trim();
-      updateUser(editingId, data);
+      await updateProfile.mutateAsync({
+        id: editingId,
+        patch: {
+          nome: form.nome.trim(),
+          cargo_id: form.cargo_id || null,
+          ativo: form.status === "ativo",
+        },
+      });
       toast.success("Usuário atualizado com sucesso.");
     } else {
       if (!form.password.trim()) {
@@ -90,34 +95,28 @@ export function UsuariosTab() {
         toast.error("A senha deve ter no mínimo 6 caracteres.");
         return;
       }
-      const newUser: UserAccount = {
-        id: `user-${Date.now()}`,
+      const { error } = await supabase.auth.signUp({
         email: form.email.trim().toLowerCase(),
         password: form.password.trim(),
-        nome: form.nome.trim(),
-        role: "admin",
-        cargo_id: form.cargo_id,
-        status: form.status,
-        avatarUrl: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      addUser(newUser);
-      toast.success("Usuário criado com sucesso.");
+        options: { data: { nome: form.nome.trim(), role: "admin", cargo_id: form.cargo_id || null } },
+      });
+      if (error) { toast.error(error.message); return; }
+      toast.success("Convite enviado para ${form.email.trim().toLowerCase()}");
+      await refetch();
     }
     setDialogOpen(false);
   }
 
-  function handleDelete() {
+  async function handleDelete() {
     if (!deleteId) return;
-    deleteUser(deleteId);
-    toast.success("Usuário removido.");
+    await deactivateProfile.mutateAsync(deleteId);
+    toast.success("Usuário desativado.");
     setDeleteId(null);
   }
 
   const deleteTarget = adminUsers.find((u) => u.id === deleteId);
 
-  const columns: Column<UserAccount>[] = [
+  const columns: Column<ProfileRow>[] = [
     {
       key: "nome",
       header: "Nome",
@@ -142,7 +141,7 @@ export function UsuariosTab() {
     {
       key: "status",
       header: "Status",
-      cell: (r) => <StatusBadge status={r.status} />,
+      cell: (r) => <StatusBadge status={r.ativo ? "ativo" : "inativo"} />,
     },
     {
       key: "actions",
@@ -245,7 +244,7 @@ export function UsuariosTab() {
                     <p className="font-medium">{r.nome}</p>
                     <p className="text-sm text-muted-foreground">{r.email}</p>
                   </div>
-                  <StatusBadge status={r.status} />
+                  <StatusBadge status={r.ativo ? "ativo" : "inativo"} />
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <Badge variant="outline" className="gap-1">
@@ -276,6 +275,7 @@ export function UsuariosTab() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{editingId ? "Editar Usuário" : "Novo Usuário Admin"}</DialogTitle>
+          <DialogDescription className="sr-only">.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
@@ -307,7 +307,7 @@ export function UsuariosTab() {
               <Select value={form.cargo_id} onValueChange={(v) => setForm((f) => ({ ...f, cargo_id: v }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {MOCK_CARGOS.map((c) => (
+                  {cargos.map((c) => (
                     <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                   ))}
                 </SelectContent>

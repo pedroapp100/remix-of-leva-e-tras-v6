@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { DataTable, SearchInput } from "@/components/shared";
 import type { Column } from "@/components/shared/DataTable";
-import type { LivroCaixaEntry } from "@/data/mockFinanceiro";
+import type { LivroCaixaEntry } from "@/types/database";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";

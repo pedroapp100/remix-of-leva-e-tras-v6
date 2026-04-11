@@ -11,21 +11,21 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/formatters";
-import type { CaixaEntregador } from "@/data/mockCaixas";
+import type { CaixaEntregador } from "@/types/database";
 import { useCaixaStore } from "@/contexts/CaixaStore";
 import { CaixaDetailsModal } from "@/pages/admin/caixas/CaixaDetailsModal";
-
-const ENTREGADOR_ID = "ent-001";
+import { useEntregadorId } from "@/hooks/useEntregadorId";
 
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.08 } } };
 const fadeUp = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.35 } } };
 
 export default function EntregadorCaixaPage() {
+  const { entregadorId: ENTREGADOR_ID } = useEntregadorId();
   const { getCaixasByEntregador, getCaixaAberto } = useCaixaStore();
   const [detailsCaixa, setDetailsCaixa] = useState<CaixaEntregador | null>(null);
 
-  const meusCaixas = getCaixasByEntregador(ENTREGADOR_ID);
-  const caixaAberto = getCaixaAberto(ENTREGADOR_ID) ?? null;
+  const meusCaixas = ENTREGADOR_ID ? getCaixasByEntregador(ENTREGADOR_ID) : [];
+  const caixaAberto = ENTREGADOR_ID ? (getCaixaAberto(ENTREGADOR_ID) ?? null) : null;
 
   const metrics = useMemo(() => {
     const totalRecebidoHoje = caixaAberto?.total_recebido ?? 0;

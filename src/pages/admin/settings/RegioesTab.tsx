@@ -2,11 +2,12 @@ import { useState } from "react";
 import { DataTable, SearchInput, ConfirmDialog } from "@/components/shared";
 import type { Column } from "@/components/shared/DataTable";
 import type { Regiao } from "@/types/database";
-import { MOCK_REGIOES } from "@/data/mockSettings";
+import { useRegioes } from "@/hooks/useSettings";
+import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -16,7 +17,7 @@ import { useLogStore } from "@/contexts/LogStore";
 
 export function RegioesTab() {
   const { addLog } = useLogStore();
-  const [regioes, setRegioes] = useState<Regiao[]>(MOCK_REGIOES);
+  const { data: regioes = [], refetch } = useRegioes();
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Regiao | null>(null);
@@ -29,26 +30,27 @@ export function RegioesTab() {
   const openCreate = () => { setEditing(null); setName(""); setDescription(""); setDialogOpen(true); };
   const openEdit = (r: Regiao) => { setEditing(r); setName(r.name); setDescription(r.description ?? ""); setDialogOpen(true); };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!name.trim()) { toast.error("Nome é obrigatório."); return; }
     if (editing) {
-      setRegioes((prev) => prev.map((r) => (r.id === editing.id ? { ...r, name, description: description || null } : r)));
+      await supabase.from("regioes").update({ name, description: description || null }).eq("id", editing.id);
       addLog({ categoria: "configuracao", acao: "regiao_editada", entidade_id: editing.id, descricao: `Região "${name}" atualizada`, detalhes: { nome: name } });
       toast.success("Região atualizada!");
     } else {
-      const newId = `reg-${Date.now()}`;
-      setRegioes((prev) => [...prev, { id: newId, name, description: description || null }]);
-      addLog({ categoria: "configuracao", acao: "regiao_criada", entidade_id: newId, descricao: `Região "${name}" criada`, detalhes: { nome: name } });
+      await supabase.from("regioes").insert({ name, description: description || null });
+      addLog({ categoria: "configuracao", acao: "regiao_criada", entidade_id: "new", descricao: `Região "${name}" criada`, detalhes: { nome: name } });
       toast.success("Região criada!");
     }
+    refetch();
     setDialogOpen(false);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!deleteTarget) return;
-    setRegioes((prev) => prev.filter((r) => r.id !== deleteTarget.id));
+    await supabase.from("regioes").delete().eq("id", deleteTarget.id);
     addLog({ categoria: "configuracao", acao: "regiao_removida", entidade_id: deleteTarget.id, descricao: `Região "${deleteTarget.name}" removida`, detalhes: null });
     toast.success("Região removida!");
+    refetch();
     setDeleteTarget(null);
   };
 
@@ -109,7 +111,7 @@ export function RegioesTab() {
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>{editing ? "Editar Região" : "Nova Região"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editing ? "Editar Região" : "Nova Região"}</DialogTitle><DialogDescription className="sr-only">.</DialogDescription></DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2"><Label>Nome *</Label><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Zona Norte" /></div>
             <div className="space-y-2"><Label>Descrição</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Descrição opcional..." rows={3} /></div>

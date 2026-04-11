@@ -1,33 +1,35 @@
-import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from "react";
-import type { LogEntry, LogCategoria } from "@/types/database";
-import { mockLogs } from "@/data/mockLogs";
+import { createContext, useContext, useCallback, useMemo, type ReactNode } from "react";
+import type { LogEntry } from "@/types/database";
+import type { Json } from "@/types/supabase";
+import { supabase } from "@/lib/supabase";
+
+type LogInput = Omit<LogEntry, "id" | "timestamp" | "usuario_id" | "usuario_nome">;
 
 interface LogStoreContextType {
-  logs: LogEntry[];
-  addLog: (entry: Omit<LogEntry, "id" | "timestamp" | "usuario_id" | "usuario_nome">) => void;
+  addLog: (entry: LogInput) => void;
 }
 
 const LogStoreContext = createContext<LogStoreContextType | null>(null);
 
 export function LogStoreProvider({ children }: { children: ReactNode }) {
-  const [logs, setLogs] = useState<LogEntry[]>(mockLogs);
+  const addLog = useCallback((entry: LogInput) => {
+    // Fire-and-forget insert — non-blocking, no state to manage
+    void (async () => {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const user = sessionData?.session?.user;
+      await supabase.from("logs_auditoria").insert({
+        categoria: entry.categoria,
+        acao: entry.acao,
+        entidade_id: entry.entidade_id,
+        descricao: entry.descricao,
+        detalhes: (entry.detalhes as Json) ?? null,
+        usuario_id: user?.id ?? null,
+        usuario_nome: user?.email ?? "Sistema",
+      });
+    })();
+  }, []);
 
-  const addLog = useCallback(
-    (entry: Omit<LogEntry, "id" | "timestamp" | "usuario_id" | "usuario_nome">) => {
-      const newLog: LogEntry = {
-        ...entry,
-        id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        timestamp: new Date().toISOString(),
-        // TODO: replace with real auth user when Lovable Cloud is connected
-        usuario_id: "admin-001",
-        usuario_nome: "Carlos Admin",
-      };
-      setLogs((prev) => [newLog, ...prev]);
-    },
-    []
-  );
-
-  const value = useMemo(() => ({ logs, addLog }), [logs, addLog]);
+  const value = useMemo(() => ({ addLog }), [addLog]);
 
   return <LogStoreContext.Provider value={value}>{children}</LogStoreContext.Provider>;
 }

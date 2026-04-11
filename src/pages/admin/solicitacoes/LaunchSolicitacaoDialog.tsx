@@ -1,11 +1,10 @@
 import { useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { MOCK_CLIENTES } from "@/data/mockClientes";
-import { MOCK_BAIRROS, MOCK_TAXAS_EXTRAS, MOCK_FORMAS_PAGAMENTO, MOCK_TIPOS_OPERACAO, MOCK_TABELA_PRECOS } from "@/data/mockSettings";
-import { useGlobalStore } from "@/contexts/GlobalStore";
-import { MOCK_ENTREGADORES } from "@/data/mockEntregadores";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { useClientes, useTabelaPrecos, useClienteSaldoMap } from "@/hooks/useClientes";
+import { useBairros, useTaxasExtras, useTiposOperacao } from "@/hooks/useSettings";
+import { useEntregadores } from "@/hooks/useEntregadores";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -21,19 +20,14 @@ import { toast } from "sonner";
 import { RotaCard, getRotaSubtotalOperacao, getRotaTotalEntregador } from "./RotaCard";
 import type { RotaForm } from "./RotaCard";
 
-const taxasExtrasDisponiveis = MOCK_TAXAS_EXTRAS.filter((t) => t.ativo);
-const clientesAtivos = MOCK_CLIENTES.filter((c) => c.status === "ativo");
-const entregadoresAtivos = MOCK_ENTREGADORES.filter((e) => e.status === "ativo");
-const tiposAtivos = MOCK_TIPOS_OPERACAO.filter((t) => t.ativo);
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-function resolverTarifaMock(bairroId: string, clienteId?: string, tipoOp?: string): { taxa: number; fallback: boolean } {
-  const bairro = MOCK_BAIRROS.find((b) => b.id === bairroId);
+function resolverTarifa(bairros: { id: string; taxa_entrega: number; nome: string }[], tabelaPrecos: { cliente_id: string; ativo: boolean; prioridade: number; bairro_destino_id?: string | null; tipo_operacao?: string | null; taxa_base: number }[], bairroId: string, clienteId?: string, tipoOp?: string): { taxa: number; fallback: boolean } {
+  const bairro = bairros.find((b) => b.id === bairroId);
   if (!bairro) return { taxa: 0, fallback: false };
 
-  // Check TabelaPrecos first (client-specific pricing)
   if (clienteId) {
-    const regra = MOCK_TABELA_PRECOS
+    const regra = tabelaPrecos
       .filter((p) => p.cliente_id === clienteId && p.ativo)
       .sort((a, b) => a.prioridade - b.prioridade)
       .find((p) => {
@@ -44,12 +38,11 @@ function resolverTarifaMock(bairroId: string, clienteId?: string, tipoOp?: strin
     if (regra) return { taxa: regra.taxa_base, fallback: false };
   }
 
-  // Fallback to bairro default
   return { taxa: bairro.taxa_entrega, fallback: true };
 }
 
 const emptyRota = (): RotaForm => ({
-  id: `r-${Date.now()}-${Math.random()}`,
+  id: crypto.randomUUID(),
   bairro_destino_id: "",
   responsavel: "",
   telefone: "",
@@ -96,7 +89,16 @@ interface LaunchSolicitacaoDialogProps {
 }
 
 export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit }: LaunchSolicitacaoDialogProps) {
-  const { getClienteSaldo } = useGlobalStore();
+  const { getClienteSaldo } = useClienteSaldoMap();
+  const { data: clientesData = [] } = useClientes();
+  const { data: entregadoresData = [] } = useEntregadores();
+  const { data: bairros = [] } = useBairros();
+  const { data: taxasExtrasData = [] } = useTaxasExtras();
+  const { data: tiposOperacaoData = [] } = useTiposOperacao();
+  const clientesAtivos = clientesData.filter((c) => c.status === "ativo");
+  const entregadoresAtivos = entregadoresData.filter((e) => e.status === "ativo");
+  const tiposAtivos = tiposOperacaoData.filter((t) => t.ativo);
+  const taxasExtrasDisponiveis = taxasExtrasData.filter((t) => t.ativo);
   const [step, setStep] = useState(0);
 
   // Step 0
@@ -104,6 +106,7 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit }: Launch
 
   // Step 1
   const [clienteId, setClienteId] = useState("");
+  const { data: tabelaPrecos = [] } = useTabelaPrecos(clienteId);
   const handleClienteChange = (id: string) => {
     setClienteId(id);
     const cliente = clientesAtivos.find((c) => c.id === id);
@@ -139,7 +142,7 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit }: Launch
       if (r.id !== id) return r;
       const updated = { ...r, [field]: value };
       if (field === "bairro_destino_id" && typeof value === "string") {
-        const tarifa = resolverTarifaMock(value, clienteId || undefined, tipoOperacao || undefined);
+        const tarifa = resolverTarifa(bairros, tabelaPrecos, value, clienteId || undefined, tipoOperacao || undefined);
         updated.taxa_resolvida = tarifa.taxa;
         updated.is_fallback = tarifa.fallback;
       }
@@ -158,7 +161,7 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit }: Launch
       }
       return {
         ...r,
-        taxas_extras: [...r.taxas_extras, { id: `te-${Date.now()}-${Math.random()}`, nome: config.nome, valor: config.valor_padrao }],
+        taxas_extras: [...r.taxas_extras, { id: crypto.randomUUID(), nome: config.nome, valor: config.valor_padrao }],
       };
     }));
   };
@@ -253,7 +256,6 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit }: Launch
   const clienteNome = clienteSelecionado?.nome ?? "";
   const clienteModalidade = clienteSelecionado?.modalidade;
   const saldoCliente = clienteId ? getClienteSaldo(clienteId) : 0;
-  const formasPagamentoAtivas = MOCK_FORMAS_PAGAMENTO.filter((f) => f.enabled);
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) resetForm(); onOpenChange(o); }}>
@@ -262,6 +264,7 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit }: Launch
           <DialogTitle>
             {step === 0 ? "Lançar Nova Solicitação" : step === 1 ? "Lançar Nova Coleta" : `Nova Solicitação — Etapa ${step}/3`}
           </DialogTitle>
+          <DialogDescription className="sr-only">.</DialogDescription>
           {step === 0 && (
             <p className="text-sm text-muted-foreground">Qual tipo de operação você deseja lançar?</p>
           )}
@@ -585,7 +588,7 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit }: Launch
               {/* Route details */}
               {rotas.map((r, i) => (
                 <div key={r.id} className="rounded-lg border border-border p-4 space-y-3 text-sm">
-                  <div className="font-medium">Rota {i + 1}: {MOCK_BAIRROS.find((b) => b.id === r.bairro_destino_id)?.nome} → {r.responsavel}</div>
+                  <div className="font-medium">Rota {i + 1}: {bairros.find((b) => b.id === r.bairro_destino_id)?.nome} → {r.responsavel}</div>
 
                   {/* Operação section */}
                   <div className="rounded-md bg-primary/5 border border-primary/10 p-2.5 space-y-1">

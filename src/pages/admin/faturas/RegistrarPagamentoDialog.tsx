@@ -10,18 +10,18 @@ import type { Fatura } from "@/types/database";
 import { formatCurrency } from "@/lib/formatters";
 import { Banknote, Upload, X, FileText } from "lucide-react";
 import { CurrencyInput } from "@/components/shared/CurrencyInput";
-import { MOCK_FORMAS_PAGAMENTO } from "@/data/mockSettings";
+import { useFormasPagamento } from "@/hooks/useSettings";
 
 interface Props {
   fatura: Fatura;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onConfirm: (valor: number, formaPagamento: string, observacao: string) => void;
+  onConfirm: (valor: number, formaPagamento: string, observacao: string) => Promise<void> | void;
 }
 
-const formasAtivas = MOCK_FORMAS_PAGAMENTO.filter((f) => f.enabled);
-
 export function RegistrarPagamentoDialog({ fatura, open, onOpenChange, onConfirm }: Props) {
+  const { data: formasPagamento = [] } = useFormasPagamento();
+  const formasAtivas = formasPagamento.filter((f) => f.enabled);
   const saldo = fatura.saldo_liquido ?? 0;
   const valorSugerido = Math.abs(saldo);
   const [valor, setValor] = useState(valorSugerido > 0 ? valorSugerido : 0);
@@ -45,17 +45,18 @@ export function RegistrarPagamentoDialog({ fatura, open, onOpenChange, onConfirm
     setComprovantes((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (valor <= 0) return;
     setSubmitting(true);
-    setTimeout(() => {
-      onConfirm(valor, formaPagamento, observacao);
-      setSubmitting(false);
+    try {
+      await onConfirm(valor, formaPagamento, observacao);
       setValor(0);
       setFormaPagamento(formasAtivas[0]?.id ?? "");
       setObservacao("");
       setComprovantes([]);
-    }, 400);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (

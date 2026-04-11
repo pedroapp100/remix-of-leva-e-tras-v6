@@ -1,0 +1,693 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────
+
+enum Role {
+  admin
+  cliente
+  entregador
+}
+
+enum Modalidade {
+  pre_pago
+  faturado
+}
+
+enum FrequenciaFaturamento {
+  diario
+  semanal
+  mensal
+  por_entrega
+}
+
+enum TipoVeiculo {
+  moto
+  carro
+  bicicleta
+  a_pe
+}
+
+enum TipoComissao {
+  percentual
+  fixo
+}
+
+enum StatusSolicitacao {
+  pendente
+  aceita
+  em_andamento
+  concluida
+  cancelada
+  rejeitada
+}
+
+enum PertenceA {
+  operacao
+  loja
+}
+
+enum TipoLancamento {
+  receita_operacao
+  credito_loja
+  debito_loja
+  ajuste
+}
+
+enum SinalLancamento {
+  credito
+  debito
+}
+
+enum StatusLiquidacao {
+  pendente
+  liquidado
+  estornado
+}
+
+enum TipoAjuste {
+  credito
+  debito
+}
+
+enum StatusDespesa {
+  Pendente
+  Atrasado
+  Pago
+}
+
+enum StatusCaixa {
+  aberto
+  fechado
+  divergente
+}
+
+enum StatusGeral {
+  Aberta
+  Fechada
+  Paga
+  Finalizada
+  Vencida
+}
+
+enum StatusTaxas {
+  Pendente
+  Paga
+  Vencida
+}
+
+enum StatusRepasse {
+  Pendente
+  Repassado
+}
+
+enum StatusCobranca {
+  Nao_aplicavel
+  Pendente
+  Cobrado
+  Inadimplente
+}
+
+enum TipoFaturamento {
+  por_entrega
+  semanal
+  mensal
+  diario
+  manual
+}
+
+// ─────────────────────────────────────────────
+// TABELAS DE CONFIGURAÇÃO
+// ─────────────────────────────────────────────
+
+model Cargos {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String
+  description String?
+  permissions String[]
+  sistema     Boolean   @default(false)
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  profiles    Profiles[]
+
+  @@map("cargos")
+}
+
+model Regioes {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String
+  description String?
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  bairros     Bairros[]
+
+  @@map("regioes")
+}
+
+model Bairros {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome          String
+  region_id     String?   @db.Uuid
+  taxa_entrega  Decimal   @default(0) @db.Decimal(10, 2)
+  created_at    DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime  @default(now()) @db.Timestamptz(6)
+  regiao        Regioes?  @relation(fields: [region_id], references: [id])
+  rotas         Rotas[]
+  tabela_precos TabelaPrecosCliente[]
+
+  @@map("bairros")
+}
+
+model FormasPagamento {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String
+  description String?
+  enabled     Boolean   @default(true)
+  order       Int       @default(0)
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  rota_formas RotaFormaPagamento[]
+  pagamentos  PagamentosSolicitacao[]
+
+  @@map("formas_pagamento")
+}
+
+model TaxasExtrasConfig {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome        String
+  valor_padrao Decimal  @db.Decimal(10, 2)
+  ativo       Boolean   @default(true)
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime  @default(now()) @db.Timestamptz(6)
+  rota_taxas  RotaTaxaExtra[]
+
+  @@map("taxas_extras_config")
+}
+
+model TiposOperacaoConfig {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome          String
+  descricao     String?
+  dias_semana   Int[]
+  horario_inicio DateTime? @db.Time(6)
+  horario_fim   DateTime? @db.Time(6)
+  aplica_feriado Boolean  @default(false)
+  cor           String?
+  ativo         Boolean   @default(true)
+  prioridade    Int       @default(100)
+  created_at    DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@map("tipos_operacao_config")
+}
+
+model Feriados {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome        String
+  data        DateTime  @db.Date
+  recorrente  Boolean   @default(true)
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@map("feriados")
+}
+
+model CategoriasFinanceiras {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome       String
+  tipo       String
+  ativo      Boolean   @default(true)
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+  despesas   Despesas[]
+  receitas   Receitas[]
+
+  @@map("categorias_financeiras")
+}
+
+model NotificationTemplates {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  evento       String
+  evento_label String    @default("")
+  categoria    String
+  titulo       String    @default("")
+  mensagem     String
+  canal        String    @default("whatsapp")
+  variaveis    String[]
+  ativo        Boolean   @default(true)
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@map("notification_templates")
+}
+
+model Webhooks {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome        String
+  url         String
+  eventos     String[]
+  secret_hash String?
+  status      String    @default("ativo")
+  ultimo_erro String?
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@map("webhooks")
+}
+
+model SystemSettings {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key        String    @unique
+  value      String
+  updated_by String?   @db.Uuid
+  updated_at DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@map("system_settings")
+}
+
+// ─────────────────────────────────────────────
+// PROFILES E AUTH
+// ─────────────────────────────────────────────
+
+model Profiles {
+  id         String    @id @db.Uuid
+  nome       String
+  email      String    @unique
+  role       Role      @default(cliente)
+  cargo_id   String?   @db.Uuid
+  telefone   String?
+  avatar_url String?
+  ativo      Boolean   @default(true)
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at DateTime  @default(now()) @db.Timestamptz(6)
+  cargo      Cargos?   @relation(fields: [cargo_id], references: [id])
+  preferences UserPreferences?
+  cliente    Clientes?
+  entregador Entregadores?
+
+  historico_solicitacoes HistoricoSolicitacoes[]
+  lancamentos            LancamentosFinanceiros[]
+  historico_faturas      HistoricoFaturas[]
+  ajustes                AjustesFinanceiros[]
+  auditoria              AuditoriaFinanceira[]
+  recargas               RecargasPrePago[]
+  despesas_pagas         Despesas[]             @relation("DespesasPagas")
+  caixas_abertos         CaixasEntregadores[]   @relation("CaixasAbertos")
+  caixas_fechados        CaixasEntregadores[]   @relation("CaixasFechados")
+
+  @@map("profiles")
+}
+
+model UserPreferences {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id             String    @unique @db.Uuid
+  tema                String    @default("light")
+  idioma              String    @default("pt-BR")
+  notificacoes_email  Boolean   @default(true)
+  notificacoes_push   Boolean   @default(false)
+  created_at          DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime  @default(now()) @db.Timestamptz(6)
+  profile             Profiles  @relation(fields: [user_id], references: [id])
+
+  @@map("user_preferences")
+}
+
+// ─────────────────────────────────────────────
+// CLIENTES E ENTREGADORES
+// ─────────────────────────────────────────────
+
+model Clientes {
+  id                     String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profile_id             String                @unique @db.Uuid
+  razao_social           String
+  nome_fantasia          String?
+  cnpj_cpf               String?               @unique
+  telefone               String?
+  endereco               String?
+  modalidade             Modalidade            @default(faturado)
+  frequencia_faturamento FrequenciaFaturamento @default(mensal)
+  saldo_pre_pago         Decimal               @default(0) @db.Decimal(10, 2)
+  limite_credito         Decimal               @default(0) @db.Decimal(10, 2)
+  ativo                  Boolean               @default(true)
+  created_at             DateTime              @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime              @default(now()) @db.Timestamptz(6)
+  profile                Profiles              @relation(fields: [profile_id], references: [id])
+  solicitacoes           Solicitacoes[]
+  tabela_precos          TabelaPrecosCliente[]
+  lancamentos            LancamentosFinanceiros[]
+  recargas               RecargasPrePago[]
+  faturas                Faturas[]
+  receitas               Receitas[]
+
+  @@map("clientes")
+}
+
+model Entregadores {
+  id                  String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profile_id          String       @unique @db.Uuid
+  razao_social        String?
+  cpf                 String?      @unique
+  tipo_veiculo        TipoVeiculo  @default(moto)
+  placa               String?
+  tipo_comissao       TipoComissao @default(percentual)
+  valor_comissao      Decimal      @default(0) @db.Decimal(10, 2)
+  ativo               Boolean      @default(true)
+  created_at          DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime     @default(now()) @db.Timestamptz(6)
+  profile             Profiles     @relation(fields: [profile_id], references: [id])
+  solicitacoes        Solicitacoes[]
+  caixas              CaixasEntregadores[]
+
+  @@map("entregadores")
+}
+
+// ─────────────────────────────────────────────
+// TABELA DE PREÇOS
+// ─────────────────────────────────────────────
+
+model TabelaPrecosCliente {
+  id                String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cliente_id        String      @db.Uuid
+  bairro_destino_id String?     @db.Uuid
+  regiao_id         String?     @db.Uuid
+  tipo_operacao     String      @default("todos")
+  taxa_base         Decimal     @db.Decimal(10, 2)
+  taxa_retorno      Decimal     @default(0) @db.Decimal(10, 2)
+  taxa_espera       Decimal     @default(0) @db.Decimal(10, 2)
+  taxa_urgencia     Decimal     @default(0) @db.Decimal(10, 2)
+  ativo             Boolean     @default(true)
+  prioridade        Int         @default(100)
+  observacao        String?
+  created_at        DateTime    @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime    @default(now()) @db.Timestamptz(6)
+  cliente           Clientes    @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
+  bairro            Bairros?    @relation(fields: [bairro_destino_id], references: [id])
+  rotas             Rotas[]
+
+  @@map("tabela_precos_cliente")
+}
+
+// ─────────────────────────────────────────────
+// SOLICITAÇÕES E ROTAS
+// ─────────────────────────────────────────────
+
+model Solicitacoes {
+  id               String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  codigo           String            @unique
+  cliente_id       String            @db.Uuid
+  entregador_id    String?           @db.Uuid
+  status           StatusSolicitacao @default(pendente)
+  tipo_operacao    String
+  ponto_coleta     String
+  data_solicitacao DateTime          @default(now()) @db.Timestamptz(6)
+  data_inicio      DateTime?         @db.Timestamptz(6)
+  data_conclusao   DateTime?         @db.Timestamptz(6)
+  justificativa    String?
+  retroativo       Boolean           @default(false)
+  created_at       DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime          @default(now()) @db.Timestamptz(6)
+  cliente          Clientes          @relation(fields: [cliente_id], references: [id])
+  entregador       Entregadores?     @relation(fields: [entregador_id], references: [id])
+  historico        HistoricoSolicitacoes[]
+  rotas            Rotas[]
+  pagamentos       PagamentosSolicitacao[]
+  lancamentos      LancamentosFinanceiros[]
+
+  @@map("solicitacoes")
+}
+
+model HistoricoSolicitacoes {
+  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  solicitacao_id  String       @db.Uuid
+  tipo            String
+  status_anterior String?
+  status_novo     String?
+  usuario_id      String?      @db.Uuid
+  descricao       String?
+  metadata        Json?
+  created_at      DateTime     @default(now()) @db.Timestamptz(6)
+  solicitacao     Solicitacoes @relation(fields: [solicitacao_id], references: [id])
+  usuario         Profiles?    @relation(fields: [usuario_id], references: [id])
+
+  @@map("historico_solicitacoes")
+}
+
+model Rotas {
+  id                String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  solicitacao_id    String               @db.Uuid
+  bairro_destino_id String               @db.Uuid
+  responsavel       String
+  telefone          String
+  observacoes       String?
+  receber_do_cliente Boolean             @default(false)
+  valor_a_receber   Decimal?             @db.Decimal(10, 2)
+  taxa_resolvida    Decimal?             @db.Decimal(10, 2)
+  regra_preco_id    String?              @db.Uuid
+  status            String               @default("ativa")
+  created_at        DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime             @default(now()) @db.Timestamptz(6)
+  solicitacao       Solicitacoes         @relation(fields: [solicitacao_id], references: [id])
+  bairro            Bairros              @relation(fields: [bairro_destino_id], references: [id])
+  regra_preco       TabelaPrecosCliente? @relation(fields: [regra_preco_id], references: [id])
+  formas_pagamento  RotaFormaPagamento[]
+  taxas_extras      RotaTaxaExtra[]
+  pagamentos        PagamentosSolicitacao[]
+  recebimentos      RecebimentosCaixa[]
+
+  @@map("rotas")
+}
+
+model RotaFormaPagamento {
+  rota_id            String          @db.Uuid
+  forma_pagamento_id String          @db.Uuid
+  rota               Rotas           @relation(fields: [rota_id], references: [id], onDelete: Cascade)
+  forma_pagamento    FormasPagamento @relation(fields: [forma_pagamento_id], references: [id])
+
+  @@id([rota_id, forma_pagamento_id])
+  @@map("rota_forma_pagamento")
+}
+
+model RotaTaxaExtra {
+  rota_id       String            @db.Uuid
+  taxa_extra_id String            @db.Uuid
+  valor         Decimal           @db.Decimal(10, 2)
+  rota          Rotas             @relation(fields: [rota_id], references: [id], onDelete: Cascade)
+  taxa_extra    TaxasExtrasConfig @relation(fields: [taxa_extra_id], references: [id])
+
+  @@id([rota_id, taxa_extra_id])
+  @@map("rota_taxa_extra")
+}
+
+// ─────────────────────────────────────────────
+// MÓDULO FINANCEIRO
+// ─────────────────────────────────────────────
+
+model PagamentosSolicitacao {
+  id                 String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  solicitacao_id     String          @db.Uuid
+  rota_id            String          @db.Uuid
+  forma_pagamento_id String          @db.Uuid
+  valor              Decimal         @db.Decimal(10, 2)
+  pertence_a         PertenceA
+  observacao         String?
+  created_by         String?         @db.Uuid
+  created_at         DateTime        @default(now()) @db.Timestamptz(6)
+  solicitacao        Solicitacoes    @relation(fields: [solicitacao_id], references: [id])
+  rota               Rotas           @relation(fields: [rota_id], references: [id])
+  forma_pagamento    FormasPagamento @relation(fields: [forma_pagamento_id], references: [id])
+
+  @@map("pagamentos_solicitacao")
+}
+
+model LancamentosFinanceiros {
+  id                String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  solicitacao_id    String?          @db.Uuid
+  cliente_id        String           @db.Uuid
+  fatura_id         String?          @db.Uuid
+  tipo              TipoLancamento
+  valor             Decimal          @db.Decimal(10, 2)
+  sinal             SinalLancamento
+  status_liquidacao StatusLiquidacao @default(pendente)
+  descricao         String?
+  referencia_origem String?
+  usuario_id        String?          @db.Uuid
+  created_at        DateTime         @default(now()) @db.Timestamptz(6)
+  solicitacao       Solicitacoes?    @relation(fields: [solicitacao_id], references: [id])
+  cliente           Clientes         @relation(fields: [cliente_id], references: [id])
+  fatura            Faturas?         @relation(fields: [fatura_id], references: [id])
+  usuario           Profiles?        @relation(fields: [usuario_id], references: [id])
+
+  @@map("lancamentos_financeiros")
+}
+
+model RecargasPrePago {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cliente_id        String    @db.Uuid
+  valor             Decimal   @db.Decimal(10, 2)
+  observacao        String?
+  registrado_por_id String    @db.Uuid
+  created_at        DateTime  @default(now()) @db.Timestamptz(6)
+  cliente           Clientes  @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
+  registrado_por    Profiles  @relation(fields: [registrado_por_id], references: [id])
+
+  @@map("recargas_pre_pago")
+}
+
+model Despesas {
+  id               String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  descricao        String
+  categoria_id     String?               @db.Uuid
+  fornecedor       String
+  vencimento       DateTime              @db.Date
+  valor            Decimal               @db.Decimal(10, 2)
+  status           StatusDespesa         @default(Pendente)
+  data_pagamento   DateTime?             @db.Date
+  usuario_pagou_id String?               @db.Uuid
+  observacao       String?
+  created_at       DateTime              @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime              @default(now()) @db.Timestamptz(6)
+  categoria        CategoriasFinanceiras? @relation(fields: [categoria_id], references: [id])
+  usuario_pagou    Profiles?             @relation("DespesasPagas", fields: [usuario_pagou_id], references: [id])
+
+  @@map("despesas")
+}
+
+model Receitas {
+  id               String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  descricao        String
+  categoria_id     String?                @db.Uuid
+  cliente_id       String?                @db.Uuid
+  data_recebimento DateTime               @db.Date
+  valor            Decimal                @db.Decimal(10, 2)
+  observacao       String?
+  created_at       DateTime               @default(now()) @db.Timestamptz(6)
+  categoria        CategoriasFinanceiras? @relation(fields: [categoria_id], references: [id])
+  cliente          Clientes?              @relation(fields: [cliente_id], references: [id])
+
+  @@map("receitas")
+}
+
+// ─────────────────────────────────────────────
+// CAIXAS DE ENTREGADORES
+// ─────────────────────────────────────────────
+
+model CaixasEntregadores {
+  id                        String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entregador_id             String       @db.Uuid
+  data                      DateTime     @db.Date
+  troco_inicial             Decimal      @default(0) @db.Decimal(10, 2)
+  valor_devolvido           Decimal?     @db.Decimal(10, 2)
+  diferenca                 Decimal?     @db.Decimal(10, 2)
+  status                    StatusCaixa  @default(aberto)
+  justificativa_divergencia String?
+  observacoes               String?
+  aberto_por_id             String?      @db.Uuid
+  fechado_por_id            String?      @db.Uuid
+  created_at                DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime     @default(now()) @db.Timestamptz(6)
+  entregador                Entregadores @relation(fields: [entregador_id], references: [id])
+  aberto_por                Profiles?    @relation("CaixasAbertos", fields: [aberto_por_id], references: [id])
+  fechado_por               Profiles?    @relation("CaixasFechados", fields: [fechado_por_id], references: [id])
+  recebimentos              RecebimentosCaixa[]
+
+  @@unique([entregador_id, data])
+  @@map("caixas_entregadores")
+}
+
+model RecebimentosCaixa {
+  id                 String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  caixa_id           String              @db.Uuid
+  solicitacao_id     String?             @db.Uuid
+  rota_id            String?             @db.Uuid
+  forma_pagamento_id String?             @db.Uuid
+  valor              Decimal             @db.Decimal(10, 2)
+  pertence_a         PertenceA
+  observacao         String?
+  created_at         DateTime            @default(now()) @db.Timestamptz(6)
+  caixa              CaixasEntregadores  @relation(fields: [caixa_id], references: [id])
+  rota               Rotas?              @relation(fields: [rota_id], references: [id])
+
+  @@map("recebimentos_caixa")
+}
+
+// ─────────────────────────────────────────────
+// FATURAS E HISTÓRICOS
+// ─────────────────────────────────────────────
+
+model Faturas {
+  id                  String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  numero              String          @unique
+  cliente_id          String          @db.Uuid
+  cliente_nome        String
+  tipo_faturamento    TipoFaturamento
+  total_entregas      Int             @default(0)
+  data_emissao        DateTime        @db.Date
+  data_vencimento     DateTime        @db.Date
+  total_creditos_loja Decimal         @default(0) @db.Decimal(10, 2)
+  total_debitos_loja  Decimal         @default(0) @db.Decimal(10, 2)
+  saldo_liquido       Decimal         @default(0) @db.Decimal(10, 2)
+  status_geral        StatusGeral     @default(Aberta)
+  status_taxas        StatusTaxas     @default(Pendente)
+  status_repasse      StatusRepasse   @default(Pendente)
+  status_cobranca     StatusCobranca  @default(Nao_aplicavel)
+  observacoes         String?
+  created_at          DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime        @default(now()) @db.Timestamptz(6)
+  cliente             Clientes        @relation(fields: [cliente_id], references: [id])
+  lancamentos         LancamentosFinanceiros[]
+  historico           HistoricoFaturas[]
+  ajustes             AjustesFinanceiros[]
+
+  @@map("faturas")
+}
+
+model HistoricoFaturas {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fatura_id      String    @db.Uuid
+  tipo           String
+  usuario_id     String?   @db.Uuid
+  descricao      String?
+  valor_anterior Decimal?  @db.Decimal(10, 2)
+  valor_novo     Decimal?  @db.Decimal(10, 2)
+  metadata       Json?
+  created_at     DateTime  @default(now()) @db.Timestamptz(6)
+  fatura         Faturas   @relation(fields: [fatura_id], references: [id])
+  usuario        Profiles? @relation(fields: [usuario_id], references: [id])
+
+  @@map("historico_faturas")
+}
+
+model AjustesFinanceiros {
+  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fatura_id      String     @db.Uuid
+  solicitacao_id String?    @db.Uuid
+  tipo           TipoAjuste
+  valor          Decimal    @db.Decimal(10, 2)
+  motivo         String
+  usuario_id     String     @db.Uuid
+  created_at     DateTime   @default(now()) @db.Timestamptz(6)
+  fatura         Faturas    @relation(fields: [fatura_id], references: [id])
+  usuario        Profiles   @relation(fields: [usuario_id], references: [id])
+
+  @@map("ajustes_financeiros")
+}
+
+model AuditoriaFinanceira {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entidade       String
+  entidade_id    String    @db.Uuid
+  campo          String?
+  valor_anterior Json?
+  valor_novo     Json?
+  motivo         String
+  usuario_id     String    @db.Uuid
+  created_at     DateTime  @default(now()) @db.Timestamptz(6)
+  usuario        Profiles  @relation(fields: [usuario_id], references: [id])
+
+  @@map("auditoria_financeira")
+}
+

@@ -1,4 +1,4 @@
-import { MOCK_BAIRROS, MOCK_TAXAS_EXTRAS, MOCK_FORMAS_PAGAMENTO } from "@/data/mockSettings";
+import { useBairros, useTaxasExtras, useFormasPagamento } from "@/hooks/useSettings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,8 +11,6 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Trash2, AlertTriangle, Briefcase, Store, Receipt, Wallet, CreditCard, Banknote, Smartphone, Building2, ArrowLeftRight } from "lucide-react";
 import type { Modalidade } from "@/types/database";
 
-const taxasExtrasDisponiveis = MOCK_TAXAS_EXTRAS.filter((t) => t.ativo);
-const formasPagamentoAtivas = MOCK_FORMAS_PAGAMENTO.filter((f) => f.enabled);
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 export interface TaxaExtra {
@@ -71,6 +69,11 @@ export function RotaCard({
   rota, index, canRemove, clienteModalidade,
   onUpdate, onRemove, onAddTaxaExtra, onRemoveTaxaExtra, onUpdateTaxaExtra, onToggleMeioPagamento, onToggleMeioPagamentoOperacao,
 }: RotaCardProps) {
+  const { data: bairros = [] } = useBairros();
+  const { data: taxasExtrasData = [] } = useTaxasExtras();
+  const { data: formasPagamento = [] } = useFormasPagamento();
+  const taxasExtrasDisponiveis = taxasExtrasData.filter((t) => t.ativo);
+  const formasPagamentoAtivas = formasPagamento.filter((f) => f.enabled);
   return (
     <div className="rounded-lg border border-border p-4 space-y-4">
       {/* Header */}
@@ -88,7 +91,7 @@ export function RotaCard({
         <Label className="text-xs">Bairro Destino *</Label>
         <Select value={rota.bairro_destino_id} onValueChange={(v) => onUpdate(rota.id, "bairro_destino_id", v)}>
           <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-          <SelectContent>{MOCK_BAIRROS.map((b) => (<SelectItem key={b.id} value={b.id}>{b.nome}</SelectItem>))}</SelectContent>
+          <SelectContent>{bairros.map((b) => (<SelectItem key={b.id} value={b.id}>{b.nome}</SelectItem>))}</SelectContent>
         </Select>
       </div>
 

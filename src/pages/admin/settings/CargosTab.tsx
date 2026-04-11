@@ -2,12 +2,13 @@ import { useState } from "react";
 import { DataTable, SearchInput, ConfirmDialog } from "@/components/shared";
 import type { Column } from "@/components/shared/DataTable";
 import type { Cargo } from "@/types/database";
-import { MOCK_CARGOS, PERMISSION_MODULES } from "@/data/mockSettings";
+import { PERMISSION_MODULES } from "@/lib/permissions";
+import { useCargos, useUpsertCargo, useDeleteCargo } from "@/hooks/useSettings";
 import { Button } from "@/components/ui/button";
 import { Plus, Pencil, Trash2, Shield } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -18,7 +19,9 @@ import { toast } from "sonner";
 import { PermissionMatrix } from "@/components/shared/PermissionMatrix";
 
 export function CargosTab() {
-  const [cargos, setCargos] = useState<Cargo[]>(MOCK_CARGOS);
+  const { data: cargos = [], refetch } = useCargos();
+  const upsertCargo = useUpsertCargo();
+  const deleteCargoMutation = useDeleteCargo();
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Cargo | null>(null);
@@ -38,23 +41,22 @@ export function CargosTab() {
     setPermissions((prev) => allSelected ? prev.filter((p) => !modulePerms.includes(p)) : [...new Set([...prev, ...modulePerms])]);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!name.trim()) { toast.error("Nome é obrigatório."); return; }
     if (permissions.length === 0) { toast.error("Selecione ao menos uma permissão."); return; }
     if (editing) {
-      setCargos((prev) => prev.map((c) => c.id === editing.id ? { ...c, name, description: description || null, permissions } : c));
+      await upsertCargo.mutateAsync({ id: editing.id, name, description: description || null, permissions });
       toast.success("Cargo atualizado!");
     } else {
-      setCargos((prev) => [...prev, { id: `cargo-${Date.now()}`, name, description: description || null, permissions }]);
+      await upsertCargo.mutateAsync({ name, description: description || null, permissions });
       toast.success("Cargo criado!");
     }
     setDialogOpen(false);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!deleteTarget) return;
-    if (deleteTarget.id === "cargo-1") { toast.error("Este cargo não pode ser excluído."); setDeleteTarget(null); return; }
-    setCargos((prev) => prev.filter((c) => c.id !== deleteTarget.id));
+    await deleteCargoMutation.mutateAsync(deleteTarget.id);
     toast.success("Cargo removido!");
     setDeleteTarget(null);
   };
@@ -130,7 +132,7 @@ export function CargosTab() {
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-lg max-h-[90vh]">
-          <DialogHeader><DialogTitle>{editing ? "Editar Cargo" : "Novo Cargo"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editing ? "Editar Cargo" : "Novo Cargo"}</DialogTitle><DialogDescription className="sr-only">.</DialogDescription></DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2"><Label>Nome *</Label><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Operador" /></div>
             <div className="space-y-2"><Label>Descrição</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Descrição do cargo..." rows={2} /></div>

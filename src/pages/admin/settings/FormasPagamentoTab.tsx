@@ -3,13 +3,14 @@ import { DataTable, SearchInput } from "@/components/shared";
 import { useLogStore } from "@/contexts/LogStore";
 import type { Column } from "@/components/shared/DataTable";
 import type { FormaPagamento } from "@/types/database";
-import { MOCK_FORMAS_PAGAMENTO } from "@/data/mockSettings";
+import { useFormasPagamento, useUpdateFormaPagamento } from "@/hooks/useSettings";
+import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Plus, Pencil } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -18,7 +19,8 @@ import { toast } from "sonner";
 
 export function FormasPagamentoTab() {
   const { addLog } = useLogStore();
-  const [formas, setFormas] = useState<FormaPagamento[]>(MOCK_FORMAS_PAGAMENTO);
+  const { data: formas = [], refetch } = useFormasPagamento();
+  const updateForma = useUpdateFormaPagamento();
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<FormaPagamento | null>(null);
@@ -27,29 +29,27 @@ export function FormasPagamentoTab() {
 
   const filtered = formas.filter((f) => f.name.toLowerCase().includes(search.toLowerCase()));
 
-  const toggleEnabled = (id: string) => {
-    setFormas((prev) => prev.map((f) => {
-      if (f.id !== id) return f;
-      const toggled = { ...f, enabled: !f.enabled };
-      addLog({ categoria: "configuracao", acao: "forma_pagamento_toggle", entidade_id: id, descricao: `Forma de pagamento "${f.name}" ${toggled.enabled ? "ativada" : "desativada"}`, detalhes: { enabled: toggled.enabled } });
-      return toggled;
-    }));
+  const toggleEnabled = async (id: string) => {
+    const f = formas.find((fp) => fp.id === id);
+    if (!f) return;
+    await updateForma.mutateAsync({ id, patch: { enabled: !f.enabled } });
+    addLog({ categoria: "configuracao", acao: "forma_pagamento_toggle", entidade_id: id, descricao: `Forma de pagamento "${f.name}" ${!f.enabled ? "ativada" : "desativada"}`, detalhes: { enabled: !f.enabled } });
     toast.success("Status atualizado!");
   };
 
   const openCreate = () => { setEditing(null); setName(""); setDescription(""); setDialogOpen(true); };
   const openEdit = (f: FormaPagamento) => { setEditing(f); setName(f.name); setDescription(f.description ?? ""); setDialogOpen(true); };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!name.trim()) { toast.error("Nome é obrigatório."); return; }
     if (editing) {
-      setFormas((prev) => prev.map((f) => (f.id === editing.id ? { ...f, name, description: description || null } : f)));
+      await updateForma.mutateAsync({ id: editing.id, patch: { name, description: description || null } });
       addLog({ categoria: "configuracao", acao: "forma_pagamento_editada", entidade_id: editing.id, descricao: `Forma de pagamento "${name}" atualizada`, detalhes: { nome: name } });
       toast.success("Forma de pagamento atualizada!");
     } else {
-      const newId = `fp-${Date.now()}`;
-      setFormas((prev) => [...prev, { id: newId, name, description: description || null, enabled: true, order: prev.length + 1 }]);
-      addLog({ categoria: "configuracao", acao: "forma_pagamento_criada", entidade_id: newId, descricao: `Forma de pagamento "${name}" criada`, detalhes: { nome: name } });
+      const { data: inserted } = await supabase.from("formas_pagamento").insert({ name, description: description || null, enabled: true, order: formas.length + 1 }).select().single();
+      addLog({ categoria: "configuracao", acao: "forma_pagamento_criada", entidade_id: inserted?.id ?? "new", descricao: `Forma de pagamento "${name}" criada`, detalhes: { nome: name } });
+      refetch();
       toast.success("Forma de pagamento criada!");
     }
     setDialogOpen(false);
@@ -117,7 +117,7 @@ export function FormasPagamentoTab() {
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>{editing ? "Editar Forma de Pagamento" : "Nova Forma de Pagamento"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editing ? "Editar Forma de Pagamento" : "Nova Forma de Pagamento"}</DialogTitle><DialogDescription className="sr-only">.</DialogDescription></DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2"><Label>Nome *</Label><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: PIX" /></div>
             <div className="space-y-2"><Label>Descrição</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Descrição opcional..." rows={2} /></div>

@@ -1,8 +1,8 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatCurrency } from "@/lib/formatters";
-import type { CaixaEntregador } from "@/data/mockCaixas";
+import type { CaixaEntregador } from "@/types/database";
 
 interface CaixaDetailsModalProps {
   open: boolean;
@@ -29,6 +29,7 @@ export function CaixaDetailsModal({ open, onOpenChange, caixa }: CaixaDetailsMod
             Caixa — {caixa.entregador_nome}
             <Badge variant={st.variant}>{st.label}</Badge>
           </DialogTitle>
+        <DialogDescription className="sr-only">.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">

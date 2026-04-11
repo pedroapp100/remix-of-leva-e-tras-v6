@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
@@ -16,9 +17,9 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { useLogStore } from "@/contexts/LogStore";
+import { supabase } from "@/lib/supabase";
 import { exportLogsCSV, exportLogsPDF } from "@/lib/exportLogs";
-import type { LogCategoria } from "@/types/database";
+import type { LogCategoria, LogEntry } from "@/types/database";
 import type { DateRange } from "react-day-picker";
 
 const CATEGORIA_CONFIG: Record<LogCategoria, { label: string; icon: React.ElementType; color: string }> = {
@@ -34,7 +35,29 @@ const CATEGORIA_CONFIG: Record<LogCategoria, { label: string; icon: React.Elemen
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
 export default function LogsPage() {
-  const { logs } = useLogStore();
+  const { data: logs = [] } = useQuery<LogEntry[]>({
+    queryKey: ["logs_auditoria"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("logs_auditoria")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(1000);
+      if (error) throw new Error(error.message);
+      return (data ?? []).map((r) => ({
+        id: r.id,
+        timestamp: r.created_at,
+        usuario_id: r.usuario_id ?? "system",
+        usuario_nome: r.usuario_nome,
+        categoria: r.categoria as LogCategoria,
+        acao: r.acao,
+        entidade_id: r.entidade_id,
+        descricao: r.descricao,
+        detalhes: r.detalhes as Record<string, unknown> | null,
+      }));
+    },
+    refetchInterval: 30_000,
+  });
   const [searchTerm, setSearchTerm] = useState("");
   const [categoriaFilter, setCategoriaFilter] = useState<string>("all");
   const [dateRange, setDateRange] = useState<DateRange | undefined>();

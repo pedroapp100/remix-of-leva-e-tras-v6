@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { MOCK_CLIENTES } from "@/data/mockClientes";
+import { useClientes } from "@/hooks/useClientes";
 import type { Cliente, Modalidade, FrequenciaFaturamento, DiaSemana } from "@/types/database";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,7 @@ interface ClientFormDialogProps {
 const UF_LIST = ["AC","AL","AM","AP","BA","CE","DF","ES","GO","MA","MG","MS","MT","PA","PB","PE","PI","PR","RJ","RN","RO","RR","RS","SC","SE","SP","TO"];
 
 export function ClientFormDialog({ open, onOpenChange, editing, onSave }: ClientFormDialogProps) {
+  const { data: clientes = [] } = useClientes();
   const [nome, setNome] = useState("");
   const [tipo, setTipo] = useState<"pessoa_fisica" | "pessoa_juridica">("pessoa_fisica");
   const [email, setEmail] = useState("");
@@ -51,7 +52,7 @@ export function ClientFormDialog({ open, onOpenChange, editing, onSave }: Client
       setBairro(editing.bairro);
       setCidade(editing.cidade);
       setUf(editing.uf);
-      setChavePix(editing.chavePix ?? "");
+      setChavePix(editing.chave_pix ?? "");
       setStatus(editing.status);
       setModalidade(editing.modalidade);
       setFaturamentoAuto(editing.ativar_faturamento_automatico);
@@ -97,7 +98,7 @@ export function ClientFormDialog({ open, onOpenChange, editing, onSave }: Client
       bairro: bairro.trim(),
       cidade: cidade.trim(),
       uf,
-      chavePix: chavePix.trim() || null,
+      chave_pix: chavePix.trim() || null,
       status,
       modalidade,
       ativar_faturamento_automatico: modalidade === "faturado" ? faturamentoAuto : false,
@@ -256,7 +257,7 @@ export function ClientFormDialog({ open, onOpenChange, editing, onSave }: Client
                   onBlur={() => {
                     if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
                       setEmailError("Email inválido");
-                    } else if (email.trim() && MOCK_CLIENTES.some((c) => c.email.toLowerCase() === email.trim().toLowerCase() && c.id !== editing?.id)) {
+                    } else if (email.trim() && clientes.some((c) => c.email.toLowerCase() === email.trim().toLowerCase() && c.id !== editing?.id)) {
                       setEmailError("Email já cadastrado");
                     }
                   }}

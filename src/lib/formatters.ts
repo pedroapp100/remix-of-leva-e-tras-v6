@@ -69,3 +69,29 @@ export function getInitials(name: string): string {
     .map((n) => n[0].toUpperCase())
     .join("");
 }
+
+// ── Fatura label maps ────────────────────────────────────────────────────────
+
+import type { StatusGeral } from "@/types/database";
+
+export const TIPO_FATURAMENTO_LABELS: Record<string, string> = {
+  por_entrega: "Por Entrega",
+  semanal: "Semanal",
+  mensal: "Mensal",
+  diario: "Diário",
+  manual: "Manual",
+};
+
+export const STATUS_GERAL_VARIANT: Record<StatusGeral, "default" | "secondary" | "outline" | "destructive"> = {
+  Aberta: "outline",
+  Fechada: "secondary",
+  Paga: "default",
+  Finalizada: "default",
+  Vencida: "destructive",
+};
+
+export const STATUS_DESPESA_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+  Pendente: "outline",
+  Pago: "default",
+  Atrasado: "destructive",
+};

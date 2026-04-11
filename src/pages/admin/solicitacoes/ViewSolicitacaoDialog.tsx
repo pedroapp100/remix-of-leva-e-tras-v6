@@ -2,11 +2,11 @@ import { useMemo } from "react";
 import type { Solicitacao, Rota, PagamentoSolicitacao } from "@/types/database";
 import { STATUS_SOLICITACAO_LABELS } from "@/types/database";
 import { TipoOperacaoBadge } from "@/components/shared/TipoOperacaoBadge";
-import { getClienteName, getEntregadorName } from "@/data/mockSolicitacoes";
-import { useGlobalStore } from "@/contexts/GlobalStore";
-import { MOCK_BAIRROS, MOCK_REGIOES, MOCK_FORMAS_PAGAMENTO } from "@/data/mockSettings";
-import { MOCK_CLIENTES } from "@/data/mockClientes";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useRotasBySolicitacao, usePagamentosBySolicitacao } from "@/hooks/useSolicitacoes";
+import { useClientes } from "@/hooks/useClientes";
+import { useEntregadores } from "@/hooks/useEntregadores";
+import { useBairros, useRegioes, useFormasPagamento } from "@/hooks/useSettings";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -22,15 +22,6 @@ interface ViewSolicitacaoDialogProps {
   isDriverView?: boolean;
 }
 
-const getBairroName = (id: string) => MOCK_BAIRROS.find((b) => b.id === id)?.nome ?? id;
-const getRegiaoByBairro = (bairroId: string) => {
-  const bairro = MOCK_BAIRROS.find((b) => b.id === bairroId);
-  return bairro ? MOCK_REGIOES.find((r) => r.id === bairro.region_id)?.name ?? "—" : "—";
-};
-const getFormaPagamentoName = (id: string) => {
-  if (id === FATURAR_ID) return "Faturado";
-  return MOCK_FORMAS_PAGAMENTO.find((f) => f.id === id)?.name ?? id;
-};
 const fmt = (v: number | null | undefined) => v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
 const fmtDate = (d: string | null | undefined) => d ? new Date(d).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "—";
 
@@ -52,7 +43,7 @@ function buildWhatsAppUrl(phone: string, clienteName: string): string {
 
 /* ── Sub-components ── */
 
-function RotaContactCard({ rota, clienteName }: { rota: Rota; clienteName: string }) {
+function RotaContactCard({ rota, clienteName, getBairroName, getRegiaoByBairro }: { rota: Rota; clienteName: string; getBairroName: (id: string) => string; getRegiaoByBairro: (id: string) => string }) {
   return (
     <div className="rounded-md border border-primary/20 bg-muted/40 p-3 space-y-2.5">
       <div className="flex items-center gap-2">
@@ -126,7 +117,7 @@ function RotaPaymentPreview({ rota, isFaturado, isPrePago }: { rota: Rota; isFat
   );
 }
 
-function RotaConciliationCard({ rota, pagamentos, isFaturado }: { rota: Rota; pagamentos: PagamentoSolicitacao[]; isFaturado: boolean }) {
+function RotaConciliationCard({ rota, pagamentos, isFaturado, getBairroName, getRegiaoByBairro, getFormaPagamentoName }: { rota: Rota; pagamentos: PagamentoSolicitacao[]; isFaturado: boolean; getBairroName: (id: string) => string; getRegiaoByBairro: (id: string) => string; getFormaPagamentoName: (id: string) => string }) {
   const pagOperacao = pagamentos.filter((p) => p.pertence_a === "operacao");
   const pagLoja = pagamentos.filter((p) => p.pertence_a === "loja");
 
@@ -202,24 +193,43 @@ function RotaConciliationCard({ rota, pagamentos, isFaturado }: { rota: Rota; pa
 /* ── Main Dialog ── */
 
 export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = false }: ViewSolicitacaoDialogProps) {
-  const { getRotasBySolicitacao, getPagamentosByRota } = useGlobalStore();
-  const rotas = solicitacao ? getRotasBySolicitacao(solicitacao.id) : [];
-  const clienteName = solicitacao ? getClienteName(solicitacao.cliente_id) : "";
-  const isConcluida = solicitacao?.status === "concluida";
+  const { data: rotas = [] } = useRotasBySolicitacao(solicitacao?.id ?? "");
+  const { data: allPagamentos = [] } = usePagamentosBySolicitacao(solicitacao?.id ?? "");
+  const { data: clientes = [] } = useClientes();
+  const { data: entregadores = [] } = useEntregadores();
+  const { data: bairros = [] } = useBairros();
+  const { data: regioes = [] } = useRegioes();
+  const { data: formasPagamento = [] } = useFormasPagamento();
 
-  const cliente = useMemo(
-    () => solicitacao ? MOCK_CLIENTES.find((c) => c.id === solicitacao.cliente_id) : null,
-    [solicitacao?.cliente_id]
+  const getBairroName = (id: string) => bairros.find((b) => b.id === id)?.nome ?? id;
+  const getRegiaoByBairro = (bairroId: string) => {
+    const bairro = bairros.find((b) => b.id === bairroId);
+    return bairro ? regioes.find((r) => r.id === bairro.region_id)?.name ?? "—" : "—";
+  };
+  const getFormaPagamentoName = (id: string) => {
+    if (id === FATURAR_ID) return "Faturado";
+    return formasPagamento.find((f) => f.id === id)?.name ?? id;
+  };
+
+  const clienteData = useMemo(
+    () => solicitacao ? clientes.find((c) => c.id === solicitacao.cliente_id) : null,
+    [solicitacao?.cliente_id, clientes]
   );
-  const isFaturado = cliente?.modalidade === "faturado";
-  const isPrePago = cliente?.modalidade === "pre_pago";
+  const clienteName = clienteData?.nome ?? (solicitacao?.cliente_id ?? "—");
+  const entregadorName = useMemo(
+    () => solicitacao?.entregador_id ? (entregadores.find((e) => e.id === solicitacao.entregador_id)?.nome ?? solicitacao.entregador_id) : "—",
+    [solicitacao?.entregador_id, entregadores]
+  );
+  const isConcluida = solicitacao?.status === "concluida";
+  const isFaturado = clienteData?.modalidade === "faturado";
+  const isPrePago = clienteData?.modalidade === "pre_pago";
 
   const pagamentosPorRota = useMemo(() => {
     if (!isConcluida) return {};
     const map: Record<string, PagamentoSolicitacao[]> = {};
-    rotas.forEach((r) => { map[r.id] = getPagamentosByRota(r.id); });
+    rotas.forEach((r) => { map[r.id] = allPagamentos.filter(p => p.rota_id === r.id); });
     return map;
-  }, [isConcluida, rotas, getPagamentosByRota]);
+  }, [isConcluida, rotas, allPagamentos]);
 
   const conciliacao = useMemo(() => {
     if (!isConcluida || !rotas.length) return null;
@@ -241,6 +251,7 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
               {STATUS_SOLICITACAO_LABELS[solicitacao.status]}
             </Badge>
           </DialogTitle>
+        <DialogDescription className="sr-only">.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
@@ -254,7 +265,7 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                 {isPrePago && <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Pré-pago</Badge>}
               </p>
             </div>
-            <div><span className="text-muted-foreground">Entregador</span><p className="font-medium">{getEntregadorName(solicitacao.entregador_id)}</p></div>
+            <div><span className="text-muted-foreground">Entregador</span><p className="font-medium">{entregadorName}</p></div>
             <div><span className="text-muted-foreground">Tipo</span><p><TipoOperacaoBadge tipoOperacao={solicitacao.tipo_operacao} /></p></div>
             {!isDriverView && (
               <div><span className="text-muted-foreground">Taxas</span><p className="font-medium tabular-nums">{fmt(solicitacao.valor_total_taxas)}</p></div>
@@ -300,13 +311,13 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                   {/* ── Modo Operacional (pendente/aceita/em_andamento) ── */}
                   {!isConcluida && !isDriverView && (
                     <>
-                      <RotaContactCard rota={rota} clienteName={clienteName} />
+                      <RotaContactCard rota={rota} clienteName={clienteName} getBairroName={getBairroName} getRegiaoByBairro={getRegiaoByBairro} />
                       <RotaPaymentPreview rota={rota} isFaturado={!!isFaturado} isPrePago={!!isPrePago} />
                     </>
                   )}
                   {!isConcluida && isDriverView && (
                     <>
-                      <RotaContactCard rota={rota} clienteName={clienteName} />
+                      <RotaContactCard rota={rota} clienteName={clienteName} getBairroName={getBairroName} getRegiaoByBairro={getRegiaoByBairro} />
                       {rota.receber_do_cliente && (
                         <div className="rounded-md border border-border bg-muted/30 p-3 space-y-1.5">
                           <span className="flex items-center gap-1.5 font-medium text-xs uppercase tracking-wide">
@@ -328,6 +339,9 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                       rota={rota}
                       pagamentos={pagamentosPorRota[rota.id] || []}
                       isFaturado={!!isFaturado}
+                      getBairroName={getBairroName}
+                      getRegiaoByBairro={getRegiaoByBairro}
+                      getFormaPagamentoName={getFormaPagamentoName}
                     />
                   )}
                   {isConcluida && isDriverView && rota.receber_do_cliente && (

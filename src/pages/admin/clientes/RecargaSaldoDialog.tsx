@@ -7,7 +7,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { CurrencyInput } from "@/components/shared/CurrencyInput";
 import { DollarSign } from "lucide-react";
 import { toast } from "sonner";
-import { useGlobalStore } from "@/contexts/GlobalStore";
+import { useCreateRecarga } from "@/hooks/useFinanceiro";
+import { useClienteSaldoMap } from "@/hooks/useClientes";
+import { useAuth } from "@/contexts/AuthContext";
 import type { Cliente } from "@/types/database";
 
 interface RecargaSaldoDialogProps {
@@ -17,7 +19,9 @@ interface RecargaSaldoDialogProps {
 }
 
 export function RecargaSaldoDialog({ open, onOpenChange, cliente }: RecargaSaldoDialogProps) {
-  const { addRecarga, getClienteSaldo } = useGlobalStore();
+  const { user } = useAuth();
+  const createRecarga = useCreateRecarga();
+  const { getClienteSaldo } = useClienteSaldoMap();
   const [valor, setValor] = useState(0);
   const [observacao, setObservacao] = useState("");
 
@@ -29,19 +33,22 @@ export function RecargaSaldoDialog({ open, onOpenChange, cliente }: RecargaSaldo
       return;
     }
 
-    addRecarga({
-      id: `rec-${Date.now()}`,
+    createRecarga.mutate({
       cliente_id: cliente.id,
       valor,
       observacao: observacao.trim() || "Recarga de saldo",
-      registrado_por: "Admin",
-      created_at: new Date().toISOString(),
+      registrado_por_id: user!.id,
+    }, {
+      onSuccess: () => {
+        toast.success(`Recarga de R$ ${valor.toFixed(2).replace(".", ",")} adicionada ao saldo de ${cliente.nome}.`);
+        setValor(0);
+        setObservacao("");
+        onOpenChange(false);
+      },
+      onError: (err) => {
+        toast.error(`Erro ao criar recarga: ${err.message}`);
+      },
     });
-
-    toast.success(`Recarga de R$ ${valor.toFixed(2).replace(".", ",")} adicionada ao saldo de ${cliente.nome}.`);
-    setValor(0);
-    setObservacao("");
-    onOpenChange(false);
   };
 
   return (

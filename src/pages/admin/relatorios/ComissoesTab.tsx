@@ -1,15 +1,16 @@
 import { DataTable } from "@/components/shared";
 import type { Column } from "@/components/shared/DataTable";
-import { MOCK_COMISSOES } from "@/data/mockFinanceiro";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { formatCurrency } from "@/lib/formatters";
+import { useAllComissoes, type ComissaoCalculada } from "@/hooks/useComissao";
 
-type Comissao = typeof MOCK_COMISSOES[number];
+type Comissao = ComissaoCalculada;
 
 export function ComissoesTab() {
-  const totalComissao = MOCK_COMISSOES.reduce((s, c) => s + c.comissao, 0);
-  const totalEntregas = MOCK_COMISSOES.reduce((s, c) => s + c.entregas, 0);
+  const comissoes = useAllComissoes();
+  const totalComissao = comissoes.reduce((s, c) => s + c.comissao, 0);
+  const totalEntregas = comissoes.reduce((s, c) => s + c.entregas, 0);
 
   const columns: Column<Comissao>[] = [
     { key: "nome", header: "Entregador", sortable: true, cell: (c) => <span className="font-medium">{c.nome}</span> },
@@ -50,7 +51,7 @@ export function ComissoesTab() {
       </div>
       <p className="text-xs text-muted-foreground">⚠️ Comissões calculadas SOMENTE sobre <code className="bg-muted px-1 rounded">receita_operacao</code>, excluindo créditos de loja.</p>
       <DataTable
-        data={MOCK_COMISSOES}
+        data={comissoes}
         columns={columns}
         pageSize={10}
         renderMobileCard={renderMobileCard}

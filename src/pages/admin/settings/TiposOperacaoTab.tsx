@@ -2,12 +2,13 @@ import { useState, useMemo } from "react";
 import { DataTable } from "@/components/shared";
 import type { Column } from "@/components/shared/DataTable";
 import type { TipoOperacaoConfig, DiaSemanaConfig } from "@/types/database";
-import { MOCK_TIPOS_OPERACAO } from "@/data/mockSettings";
+import { useTiposOperacao, useUpsertTipoOperacao } from "@/hooks/useSettings";
+import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -25,7 +26,8 @@ const DIAS_LABELS: Record<DiaSemanaConfig, string> = {
 const ALL_DIAS: DiaSemanaConfig[] = ["seg", "ter", "qua", "qui", "sex", "sab", "dom"];
 
 export function TiposOperacaoTab() {
-  const [tipos, setTipos] = useState<TipoOperacaoConfig[]>(MOCK_TIPOS_OPERACAO);
+  const { data: tipos = [], refetch } = useTiposOperacao();
+  const upsertTipo = useUpsertTipoOperacao();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<TipoOperacaoConfig | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<TipoOperacaoConfig | null>(null);
@@ -63,35 +65,31 @@ export function TiposOperacaoTab() {
     );
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!nome.trim()) { toast.error("Nome é obrigatório."); return; }
     if (diasSemana.length === 0 && !aplicaFeriado) { toast.error("Selecione pelo menos um dia ou marque como feriado."); return; }
     const now = new Date().toISOString();
-
+    const data = {
+      nome: nome.trim(), descricao: descricao || null,
+      dias_semana: diasSemana, horario_inicio: horarioInicio || null,
+      horario_fim: horarioFim || null, aplica_feriado: aplicaFeriado,
+      cor, ativo, prioridade: editing ? editing.prioridade : tipos.length + 1,
+      updated_at: now,
+    };
     if (editing) {
-      setTipos((prev) => prev.map((t) => t.id === editing.id ? {
-        ...t, nome: nome.trim(), descricao: descricao || null,
-        dias_semana: diasSemana, horario_inicio: horarioInicio || null,
-        horario_fim: horarioFim || null, aplica_feriado: aplicaFeriado,
-        cor, ativo, updated_at: now,
-      } : t));
+      await upsertTipo.mutateAsync({ ...data, id: editing.id });
       toast.success("Tipo de operação atualizado!");
     } else {
-      setTipos((prev) => [...prev, {
-        id: `tipo-${Date.now()}`, nome: nome.trim(), descricao: descricao || null,
-        dias_semana: diasSemana, horario_inicio: horarioInicio || null,
-        horario_fim: horarioFim || null, aplica_feriado: aplicaFeriado,
-        cor, ativo, prioridade: prev.length + 1,
-        created_at: now, updated_at: now,
-      }]);
+      await upsertTipo.mutateAsync({ ...data, created_at: now });
       toast.success("Tipo de operação criado!");
     }
     setDialogOpen(false);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!deleteTarget) return;
-    setTipos((prev) => prev.filter((t) => t.id !== deleteTarget.id));
+    await supabase.from("tipos_operacao_config").delete().eq("id", deleteTarget.id);
+    refetch();
     toast.success("Tipo de operação removido!");
     setDeleteTarget(null);
   };
@@ -215,6 +213,7 @@ export function TiposOperacaoTab() {
           <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{editing ? "Editar Tipo de Operação" : "Novo Tipo de Operação"}</DialogTitle>
+            <DialogDescription className="sr-only">.</DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-2">
               <div className="grid grid-cols-[1fr_auto] gap-4">

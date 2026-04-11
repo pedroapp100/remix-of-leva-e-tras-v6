@@ -1,0 +1,6 @@
+{
+  "deploy": {
+    "project": "qbumfnkrqqsthmsgrhfi",
+    "entrypoint": "index.ts"
+  }
+}

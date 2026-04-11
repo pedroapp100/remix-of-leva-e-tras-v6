@@ -4,10 +4,12 @@ import type { Column } from "@/components/shared/DataTable";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip as UiTooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { getClientesPorModalidade } from "@/data/mockRelatorios";
 import { formatCurrency } from "@/lib/formatters";
-import { useGlobalStore } from "@/contexts/GlobalStore";
+import { useClientes, useClienteSaldoMap } from "@/hooks/useClientes";
+import { useSolicitacoesAll } from "@/hooks/useSolicitacoes";
+import { useFaturas } from "@/hooks/useFaturas";
 import { useSettingsStore } from "@/contexts/SettingsStore";
+import { useReceitas } from "@/hooks/useFinanceiro";
 import { Users, CreditCard, Receipt, TrendingUp, AlertTriangle } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis, Legend } from "recharts";
 
@@ -29,9 +31,67 @@ interface ClienteRow {
 }
 
 export function ClientesReportTab() {
-  const data = useMemo(() => getClientesPorModalidade(), []);
-  const { getClienteSaldo } = useGlobalStore();
+  const { data: clientes = [] } = useClientes();
+  const { data: solicitacoes = [] } = useSolicitacoesAll();
+  const { data: faturas = [] } = useFaturas();
+  const { getClienteSaldo } = useClienteSaldoMap();
+  const { data: receitas = [] } = useReceitas();
   const limiteMinimo = useSettingsStore((s) => s.limite_saldo_pre_pago);
+
+  const data = useMemo(() => {
+    const faturados = clientes.filter((c) => c.modalidade === "faturado");
+    const prePagos = clientes.filter((c) => c.modalidade === "pre_pago");
+    const faturadosAtivos = faturados.filter((c) => c.status === "ativo").length;
+    const prePagosAtivos = prePagos.filter((c) => c.status === "ativo").length;
+
+    const receitaFaturados = receitas
+      .filter((r) => { const cli = clientes.find((c) => c.id === r.cliente_id); return cli?.modalidade === "faturado"; })
+      .reduce((s, r) => s + r.valor, 0);
+    const receitaPrePagos = receitas
+      .filter((r) => { const cli = clientes.find((c) => c.id === r.cliente_id); return cli?.modalidade === "pre_pago"; })
+      .reduce((s, r) => s + r.valor, 0);
+
+    const entregasFaturados = solicitacoes
+      .filter((s) => { const cli = clientes.find((c) => c.id === s.cliente_id); return cli?.modalidade === "faturado" && s.status === "concluida"; }).length;
+    const entregasPrePagos = solicitacoes
+      .filter((s) => { const cli = clientes.find((c) => c.id === s.cliente_id); return cli?.modalidade === "pre_pago" && s.status === "concluida"; }).length;
+
+    const faturasAbertas = faturas.filter((f) => f.status_geral === "Aberta").length;
+    const faturasVencidas = faturas.filter((f) => f.status_geral === "Vencida").length;
+    const faturasPagas = faturas.filter((f) => f.status_geral === "Paga" || f.status_geral === "Finalizada").length;
+
+    const topClientes = clientes
+      .filter((c) => c.status === "ativo")
+      .map((c) => {
+        const receita = receitas.filter((r) => r.cliente_id === c.id).reduce((s, r) => s + r.valor, 0);
+        const entregas = solicitacoes.filter((s) => s.cliente_id === c.id && s.status === "concluida").length;
+        return { ...c, receita, entregas };
+      })
+      .sort((a, b) => b.receita - a.receita);
+
+    return {
+      totalFaturados: faturados.length,
+      totalPrePagos: prePagos.length,
+      faturadosAtivos,
+      prePagosAtivos,
+      receitaFaturados,
+      receitaPrePagos,
+      entregasFaturados,
+      entregasPrePagos,
+      faturasAbertas,
+      faturasVencidas,
+      faturasPagas,
+      distribuicao: [
+        { name: "Faturados", value: faturados.length, fill: "hsl(var(--primary))" },
+        { name: "Pré-pagos", value: prePagos.length, fill: "hsl(var(--chart-4))" },
+      ],
+      receitaPorModalidade: [
+        { name: "Faturados", value: receitaFaturados, fill: "hsl(var(--primary))" },
+        { name: "Pré-pagos", value: receitaPrePagos, fill: "hsl(var(--chart-4))" },
+      ],
+      topClientes,
+    };
+  }, [clientes, solicitacoes, faturas, receitas]);
 
   const columns: Column<ClienteRow>[] = [
     { key: "nome", header: "Cliente", sortable: true, cell: (c) => <span className="font-medium">{c.nome}</span> },

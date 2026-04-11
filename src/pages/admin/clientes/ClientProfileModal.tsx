@@ -1,7 +1,6 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import type { Cliente } from "@/types/database";
 import { STATUS_SOLICITACAO_LABELS } from "@/types/database";
-import { MOCK_SOLICITACOES, getEntregadorName, getRotasBySolicitacao } from "@/data/mockSolicitacoes";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,7 +10,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Pencil, ExternalLink, ClipboardList, Receipt, Info, DollarSign, Wallet } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useGlobalStore } from "@/contexts/GlobalStore";
+import { useSolicitacoesByCliente, useRotasBySolicitacaoIds } from "@/hooks/useSolicitacoes";
+import { useClienteSaldoMap } from "@/hooks/useClientes";
+import { useRecargasByCliente } from "@/hooks/useFinanceiro";
+import { useEntregadores } from "@/hooks/useEntregadores";
+import { useFaturasByCliente } from "@/hooks/useFaturas";
 import { RecargaSaldoDialog } from "./RecargaSaldoDialog";
 import { ExportDropdown } from "@/components/shared/ExportDropdown";
 import { exportCSV, exportPDF } from "@/lib/exportTable";
@@ -49,16 +52,25 @@ const fmt = (v: number | null | undefined) =>
 const fmtDateTime = (d: string | null | undefined) =>
   d ? new Date(d).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "—";
 
-// Mock fechamentos
-const MOCK_FECHAMENTOS = [
-  { id: "fech-001", periodo: "01/03 – 15/03/2026", valor: 156.50, status: "Paga" as const },
-  { id: "fech-002", periodo: "16/02 – 28/02/2026", valor: 210.00, status: "Paga" as const },
-  { id: "fech-003", periodo: "01/02 – 15/02/2026", valor: 98.00, status: "Paga" as const },
-];
+const STATUS_GERAL_VARIANT: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
+  Aberta: "secondary",
+  Fechada: "outline",
+  Finalizada: "default",
+  Vencida: "destructive",
+};
 
 export function ClientProfileModal({ client, onClose, onEdit }: ClientProfileModalProps) {
   const navigate = useNavigate();
-  const { getClienteSaldo, getRecargasByCliente } = useGlobalStore();
+  const { data: solicitacoes = [] } = useSolicitacoesByCliente(client?.id ?? "");
+  const solIds = useMemo(() => solicitacoes.map((s) => s.id), [solicitacoes]);
+  const { data: allRotas = [] } = useRotasBySolicitacaoIds(solIds);
+  const { getClienteSaldo } = useClienteSaldoMap();
+  const { data: entregadores = [] } = useEntregadores();
+  const { data: recargas = [] } = useRecargasByCliente(client?.id ?? "");
+  const { data: faturas = [] } = useFaturasByCliente(client?.id ?? "");
+  const getRotasBySolicitacao = (solId: string) => allRotas.filter(r => r.solicitacao_id === solId);
+  const getEntregadorNome = (id: string | null | undefined) =>
+    !id ? "—" : (entregadores.find((e) => e.id === id)?.nome ?? id);
   const [recargaOpen, setRecargaOpen] = useState(false);
   const [recargaPage, setRecargaPage] = useState(1);
   const [recargaPerPage, setRecargaPerPage] = useState(10);
@@ -66,25 +78,22 @@ export function ClientProfileModal({ client, onClose, onEdit }: ClientProfileMod
   if (!client) return null;
 
   const saldoPrePago = client.modalidade === "pre_pago" ? getClienteSaldo(client.id) : null;
-  const recargas = client.modalidade === "pre_pago" ? getRecargasByCliente(client.id) : [];
 
   const createdDate = new Date(client.created_at).toLocaleDateString("pt-BR");
 
-  // Client solicitations
-  const clientSolicitacoes = MOCK_SOLICITACOES
-    .filter((s) => s.cliente_id === client.id)
+  // Client solicitations (already scoped to this client via useSolicitacoesByCliente)
+  const clientSolicitacoes = solicitacoes
     .sort((a, b) => new Date(b.data_solicitacao).getTime() - new Date(a.data_solicitacao).getTime())
     .slice(0, 5);
 
-  const totalSolicitacoes = MOCK_SOLICITACOES.filter((s) => s.cliente_id === client.id).length;
-  const solicitacoesMes = MOCK_SOLICITACOES.filter((s) => {
-    if (s.cliente_id !== client.id) return false;
+  const totalSolicitacoes = solicitacoes.length;
+  const solicitacoesMes = solicitacoes.filter((s) => {
     const d = new Date(s.data_solicitacao);
     const now = new Date();
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
   }).length;
-  const totalTaxas = MOCK_SOLICITACOES
-    .filter((s) => s.cliente_id === client.id && s.valor_total_taxas != null)
+  const totalTaxas = solicitacoes
+    .filter((s) => s.valor_total_taxas != null)
     .reduce((sum, s) => sum + (s.valor_total_taxas ?? 0), 0);
 
   // Frequency description
@@ -164,7 +173,7 @@ export function ClientProfileModal({ client, onClose, onEdit }: ClientProfileMod
                     <FieldItem label="Endereço Principal" value={`${client.endereco}, ${client.bairro}, ${client.cidade} - ${client.uf}`} />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
-                    <FieldItem label="Chave Pix" value={client.chavePix ?? "—"} />
+                    <FieldItem label="Chave Pix" value={client.chave_pix ?? "—"} />
                     <div>
                       <p className="text-xs text-muted-foreground mb-1">Status</p>
                       <Badge variant={client.status === "ativo" ? "default" : "outline"} className={client.status === "ativo" ? "bg-emerald-600 hover:bg-emerald-700" : ""}>
@@ -261,7 +270,7 @@ export function ClientProfileModal({ client, onClose, onEdit }: ClientProfileMod
                         <span>{rotas.length} rota(s)</span>
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        Entregador: <span className="text-foreground">{getEntregadorName(s.entregador_id)}</span>
+                        Entregador: <span className="text-foreground">{getEntregadorNome(s.entregador_id)}</span>
                       </div>
                     </div>
                   );
@@ -272,7 +281,7 @@ export function ClientProfileModal({ client, onClose, onEdit }: ClientProfileMod
 
           {/* Tab: Fechamentos */}
           <TabsContent value="fechamentos" className="p-6 mt-0">
-            {MOCK_FECHAMENTOS.length === 0 ? (
+            {faturas.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
                 <Receipt className="h-10 w-10 mx-auto mb-3 opacity-40" />
                 <p className="text-sm font-medium">Nenhum fechamento encontrado</p>
@@ -281,16 +290,18 @@ export function ClientProfileModal({ client, onClose, onEdit }: ClientProfileMod
             ) : (
               <div className="space-y-3">
                 <p className="text-sm text-muted-foreground font-medium mb-3">Fechamentos recentes</p>
-                {MOCK_FECHAMENTOS.map((f) => (
+                {faturas.map((f) => (
                   <div key={f.id} className="rounded-lg border border-border p-4 flex items-center justify-between">
                     <div>
-                      <p className="font-medium text-sm">{f.periodo}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">Fatura de fechamento</p>
+                      <p className="font-medium text-sm">{f.numero}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {fmtDateTime(f.data_emissao).split(",")[0]} — {fmtDateTime(f.data_vencimento).split(",")[0]}
+                      </p>
                     </div>
                     <div className="text-right flex items-center gap-3">
-                      <span className="font-medium tabular-nums text-sm">{fmt(f.valor)}</span>
-                      <Badge variant={f.status === "Paga" ? "default" : "destructive"}>
-                        {f.status}
+                      <span className="font-medium tabular-nums text-sm">{fmt(f.saldo_liquido)}</span>
+                      <Badge variant={STATUS_GERAL_VARIANT[f.status_geral] ?? "outline"}>
+                        {f.status_geral}
                       </Badge>
                     </div>
                   </div>
@@ -335,8 +346,8 @@ export function ClientProfileModal({ client, onClose, onEdit }: ClientProfileMod
                           rows: sorted.map((r) => [
                             new Date(r.created_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }),
                             r.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }),
-                            r.observacao,
-                            r.registrado_por,
+                            r.observacao ?? "",
+                            r.registrado_por_id ?? "",
                           ]),
                           filename: `recargas_${client.nome.replace(/\s+/g, "_").toLowerCase()}`,
                         });
@@ -350,8 +361,8 @@ export function ClientProfileModal({ client, onClose, onEdit }: ClientProfileMod
                           rows: sorted.map((r) => [
                             new Date(r.created_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }),
                             r.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }),
-                            r.observacao,
-                            r.registrado_por,
+                            r.observacao ?? "",
+                            r.registrado_por_id ?? "",
                           ]),
                           filename: `recargas_${client.nome.replace(/\s+/g, "_").toLowerCase()}`,
                         });
@@ -385,7 +396,7 @@ export function ClientProfileModal({ client, onClose, onEdit }: ClientProfileMod
                               </p>
                               <p className="text-xs text-muted-foreground mt-0.5">{r.observacao}</p>
                               <p className="text-xs text-muted-foreground mt-0.5">
-                                Por: {r.registrado_por} • {new Date(r.created_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
+                                Por: {r.registrado_por_id} • {new Date(r.created_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
                               </p>
                             </div>
                             <Badge variant="secondary">Crédito</Badge>

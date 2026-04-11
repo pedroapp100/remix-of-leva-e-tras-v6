@@ -3,7 +3,7 @@ import { DataTable, SearchInput, ConfirmDialog } from "@/components/shared";
 import { useLogStore } from "@/contexts/LogStore";
 import type { Column } from "@/components/shared/DataTable";
 import type { Bairro } from "@/types/database";
-import { MOCK_BAIRROS, MOCK_REGIOES } from "@/data/mockSettings";
+import { useBairros, useRegioes, useUpsertBairro, useDeleteBairro } from "@/hooks/useSettings";
 import { Button } from "@/components/ui/button";
 import { Plus, Pencil, Trash2, AlertTriangle, Upload, FileSpreadsheet, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +20,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 export function BairrosTab() {
   const { addLog } = useLogStore();
-  const [bairros, setBairros] = useState<Bairro[]>(MOCK_BAIRROS);
+  const { data: bairros = [], refetch: refetchBairros } = useBairros();
+  const { data: regioes = [] } = useRegioes();
+  const upsertBairro = useUpsertBairro();
+  const deleteBairroMutation = useDeleteBairro();
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingBairro, setEditingBairro] = useState<Bairro | null>(null);
@@ -41,11 +44,11 @@ export function BairrosTab() {
   );
 
   const getRegionName = (id: string) =>
-    MOCK_REGIOES.find((r) => r.id === id)?.name ?? "—";
+    regioes.find((r) => r.id === id)?.name ?? "—";
 
   const findRegionId = (name: string): string | null => {
     const normalized = name.trim().toLowerCase();
-    const found = MOCK_REGIOES.find((r) => r.name.toLowerCase() === normalized);
+    const found = regioes.find((r) => r.name.toLowerCase() === normalized);
     return found?.id ?? null;
   };
 
@@ -57,24 +60,23 @@ export function BairrosTab() {
     setEditingBairro(b); setNome(b.nome); setRegionId(b.region_id); setTaxa(b.taxa_entrega); setDialogOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!nome.trim() || !regionId) { toast.error("Preencha todos os campos obrigatórios."); return; }
     if (editingBairro) {
-      setBairros((prev) => prev.map((b) => b.id === editingBairro.id ? { ...b, nome, region_id: regionId, taxa_entrega: taxa } : b));
+      await upsertBairro.mutateAsync({ id: editingBairro.id, nome, region_id: regionId, taxa_entrega: taxa });
       addLog({ categoria: "configuracao", acao: "bairro_editado", entidade_id: editingBairro.id, descricao: `Bairro "${nome}" atualizado`, detalhes: { nome, regiao: getRegionName(regionId), taxa } });
       toast.success("Bairro atualizado com sucesso!");
     } else {
-      const newId = `bairro-${Date.now()}`;
-      setBairros((prev) => [...prev, { id: newId, nome, region_id: regionId, taxa_entrega: taxa }]);
-      addLog({ categoria: "configuracao", acao: "bairro_criado", entidade_id: newId, descricao: `Bairro "${nome}" cadastrado`, detalhes: { nome, regiao: getRegionName(regionId), taxa } });
+      const inserted = await upsertBairro.mutateAsync({ nome, region_id: regionId, taxa_entrega: taxa });
+      addLog({ categoria: "configuracao", acao: "bairro_criado", entidade_id: inserted?.id ?? "new", descricao: `Bairro "${nome}" cadastrado`, detalhes: { nome, regiao: getRegionName(regionId), taxa } });
       toast.success("Bairro cadastrado com sucesso!");
     }
     setDialogOpen(false);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!deleteTarget) return;
-    setBairros((prev) => prev.filter((b) => b.id !== deleteTarget.id));
+    await deleteBairroMutation.mutateAsync(deleteTarget.id);
     addLog({ categoria: "configuracao", acao: "bairro_removido", entidade_id: deleteTarget.id, descricao: `Bairro "${deleteTarget.nome}" removido`, detalhes: null });
     toast.success("Bairro removido com sucesso!");
     setDeleteTarget(null);
@@ -150,16 +152,12 @@ export function BairrosTab() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const handleImportConfirm = () => {
+  const handleImportConfirm = async () => {
     const validItems = importPreview.filter((p) => p.valid);
     if (validItems.length === 0) { toast.error("Nenhum item válido para importar."); return; }
-    const newBairros: Bairro[] = validItems.map((p, i) => ({
-      id: `bairro-import-${Date.now()}-${i}`,
-      nome: p.nome,
-      region_id: p.region_id,
-      taxa_entrega: p.taxa_entrega,
-    }));
-    setBairros((prev) => [...prev, ...newBairros]);
+    for (const p of validItems) {
+      await upsertBairro.mutateAsync({ nome: p.nome, region_id: p.region_id, taxa_entrega: p.taxa_entrega });
+    }
     toast.success(`${validItems.length} bairro(s) importado(s) com sucesso!`);
     setImportDialogOpen(false);
     setImportPreview([]);
@@ -242,7 +240,7 @@ export function BairrosTab() {
               <Label>Região *</Label>
               <Select value={regionId} onValueChange={setRegionId}>
                 <SelectTrigger><SelectValue placeholder="Selecione a região" /></SelectTrigger>
-                <SelectContent>{MOCK_REGIOES.map((r) => (<SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>))}</SelectContent>
+                <SelectContent>{regioes.map((r) => (<SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>))}</SelectContent>
               </Select>
             </div>
             <div className="space-y-2">

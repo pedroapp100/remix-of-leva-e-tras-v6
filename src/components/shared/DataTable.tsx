@@ -23,6 +23,14 @@ export interface Column<T> {
   className?: string;
 }
 
+export interface ExternalPaginationProps {
+  /** 0-based current page index */
+  page: number;
+  pageCount: number;
+  total: number;
+  onPageChange: (page: number) => void;
+}
+
 interface DataTableProps<T> {
   data: T[];
   columns: Column<T>[];
@@ -36,6 +44,8 @@ interface DataTableProps<T> {
   onRowClick?: (row: T) => void;
   renderMobileCard?: (row: T, index: number) => React.ReactNode;
   className?: string;
+  /** When provided, disables internal pagination and uses server-side controls. */
+  externalPagination?: ExternalPaginationProps;
 }
 
 type SortDirection = "asc" | "desc" | null;
@@ -55,6 +65,7 @@ export function DataTable<T extends { id?: string }>({
   onRowClick,
   renderMobileCard,
   className,
+  externalPagination,
 }: DataTableProps<T>) {
   const [page, setPage] = useState(0);
   const [currentPageSize, setCurrentPageSize] = useState(initialPageSize);
@@ -75,7 +86,8 @@ export function DataTable<T extends { id?: string }>({
   }, [data, sortKey, sortDir]);
 
   const totalPages = Math.ceil(sortedData.length / currentPageSize);
-  const pagedData = sortedData.slice(page * currentPageSize, (page + 1) * currentPageSize);
+  // When external pagination is active, display all rows as-is (server already sliced them)
+  const pagedData = externalPagination ? sortedData : sortedData.slice(page * currentPageSize, (page + 1) * currentPageSize);
 
   const handleSort = (key: string) => {
     if (sortKey === key) {
@@ -172,56 +184,91 @@ export function DataTable<T extends { id?: string }>({
       )}
 
       {/* Pagination */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-sm text-muted-foreground">
-        <div className="flex items-center gap-2">
-          <span>Exibir</span>
-          <Select
-            value={String(currentPageSize)}
-            onValueChange={(v) => {
-              setCurrentPageSize(Number(v));
-              setPage(0);
-            }}
-          >
-            <SelectTrigger className="h-8 w-[70px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {pageSizeOptions.map((opt) => (
-                <SelectItem key={opt} value={String(opt)}>{opt}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <span>por página</span>
-          <span className="ml-2 hidden sm:inline">
-            — {page * currentPageSize + 1}–{Math.min((page + 1) * currentPageSize, sortedData.length)} de {sortedData.length}
+      {externalPagination ? (
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-sm text-muted-foreground">
+          <span className="tabular-nums">
+            {externalPagination.total === 0
+              ? "0 registros"
+              : `${externalPagination.page * initialPageSize + 1}–${Math.min((externalPagination.page + 1) * initialPageSize, externalPagination.total)} de ${externalPagination.total}`}
           </span>
+          {externalPagination.pageCount > 1 && (
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+                disabled={externalPagination.page === 0}
+                onClick={() => externalPagination.onPageChange(externalPagination.page - 1)}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="px-2 tabular-nums">
+                {externalPagination.page + 1} / {externalPagination.pageCount}
+              </span>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+                disabled={externalPagination.page >= externalPagination.pageCount - 1}
+                onClick={() => externalPagination.onPageChange(externalPagination.page + 1)}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </div>
-        {totalPages > 1 && (
-          <div className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-8 w-8"
-              disabled={page === 0}
-              onClick={() => setPage(page - 1)}
+      ) : (
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-sm text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <span>Exibir</span>
+            <Select
+              value={String(currentPageSize)}
+              onValueChange={(v) => {
+                setCurrentPageSize(Number(v));
+                setPage(0);
+              }}
             >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="px-2 tabular-nums">
-              {page + 1} / {totalPages}
+              <SelectTrigger className="h-8 w-[70px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {pageSizeOptions.map((opt) => (
+                  <SelectItem key={opt} value={String(opt)}>{opt}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <span>por página</span>
+            <span className="ml-2 hidden sm:inline">
+              — {page * currentPageSize + 1}–{Math.min((page + 1) * currentPageSize, sortedData.length)} de {sortedData.length}
             </span>
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-8 w-8"
-              disabled={page >= totalPages - 1}
-              onClick={() => setPage(page + 1)}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
           </div>
-        )}
-      </div>
+          {totalPages > 1 && (
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+                disabled={page === 0}
+                onClick={() => setPage(page - 1)}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="px-2 tabular-nums">
+                {page + 1} / {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+                disabled={page >= totalPages - 1}
+                onClick={() => setPage(page + 1)}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -18,20 +18,24 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency, formatDateBR } from "@/lib/formatters";
-import { MOCK_DESPESAS, MOCK_RECEITAS } from "@/data/mockFinanceiro";
-import { MOCK_FATURAS } from "@/data/mockFaturas";
-import { MOCK_SOLICITACOES } from "@/data/mockSolicitacoes";
+import { useSolicitacoes } from "@/hooks/useSolicitacoes";
+import { useFaturas } from "@/hooks/useFaturas";
+import { useDespesas, useReceitas } from "@/hooks/useFinanceiro";
 
-// Simulate loading
 function useDashboardData() {
+  const { data: solicitacoes = [] } = useSolicitacoes();
+  const { data: faturas = [] } = useFaturas();
+  const { data: despesas = [] } = useDespesas();
+  const { data: receitas = [] } = useReceitas();
+
   const metrics = useMemo(() => {
     // Contas a Pagar
-    const contasAPagar = MOCK_DESPESAS
+    const contasAPagar = despesas
       .filter((d) => d.status === "Pendente" || d.status === "Atrasado")
       .reduce((sum, d) => sum + d.valor, 0);
 
     // Faturas Vencidas
-    const faturasVencidas = MOCK_FATURAS.filter((f) => f.status_geral === "Vencida");
+    const faturasVencidas = faturas.filter((f) => f.status_geral === "Vencida");
     const faturasVencidasValor = faturasVencidas.reduce(
       (sum, f) => sum + (f.valor_taxas || 0),
       0
@@ -39,14 +43,14 @@ function useDashboardData() {
 
     // Entregas Hoje (concluídas hoje)
     const today = new Date().toISOString().slice(0, 10);
-    const entregasHoje = MOCK_SOLICITACOES.filter(
+    const entregasHoje = solicitacoes.filter(
       (s) => s.status === "concluida" && s.data_conclusao?.slice(0, 10) === today
     ).length;
 
     // Calculate real average: entregas concluídas nos últimos 30 dias / 30
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const entregasUltimos30d = MOCK_SOLICITACOES.filter((s) => {
+    const entregasUltimos30d = solicitacoes.filter((s) => {
       if (s.status !== "concluida" || !s.data_conclusao) return false;
       return new Date(s.data_conclusao) >= thirtyDaysAgo;
     }).length;
@@ -55,7 +59,7 @@ function useDashboardData() {
     // Taxas Recebidas (mês atual)
     const currentMonth = new Date().getMonth();
     const currentYear = new Date().getFullYear();
-    const taxasRecebidas = MOCK_RECEITAS
+    const taxasRecebidas = receitas
       .filter((r) => {
         const d = new Date(r.data_recebimento);
         return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
@@ -63,7 +67,7 @@ function useDashboardData() {
       .reduce((sum, r) => sum + r.valor, 0);
 
     // Novas Solicitações pendentes
-    const novasSolicitacoes = MOCK_SOLICITACOES.filter(
+    const novasSolicitacoes = solicitacoes.filter(
       (s) => s.status === "pendente"
     ).length;
 
@@ -76,34 +80,34 @@ function useDashboardData() {
       taxasRecebidas,
       novasSolicitacoes,
     };
-  }, []);
+  }, [solicitacoes, faturas, despesas, receitas]);
 
   // Recent transactions (últimas 10 receitas + despesas mescladas por data)
   const recentTransactions = useMemo(() => {
-    const receitas = MOCK_RECEITAS.map((r) => ({
+    const rec = receitas.map((r) => ({
       id: r.id,
       tipo: "entrada" as const,
       descricao: r.descricao,
-      categoria: r.categoria,
+      categoria: r.categoria_id,
       valor: r.valor,
       data: r.data_recebimento,
     }));
 
-    const despesas = MOCK_DESPESAS
+    const desp = despesas
       .filter((d) => d.data_pagamento)
       .map((d) => ({
         id: d.id,
         tipo: "saida" as const,
         descricao: d.descricao,
-        categoria: d.categoria,
+        categoria: d.categoria_id,
         valor: d.valor,
         data: d.data_pagamento!,
       }));
 
-    return [...receitas, ...despesas]
+    return [...rec, ...desp]
       .sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime())
       .slice(0, 10);
-  }, []);
+  }, [receitas, despesas]);
 
   return { metrics, recentTransactions };
 }
@@ -122,24 +126,10 @@ export default function AdminDashboard() {
   const { metrics, recentTransactions } = useDashboardData();
   const navigate = useNavigate();
 
-  const hasData =
-    metrics.contasAPagar > 0 ||
-    metrics.faturasVencidas > 0 ||
-    metrics.entregasHoje > 0 ||
-    metrics.taxasRecebidas > 0 ||
-    metrics.novasSolicitacoes > 0;
-
   return (
     <PageContainer title="Dashboard" subtitle="Visão geral das operações logísticas.">
-      {!hasData && recentTransactions.length === 0 ? (
-        <EmptyState
-          icon={Truck}
-          title="Nenhum dado disponível"
-          subtitle="Comece criando solicitações, clientes e entregas para visualizar métricas aqui."
-        />
-      ) : (
-        <>
-          {/* MetricCards */}
+      <>
+        {/* MetricCards */}
           <motion.div
             data-onboarding="metric-cards"
             variants={stagger}
@@ -270,7 +260,6 @@ export default function AdminDashboard() {
             </Card>
           </motion.div>
         </>
-      )}
     </PageContainer>
   );
 }

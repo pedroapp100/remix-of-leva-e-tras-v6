@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { PageContainer, MetricCard, DataTable, SearchInput, ConfirmDialog, AvatarWithFallback, StatusBadge, PermissionGuard } from "@/components/shared";
 import type { Column } from "@/components/shared/DataTable";
 import type { Entregador } from "@/types/database";
 import { TIPO_VEICULO_LABELS } from "@/types/database";
-import { MOCK_ENTREGADORES } from "@/data/mockEntregadores";
+import type { EntregadorInsert } from "@/services/entregadores";
+import { useEntregadores, useCreateEntregador, useUpdateEntregador, useDeleteEntregador } from "@/hooks/useEntregadores";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,13 +13,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Plus, Users, UserCheck, Package, Clock, Pencil, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
-import { useUserStore } from "@/data/mockUsers";
-import { useGlobalStore } from "@/contexts/GlobalStore";
+import { supabase } from "@/lib/supabase";
+import { useSolicitacoes } from "@/hooks/useSolicitacoes";
 import { EntregadorFormDialog } from "./entregadores/EntregadorFormDialog";
 
 export default function EntregadoresPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [entregadores, setEntregadores] = useState<Entregador[]>(MOCK_ENTREGADORES);
+  const { data: entregadores = [] } = useEntregadores();
+  const createEntregador = useCreateEntregador();
+  const updateEntregadorMutation = useUpdateEntregador();
+  const deleteEntregadorMutation = useDeleteEntregador();
   const [search, setSearch] = useState(searchParams.get("q") ?? "");
   const [statusFilter, setStatusFilter] = useState<string>(searchParams.get("status") ?? "todos");
   const [veiculoFilter, setVeiculoFilter] = useState<string>(searchParams.get("veiculo") ?? "todos");
@@ -35,70 +39,76 @@ export default function EntregadoresPage() {
   const [editing, setEditing] = useState<Entregador | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Entregador | null>(null);
 
-  const filtered = entregadores.filter((e) => {
-    const matchSearch = e.nome.toLowerCase().includes(search.toLowerCase()) ||
-      e.email.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = statusFilter === "todos" || e.status === statusFilter;
-    const matchVeiculo = veiculoFilter === "todos" || e.veiculo === veiculoFilter;
-    return matchSearch && matchStatus && matchVeiculo;
-  });
+  const { data: solicitacoes = [] } = useSolicitacoes();
 
-  const { solicitacoes } = useGlobalStore();
-  const today = new Date().toISOString().slice(0, 10);
+  const { filtered, metrics } = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const lowerSearch = search.toLowerCase();
+    const matchList: Entregador[] = [];
+    let ativos = 0;
 
-  const metrics = {
-    total: entregadores.length,
-    ativos: entregadores.filter((e) => e.status === "ativo").length,
-    entregasHoje: solicitacoes.filter(
-      (s) => s.status === "concluida" && s.data_conclusao?.slice(0, 10) === today && entregadores.some((e) => e.id === s.entregador_id)
-    ).length,
-    horasTrabalhadas: (() => {
-      const hojeEntregas = solicitacoes.filter(
-        (s) => ["em_andamento", "concluida"].includes(s.status) && entregadores.some((e) => e.id === s.entregador_id)
-          && s.data_conclusao?.slice(0, 10) === today
-      );
-      const totalMinutes = hojeEntregas.reduce((sum, s) => {
+    // Build entregador id set for O(1) lookup
+    const entregadorIds = new Set(entregadores.map((e) => e.id));
+
+    for (const e of entregadores) {
+      if (e.status === "ativo") ativos++;
+      const matchSearch = e.nome.toLowerCase().includes(lowerSearch) || e.email.toLowerCase().includes(lowerSearch);
+      const matchStatus = statusFilter === "todos" || e.status === statusFilter;
+      const matchVeiculo = veiculoFilter === "todos" || e.veiculo === veiculoFilter;
+      if (matchSearch && matchStatus && matchVeiculo) matchList.push(e);
+    }
+
+    let entregasHoje = 0, totalMinutes = 0;
+    for (const s of solicitacoes) {
+      if (!entregadorIds.has(s.entregador_id ?? "")) continue;
+      if (s.status === "concluida" && s.data_conclusao?.slice(0, 10) === today) {
+        entregasHoje++;
+      }
+      if (["em_andamento", "concluida"].includes(s.status) && s.data_conclusao?.slice(0, 10) === today) {
         if (s.data_inicio && s.data_conclusao) {
           const diff = new Date(s.data_conclusao).getTime() - new Date(s.data_inicio).getTime();
-          return sum + Math.max(0, diff / 60000);
+          totalMinutes += Math.max(0, diff / 60000);
+        } else {
+          totalMinutes += 90;
         }
-        return sum + 90; // fallback 1.5h if no timestamps
-      }, 0);
-      return Math.round(totalMinutes / 60 * 10) / 10;
-    })(),
-  };
+      }
+    }
+
+    return {
+      filtered: matchList,
+      metrics: {
+        total: entregadores.length,
+        ativos,
+        entregasHoje,
+        horasTrabalhadas: Math.round(totalMinutes / 60 * 10) / 10,
+      },
+    };
+  }, [entregadores, solicitacoes, search, statusFilter, veiculoFilter]);
 
   const openCreate = () => { setEditing(null); setFormOpen(true); };
   const openEdit = (e: Entregador) => { setEditing(e); setFormOpen(true); };
 
-  const { addUser, findByEmail } = useUserStore();
-
-  const handleSave = (data: Entregador, senha?: string) => {
+  const handleSave = async (data: Entregador, senha?: string) => {
     if (editing) {
-      setEntregadores((prev) => prev.map((e) => (e.id === editing.id ? { ...data, id: editing.id } : e)));
+      await updateEntregadorMutation.mutateAsync({ id: editing.id, patch: data });
       toast.success("Entregador atualizado com sucesso!");
     } else {
-      const newId = `ent-${Date.now()}`;
-      setEntregadores((prev) => [...prev, { ...data, id: newId }]);
+      const { id: _id, created_at: _ca, updated_at: _ua, ...insertData } = data;
+      const payload = insertData as unknown as EntregadorInsert;
+      const created = await createEntregador.mutateAsync({ ...payload, profile_id: null });
 
-      // Auto-criar conta de acesso
-      if (senha && !findByEmail(data.email)) {
-        addUser({
-          id: `user-${newId}`,
+      // Auto-criar conta de acesso via Supabase Auth
+      if (senha) {
+        const { error } = await supabase.auth.signUp({
           email: data.email,
           password: senha,
-          nome: data.nome,
-          role: "entregador",
-          cargo_id: null,
-          status: "ativo",
-          avatarUrl: null,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          options: { data: { nome: data.nome, role: "entregador" } },
         });
-        toast.success(
-          `Entregador cadastrado! Credenciais: Email: ${data.email} | Senha definida pelo admin`,
-          { duration: 10000 }
-        );
+        if (error) {
+          toast.warning(`Entregador cadastrado, mas erro ao criar acesso: ${error.message}`);
+        } else {
+          toast.success(`Entregador cadastrado! Convite enviado para ${data.email}`, { duration: 10000 });
+        }
       } else {
         toast.success("Entregador cadastrado com sucesso!");
       }
@@ -106,9 +116,9 @@ export default function EntregadoresPage() {
     setFormOpen(false);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!deleteTarget) return;
-    setEntregadores((prev) => prev.filter((e) => e.id !== deleteTarget.id));
+    await deleteEntregadorMutation.mutateAsync(deleteTarget.id);
     toast.success("Entregador removido com sucesso!");
     setDeleteTarget(null);
   };

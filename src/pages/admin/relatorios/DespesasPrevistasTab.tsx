@@ -1,14 +1,40 @@
 import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabase";
 import { MetricCard, DataTable } from "@/components/shared";
 import type { Column } from "@/components/shared/DataTable";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { DESPESAS_MENSAIS, DESPESAS_RECORRENTES, getDespesasMetrics } from "@/data/mockRelatorios";
-import { DESPESAS_POR_CATEGORIA } from "@/data/mockFinanceiro";
+import { useDespesas } from "@/hooks/useFinanceiro";
 import { formatCurrency, formatDateBR } from "@/lib/formatters";
 import { TrendingDown, Clock, AlertTriangle, CalendarClock } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Legend, Line, ComposedChart } from "recharts";
 import type { DateRange } from "react-day-picker";
+
+interface DespesaRecorrente {
+  id: string;
+  descricao: string;
+  categoria: string;
+  valor_mensal: number;
+  proximo_vencimento: string;
+}
+
+function useDespesasRecorrentes() {
+  return useQuery<DespesaRecorrente[]>({
+    queryKey: ["despesas_recorrentes"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("despesas_recorrentes")
+        .select("id, descricao, categoria, valor_mensal, proximo_vencimento")
+        .eq("ativo", true)
+        .order("proximo_vencimento");
+      if (error) throw error;
+      return (data ?? []).map((r) => ({ ...r, valor_mensal: Number(r.valor_mensal) }));
+    },
+  });
+}
+
+const CHART_FILLS = ["hsl(var(--primary))", "hsl(var(--chart-2))", "hsl(var(--chart-4))", "hsl(var(--chart-3))", "hsl(var(--chart-5))", "hsl(var(--muted-foreground))"];
 
 const chartTooltipStyle = {
   background: "hsl(var(--card))",
@@ -22,10 +48,36 @@ interface DespesasPrevistasTabProps {
   dateRange?: DateRange;
 }
 
-type DespesaRecorrente = typeof DESPESAS_RECORRENTES[number];
-
 export function DespesasPrevistasTab({ dateRange }: DespesasPrevistasTabProps) {
-  const metrics = useMemo(() => getDespesasMetrics(), []);
+  const { data: despesas = [] } = useDespesas();
+  const { data: despesasRecorrentes = [] } = useDespesasRecorrentes();
+
+  const metrics = useMemo(() => {
+    const totalRealizado = despesas.reduce((s, d) => s + d.valor, 0);
+    const totalPendentes = despesas.filter((d) => d.status === "Pendente").reduce((s, d) => s + d.valor, 0);
+    const totalAtrasadas = despesas.filter((d) => d.status === "Atrasado").reduce((s, d) => s + d.valor, 0);
+    const totalRecorrente = despesasRecorrentes.reduce((s, d) => s + d.valor_mensal, 0);
+    return { totalRealizado, totalPendentes, totalAtrasadas, totalRecorrente, previstoProximoMes: totalRecorrente };
+  }, [despesas, despesasRecorrentes]);
+
+  const despesasMensais = useMemo(() => {
+    const months: Record<string, { mes: string; realizado: number; previsto: number }> = {};
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const label = d.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }).replace(" de ", "/").replace(".", "");
+      months[key] = { mes: label.charAt(0).toUpperCase() + label.slice(1), realizado: 0, previsto: metrics.totalRecorrente };
+    }
+    despesas.forEach((d) => { const k = d.vencimento?.slice(0, 7); if (k && months[k]) months[k].realizado += d.valor; });
+    return Object.values(months);
+  }, [despesas, metrics.totalRecorrente, despesasRecorrentes]);
+
+  const despesasPorCategoria = useMemo(() => {
+    const grouped: Record<string, number> = {};
+    despesas.forEach((d) => { const cat = d.categoria_id ?? "Sem categoria"; grouped[cat] = (grouped[cat] ?? 0) + d.valor; });
+    return Object.entries(grouped).map(([categoria, valor], i) => ({ categoria, valor, fill: CHART_FILLS[i % CHART_FILLS.length] }));
+  }, [despesas]);
 
   const columns: Column<DespesaRecorrente>[] = [
     { key: "descricao", header: "Despesa", sortable: true, cell: (d) => <span className="font-medium">{d.descricao}</span> },
@@ -66,7 +118,7 @@ export function DespesasPrevistasTab({ dateRange }: DespesasPrevistasTabProps) {
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={280}>
-              <ComposedChart data={DESPESAS_MENSAIS}>
+              <ComposedChart data={despesasMensais}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="mes" tick={axisTickStyle} />
                 <YAxis tick={axisTickStyle} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
@@ -88,7 +140,7 @@ export function DespesasPrevistasTab({ dateRange }: DespesasPrevistasTabProps) {
             <ResponsiveContainer width="100%" height={280}>
               <PieChart>
                 <Pie
-                  data={DESPESAS_POR_CATEGORIA}
+                  data={despesasPorCategoria}
                   dataKey="valor"
                   nameKey="categoria"
                   cx="50%"
@@ -99,7 +151,7 @@ export function DespesasPrevistasTab({ dateRange }: DespesasPrevistasTabProps) {
                   label={({ categoria, percent }) => `${categoria} ${(percent * 100).toFixed(0)}%`}
                   labelLine={false}
                 >
-                  {DESPESAS_POR_CATEGORIA.map((entry, index) => (
+                  {despesasPorCategoria.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.fill} />
                   ))}
                 </Pie>
@@ -127,7 +179,7 @@ export function DespesasPrevistasTab({ dateRange }: DespesasPrevistasTabProps) {
         </CardHeader>
         <CardContent>
           <DataTable
-            data={DESPESAS_RECORRENTES}
+            data={despesasRecorrentes}
             columns={columns}
             pageSize={10}
             renderMobileCard={renderMobileCard}

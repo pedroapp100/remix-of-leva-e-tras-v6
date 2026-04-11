@@ -1,11 +1,11 @@
 import { useState, useMemo } from "react";
 import type { Rota, PagamentoSolicitacao, Solicitacao } from "@/types/database";
-import { MOCK_FORMAS_PAGAMENTO, MOCK_BAIRROS } from "@/data/mockSettings";
-import { MOCK_CLIENTES } from "@/data/mockClientes";
-import { getClienteName, getEntregadorName } from "@/data/mockSolicitacoes";
-import { useGlobalStore } from "@/contexts/GlobalStore";
+import { useFormasPagamento, useBairros } from "@/hooks/useSettings";
+import { useRotasBySolicitacao, usePagamentosBySolicitacao, useCreatePagamentos } from "@/hooks/useSolicitacoes";
+import { useClientes } from "@/hooks/useClientes";
+import { useEntregadores } from "@/hooks/useEntregadores";
 import { useConcluirComCaixa } from "@/hooks/useConcluirComCaixa";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -35,9 +35,7 @@ interface AdminConciliacaoDialogProps {
   onConfirm: () => void;
 }
 
-const getBairroName = (id: string) => MOCK_BAIRROS.find((b) => b.id === id)?.nome ?? id;
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-const formasAtivas = MOCK_FORMAS_PAGAMENTO.filter((f) => f.enabled);
 
 export function AdminConciliacaoDialog({
   open,
@@ -45,19 +43,21 @@ export function AdminConciliacaoDialog({
   solicitacao,
   onConfirm,
 }: AdminConciliacaoDialogProps) {
-  const {
-    getRotasBySolicitacao,
-    getPagamentosBySolicitacao,
-    addPagamentos,
-  } = useGlobalStore();
+  const { data: rotas = [] } = useRotasBySolicitacao(solicitacao.id);
+  const { data: driverPagamentos = [] } = usePagamentosBySolicitacao(solicitacao.id);
+  const createPagamentosMut = useCreatePagamentos();
+  const { data: clientes = [] } = useClientes();
+  const { data: entregadores = [] } = useEntregadores();
   const concluirComCaixa = useConcluirComCaixa();
+  const { data: formasPagamento = [] } = useFormasPagamento();
+  const { data: bairros = [] } = useBairros();
 
-  const rotas = getRotasBySolicitacao(solicitacao.id);
-  const driverPagamentos = getPagamentosBySolicitacao(solicitacao.id);
+  const getBairroName = (id: string) => bairros.find((b) => b.id === id)?.nome ?? id;
+  const formasAtivas = formasPagamento.filter((f) => f.enabled);
 
   const cliente = useMemo(
-    () => MOCK_CLIENTES.find((c) => c.id === solicitacao.cliente_id) ?? null,
-    [solicitacao.cliente_id]
+    () => clientes.find((c) => c.id === solicitacao.cliente_id) ?? null,
+    [solicitacao.cliente_id, clientes]
   );
   const isFaturado = cliente?.modalidade === "faturado";
   const isPrePago = cliente?.modalidade === "pre_pago";
@@ -105,7 +105,7 @@ export function AdminConciliacaoDialog({
       [rotaId]: [
         ...(prev[rotaId] || []),
         {
-          id: `pag-${Date.now()}-${Math.random()}`,
+          id: crypto.randomUUID(),
           forma_pagamento_id: formasAtivas[0]?.id ?? "",
           valor: 0,
           pertence_a: "operacao",
@@ -167,7 +167,7 @@ export function AdminConciliacaoDialog({
   const diffLoja = diffLojaCents / 100;
   const totalAdmin = (totalOperacaoCents + totalLojaCents) / 100;
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (allPagamentos.length === 0) {
       toast.error("Registre ao menos um pagamento.");
       return;
@@ -182,9 +182,7 @@ export function AdminConciliacaoDialog({
     }
 
     // Save admin-validated payments
-    const now = new Date().toISOString();
-    const persistedPagamentos: PagamentoSolicitacao[] = allPagamentos.map((pag) => ({
-      id: pag.id,
+    const persistedPagamentos = allPagamentos.map((pag) => ({
       solicitacao_id: solicitacao.id,
       rota_id:
         Object.entries(pagamentosPorRota).find(([, pags]) =>
@@ -193,15 +191,14 @@ export function AdminConciliacaoDialog({
       forma_pagamento_id: pag.forma_pagamento_id,
       valor: pag.valor,
       pertence_a: pag.pertence_a,
-      observacao: "Conferido pelo ADM",
-      created_by: "admin",
-      created_at: now,
+      observacao: "Conferido pelo ADM" as string | null,
+      created_by: "admin" as string | null,
     }));
-    addPagamentos(persistedPagamentos);
+    createPagamentosMut.mutate(persistedPagamentos);
 
     // Generate invoice if not already concluded
     if (solicitacao.status === "em_andamento") {
-      const result = concluirComCaixa(solicitacao.id);
+      const result = await concluirComCaixa(solicitacao.id);
       if (!result.success) {
         toast.error(result.error ?? "Erro ao concluir solicitação.");
         return;
@@ -223,6 +220,7 @@ export function AdminConciliacaoDialog({
               {solicitacao.codigo}
             </Badge>
           </DialogTitle>
+        <DialogDescription className="sr-only">.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-2">
@@ -232,7 +230,7 @@ export function AdminConciliacaoDialog({
               <div>
                 <span className="text-muted-foreground text-xs">Cliente</span>
                 <p className="font-medium flex items-center gap-1.5">
-                  {getClienteName(solicitacao.cliente_id)}
+                  {cliente?.nome ?? solicitacao.cliente_id}
                   {isFaturado && (
                     <Badge variant="default" className="text-[10px] px-1.5 py-0">
                       Faturado
@@ -249,7 +247,7 @@ export function AdminConciliacaoDialog({
                 <span className="text-muted-foreground text-xs">Entregador</span>
                 <p className="font-medium flex items-center gap-1.5">
                   <Truck className="h-3.5 w-3.5 text-muted-foreground" />
-                  {getEntregadorName(solicitacao.entregador_id)}
+                  {entregadores.find((e) => e.id === solicitacao.entregador_id)?.nome ?? solicitacao.entregador_id}
                 </p>
               </div>
               <div>
@@ -328,7 +326,7 @@ export function AdminConciliacaoDialog({
                     </span>
                     <div className="flex flex-wrap gap-2">
                       {driverRotaPags.map((dp) => {
-                        const forma = MOCK_FORMAS_PAGAMENTO.find(
+                        const forma = formasPagamento.find(
                           (f) => f.id === dp.forma_pagamento_id
                         );
                         return (

@@ -9,11 +9,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatCurrency, formatDateBR } from "@/lib/formatters";
-import { MOCK_SOLICITACOES, getClienteName, getRotasBySolicitacao } from "@/data/mockSolicitacoes";
-import { MOCK_BAIRROS } from "@/data/mockSettings";
+import { useSolicitacoesByEntregador, useUpdateSolicitacao, useRotasBySolicitacaoIds } from "@/hooks/useSolicitacoes";
+import { useClientes } from "@/hooks/useClientes";
+import { useBairros } from "@/hooks/useSettings";
 import { STATUS_SOLICITACAO_LABELS } from "@/types/database";
 import { TipoOperacaoBadge } from "@/components/shared/TipoOperacaoBadge";
-import type { Solicitacao, StatusSolicitacao } from "@/types/database";
+import type { Solicitacao } from "@/types/database";
 import {
   Truck, Play, CheckCheck, MapPin, Package,
   ClipboardList, Eye, Navigation
@@ -22,14 +23,13 @@ import { ViewSolicitacaoDialog } from "@/pages/admin/solicitacoes/ViewSolicitaca
 import { toast } from "sonner";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { lazy, Suspense } from "react";
+import { useEntregadorId } from "@/hooks/useEntregadorId";
 
 const ConciliacaoDialog = lazy(() =>
   import("@/pages/admin/solicitacoes/ConciliacaoDialog").then((m) => ({ default: m.ConciliacaoDialog }))
 );
 
-const ENTREGADOR_ID = "ent-001";
-
-const getBairroName = (id: string) => MOCK_BAIRROS.find((b) => b.id === id)?.nome ?? id;
+const getBairroName = (_id: string) => _id; // resolved inside component via useBairros
 const fmt = (v: number | null | undefined) =>
   v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
 const fmtDateTime = (d: string | null | undefined) =>
@@ -42,98 +42,67 @@ const fadeUp = {
 };
 
 export default function EntregadorCorridasPage() {
+  const { entregadorId: ENTREGADOR_ID } = useEntregadorId();
   const { addNotification } = useNotifications();
-  const [solicitacoes, setSolicitacoes] = useState<Solicitacao[]>(MOCK_SOLICITACOES);
+  const { data: solicitacoes = [] } = useSolicitacoesByEntregador(ENTREGADOR_ID ?? "");
+  const updateSolMut = useUpdateSolicitacao();
+  const solIds = useMemo(() => solicitacoes.map((s) => s.id), [solicitacoes]);
+  const { data: allRotas = [] } = useRotasBySolicitacaoIds(solIds);
+  const { data: clientes = [] } = useClientes();
+  const { data: bairros = [] } = useBairros();
+  const getClienteNome = (id: string) => clientes.find((c) => c.id === id)?.nome ?? id;
+  const getBairroNome = (id: string) => bairros.find((b) => b.id === id)?.nome ?? id;
   const [activeTab, setActiveTab] = useState<"ativas" | "todas">("ativas");
   const [viewSol, setViewSol] = useState<Solicitacao | null>(null);
   const [conciliacaoTarget, setConciliacaoTarget] = useState<Solicitacao | null>(null);
 
-  const minhas = useMemo(
-    () => solicitacoes.filter((s) => s.entregador_id === ENTREGADOR_ID),
-    [solicitacoes]
-  );
-
   const filtered = useMemo(() => {
     if (activeTab === "ativas") {
-      return minhas
+      return solicitacoes
         .filter((s) => s.status === "aceita" || s.status === "em_andamento")
         .sort((a, b) => {
           const order: Record<string, number> = { em_andamento: 0, aceita: 1 };
           return (order[a.status] ?? 9) - (order[b.status] ?? 9);
         });
     }
-    return minhas.sort(
+    return [...solicitacoes].sort(
       (a, b) => new Date(b.data_solicitacao).getTime() - new Date(a.data_solicitacao).getTime()
     );
-  }, [minhas, activeTab]);
+  }, [solicitacoes, activeTab]);
 
   const metrics = useMemo(() => {
-    const aceitas = minhas.filter((s) => s.status === "aceita").length;
-    const emAndamento = minhas.filter((s) => s.status === "em_andamento").length;
+    const aceitas = solicitacoes.filter((s) => s.status === "aceita").length;
+    const emAndamento = solicitacoes.filter((s) => s.status === "em_andamento").length;
     const hoje = new Date().toISOString().slice(0, 10);
-    const concluidasHoje = minhas.filter(
+    const concluidasHoje = solicitacoes.filter(
       (s) => s.status === "concluida" && s.data_conclusao?.startsWith(hoje)
     ).length;
-    return { aceitas, emAndamento, concluidasHoje, total: minhas.length };
-  }, [minhas]);
+    return { aceitas, emAndamento, concluidasHoje, total: solicitacoes.length };
+  }, [solicitacoes]);
 
   const handleStart = (sol: Solicitacao) => {
-    setSolicitacoes((prev) =>
-      prev.map((s) =>
-        s.id === sol.id
-          ? {
-              ...s,
-              status: "em_andamento" as StatusSolicitacao,
-              data_inicio: new Date().toISOString(),
-              historico: [
-                ...s.historico,
-                {
-                  tipo: "em_andamento",
-                  status_anterior: "aceita",
-                  status_novo: "em_andamento",
-                  timestamp: new Date().toISOString(),
-                  descricao: "Entregador iniciou a coleta",
-                },
-              ],
-            }
-          : s
-      )
-    );
+    updateSolMut.mutate({ id: sol.id, patch: {
+      status: "em_andamento",
+      data_inicio: new Date().toISOString(),
+    } });
     toast.success("Corrida iniciada! Boa entrega! 🚀");
     addNotification({
       title: "Corrida iniciada",
-      message: `Entregador iniciou a corrida ${sol.codigo} — ${getClienteName(sol.cliente_id)}.`,
+      message: `Entregador iniciou a corrida ${sol.codigo} — ${getClienteNome(sol.cliente_id)}.`,
       type: "info",
       link: "/admin/solicitacoes",
     });
   };
 
   const handleConcluir = (sol: Solicitacao) => {
-    setSolicitacoes((prev) =>
-      prev.map((s) =>
-        s.id === sol.id
-          ? {
-              ...s,
-              status: "concluida" as StatusSolicitacao,
-              data_conclusao: new Date().toISOString(),
-              historico: [
-                ...s.historico,
-                {
-                  tipo: "concluida",
-                  status_anterior: "em_andamento",
-                  status_novo: "concluida",
-                  timestamp: new Date().toISOString(),
-                  descricao: "Entrega concluída e conciliada pelo entregador",
-                },
-              ],
-            }
-          : s
-      )
-    );
+    updateSolMut.mutate({ id: sol.id, patch: {
+      status: "concluida",
+      data_conclusao: new Date().toISOString(),
+    } });
     toast.success("Entrega concluída com sucesso! ✅");
     addNotification({
       title: "Entrega concluída",
-      message: `Corrida ${sol.codigo} foi concluída e conciliada — ${getClienteName(sol.cliente_id)}.`,
+      message: `Corrida ${sol.codigo} foi concluída e conciliada — ${getClienteNome(sol.cliente_id)}.`,
       type: "success",
       link: "/admin/solicitacoes",
     });
@@ -142,8 +111,8 @@ export default function EntregadorCorridasPage() {
   // tipoStyles removed — now using TipoOperacaoBadge
 
   const tabCounts = {
-    ativas: minhas.filter((s) => s.status === "aceita" || s.status === "em_andamento").length,
-    todas: minhas.length,
+    ativas: solicitacoes.filter((s) => s.status === "aceita" || s.status === "em_andamento").length,
+    todas: solicitacoes.length,
   };
 
   return (
@@ -195,7 +164,7 @@ export default function EntregadorCorridasPage() {
           ) : (
             <motion.div variants={stagger} initial="hidden" animate="show" className="divide-y divide-border">
               {filtered.map((sol) => {
-                const rotas = getRotasBySolicitacao(sol.id);
+                const rotas = allRotas.filter(r => r.solicitacao_id === sol.id);
                 return (
                   <motion.div
                     key={sol.id}
@@ -211,7 +180,7 @@ export default function EntregadorCorridasPage() {
                           <TipoOperacaoBadge tipoOperacao={sol.tipo_operacao} />
                         </div>
                         <p className="text-sm text-muted-foreground mt-1">
-                          <span className="font-medium text-foreground">{getClienteName(sol.cliente_id)}</span>
+                          <span className="font-medium text-foreground">{getClienteNome(sol.cliente_id)}</span>
                           {" • "}{formatDateBR(sol.data_solicitacao)}
                         </p>
                       </div>
@@ -229,7 +198,7 @@ export default function EntregadorCorridasPage() {
                         {rotas.map((rota, i) => (
                           <div key={rota.id} className="flex items-center gap-2 text-sm rounded-md border border-border/60 px-3 py-2 bg-muted/20">
                             <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                            <span className="truncate font-medium">{getBairroName(rota.bairro_destino_id)}</span>
+                            <span className="truncate font-medium">{getBairroNome(rota.bairro_destino_id)}</span>
                             <span className="text-muted-foreground">•</span>
                             <span className="text-muted-foreground truncate">{rota.responsavel}</span>
                             {rota.receber_do_cliente && rota.valor_a_receber && (
@@ -275,7 +244,7 @@ export default function EntregadorCorridasPage() {
           <ConciliacaoDialog
             open={!!conciliacaoTarget}
             onOpenChange={(open) => !open && setConciliacaoTarget(null)}
-            rotas={getRotasBySolicitacao(conciliacaoTarget.id)}
+            rotas={allRotas.filter(r => r.solicitacao_id === conciliacaoTarget.id)}
             clienteId={conciliacaoTarget.cliente_id}
             isConcluding
             isDriverView
@@ -286,3 +255,5 @@ export default function EntregadorCorridasPage() {
     </PageContainer>
   );
 }
+
+

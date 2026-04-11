@@ -1,20 +1,20 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { PageContainer, MetricCard, DataTable, SearchInput, ConfirmDialog, AvatarWithFallback, StatusBadge, PermissionGuard } from "@/components/shared";
 import type { Column } from "@/components/shared/DataTable";
 import type { Cliente } from "@/types/database";
-import { MOCK_CLIENTES, MOCK_CLIENTES_METRICS } from "@/data/mockClientes";
+import type { ClienteInsert } from "@/services/clientes";
+import { useClientes, useCreateCliente, useUpdateCliente, useDeleteCliente, useClienteSaldoMap } from "@/hooks/useClientes";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Users, UserCheck, CreditCard, Wallet, Pencil, Trash2, Eye, X, AlertTriangle } from "lucide-react";
-import { useGlobalStore } from "@/contexts/GlobalStore";
 import { useSettingsStore } from "@/contexts/SettingsStore";
 import { formatCurrency } from "@/lib/formatters";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
-import { useUserStore } from "@/data/mockUsers";
+import { supabase } from "@/lib/supabase";
 import { ClientFormDialog } from "./clientes/ClientFormDialog";
 import { ClientProfileModal } from "./clientes/ClientProfileModal";
 
@@ -25,8 +25,11 @@ const MODALIDADE_LABELS: Record<string, string> = {
 
 export default function ClientesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [clientes, setClientes] = useState<Cliente[]>(MOCK_CLIENTES);
-  const { getClienteSaldo } = useGlobalStore();
+  const { data: clientes = [] } = useClientes();
+  const createCliente = useCreateCliente();
+  const updateClienteMutation = useUpdateCliente();
+  const deleteClienteMutation = useDeleteCliente();
+  const { getClienteSaldo } = useClienteSaldoMap();
   const limiteMinimo = useSettingsStore((s) => s.limite_saldo_pre_pago);
   const [search, setSearch] = useState(searchParams.get("q") ?? "");
   const [statusFilter, setStatusFilter] = useState<string>(searchParams.get("status") ?? "todos");
@@ -45,52 +48,52 @@ export default function ClientesPage() {
   const [profileClient, setProfileClient] = useState<Cliente | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Cliente | null>(null);
 
-  const filtered = clientes.filter((c) => {
-    const matchSearch = c.nome.toLowerCase().includes(search.toLowerCase()) ||
-      c.email.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = statusFilter === "todos" || c.status === statusFilter;
-    const matchModalidade = modalidadeFilter === "todos" || c.modalidade === modalidadeFilter;
-    return matchSearch && matchStatus && matchModalidade;
-  });
+  const { filtered, metrics } = useMemo(() => {
+    const matchList: Cliente[] = [];
+    let ativos = 0, faturados = 0, prePago = 0;
+    const lowerSearch = search.toLowerCase();
 
-  const metrics = {
-    total: clientes.length,
-    ativos: clientes.filter((c) => c.status === "ativo").length,
-    faturados: clientes.filter((c) => c.modalidade === "faturado").length,
-    prePago: clientes.filter((c) => c.modalidade === "pre_pago").length,
-  };
+    for (const c of clientes) {
+      if (c.status === "ativo") ativos++;
+      if (c.modalidade === "faturado") faturados++;
+      else if (c.modalidade === "pre_pago") prePago++;
+
+      const matchSearch = c.nome.toLowerCase().includes(lowerSearch) || c.email.toLowerCase().includes(lowerSearch);
+      const matchStatus = statusFilter === "todos" || c.status === statusFilter;
+      const matchModalidade = modalidadeFilter === "todos" || c.modalidade === modalidadeFilter;
+      if (matchSearch && matchStatus && matchModalidade) matchList.push(c);
+    }
+
+    return {
+      filtered: matchList,
+      metrics: { total: clientes.length, ativos, faturados, prePago },
+    };
+  }, [clientes, search, statusFilter, modalidadeFilter]);
 
   const openCreate = () => { setEditing(null); setFormOpen(true); };
   const openEdit = (c: Cliente) => { setEditing(c); setFormOpen(true); };
 
-  const { addUser, findByEmail } = useUserStore();
-
-  const handleSave = (data: Cliente, senha?: string) => {
+  const handleSave = async (data: Cliente, senha?: string) => {
     if (editing) {
-      setClientes((prev) => prev.map((c) => (c.id === editing.id ? { ...data, id: editing.id } : c)));
+      await updateClienteMutation.mutateAsync({ id: editing.id, patch: data });
       toast.success("Cliente atualizado com sucesso!");
     } else {
-      const newId = `cli-${Date.now()}`;
-      setClientes((prev) => [...prev, { ...data, id: newId }]);
+      const { id: _id, created_at: _ca, updated_at: _ua, ...insertData } = data;
+      const payload = insertData as unknown as ClienteInsert;
+      await createCliente.mutateAsync({ ...payload, profile_id: null, documento: null });
 
-      // Auto-criar conta de acesso
-      if (senha && !findByEmail(data.email)) {
-        addUser({
-          id: `user-${newId}`,
+      // Auto-criar conta de acesso via Supabase Auth
+      if (senha) {
+        const { error } = await supabase.auth.signUp({
           email: data.email,
           password: senha,
-          nome: data.nome,
-          role: "cliente",
-          cargo_id: null,
-          status: "ativo",
-          avatarUrl: null,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          options: { data: { nome: data.nome, role: "cliente" } },
         });
-        toast.success(
-          `Cliente cadastrado! Credenciais: Email: ${data.email} | Senha definida pelo admin`,
-          { duration: 10000 }
-        );
+        if (error) {
+          toast.warning(`Cliente cadastrado, mas erro ao criar acesso: ${error.message}`);
+        } else {
+          toast.success(`Cliente cadastrado! Convite enviado para ${data.email}`, { duration: 10000 });
+        }
       } else {
         toast.success("Cliente cadastrado com sucesso!");
       }
@@ -98,9 +101,9 @@ export default function ClientesPage() {
     setFormOpen(false);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!deleteTarget) return;
-    setClientes((prev) => prev.filter((c) => c.id !== deleteTarget.id));
+    await deleteClienteMutation.mutateAsync(deleteTarget.id);
     toast.success("Cliente removido com sucesso!");
     setDeleteTarget(null);
   };

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { DataTable, SearchInput } from "@/components/shared";
 import { useLogStore } from "@/contexts/LogStore";
 import type { Column } from "@/components/shared/DataTable";
@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatCurrency, formatDateBR } from "@/lib/formatters";
-import { STATUS_DESPESA_VARIANT } from "@/data/mockFinanceiro";
+import { STATUS_DESPESA_VARIANT } from "@/lib/formatters";
+import { useCreateDespesa, useUpdateDespesa, useCategorias } from "@/hooks/useFinanceiro";
 import { Check, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
@@ -16,48 +17,61 @@ import { PagarDespesaDialog } from "./PagarDespesaDialog";
 
 interface DespesasTabProps {
   despesas: Despesa[];
-  onUpdate: (updated: Despesa[]) => void;
 }
 
-export function DespesasTab({ despesas, onUpdate }: DespesasTabProps) {
+export function DespesasTab({ despesas }: DespesasTabProps) {
   const { addLog } = useLogStore();
+  const createDespesa = useCreateDespesa();
+  const updateDespesa = useUpdateDespesa();
+  const { data: allCategorias = [] } = useCategorias();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("todos");
   const [categoriaFilter, setCategoriaFilter] = useState("todos");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [despesaPagar, setDespesaPagar] = useState<Despesa | null>(null);
 
-  const categorias = useMemo(() => [...new Set(despesas.map((d) => d.categoria))].sort(), [despesas]);
+  const catMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    allCategorias.forEach((c) => { m[c.id] = c.nome; });
+    return m;
+  }, [allCategorias]);
+
+  const getCatNome = useCallback((d: Despesa) => (d.categoria_id ? catMap[d.categoria_id] : null) ?? "Sem categoria", [catMap]);
+
+  const categorias = useMemo(() => [...new Set(despesas.map((d) => getCatNome(d)))].sort(), [despesas, getCatNome]);
 
   const handleAddDespesa = (nova: Despesa) => {
-    onUpdate([nova, ...despesas]);
-    addLog({ categoria: "financeiro", acao: "despesa_criada", entidade_id: nova.id, descricao: `Despesa "${nova.descricao}" criada — ${formatCurrency(nova.valor)}`, detalhes: { descricao: nova.descricao, valor: nova.valor, categoria: nova.categoria, fornecedor: nova.fornecedor } });
+    createDespesa.mutate(nova as Parameters<typeof createDespesa.mutate>[0], {
+      onSuccess: () => addLog({ categoria: "financeiro", acao: "despesa_criada", entidade_id: nova.id, descricao: `Despesa "${nova.descricao}" criada — ${formatCurrency(nova.valor)}`, detalhes: { descricao: nova.descricao, valor: nova.valor, categoria: getCatNome(nova), fornecedor: nova.fornecedor } }),
+    });
   };
   const filtered = despesas.filter(
     (d) => {
+      const catNome = getCatNome(d);
       const matchSearch = d.descricao.toLowerCase().includes(search.toLowerCase()) ||
         d.fornecedor.toLowerCase().includes(search.toLowerCase()) ||
-        d.categoria.toLowerCase().includes(search.toLowerCase());
+        catNome.toLowerCase().includes(search.toLowerCase());
       const matchStatus = statusFilter === "todos" || d.status === statusFilter;
-      const matchCategoria = categoriaFilter === "todos" || d.categoria === categoriaFilter;
+      const matchCategoria = categoriaFilter === "todos" || catNome === categoriaFilter;
       return matchSearch && matchStatus && matchCategoria;
     }
   );
 
   const handleConfirmPagamento = (desp: Despesa, dados: { formaPagamento: string; dataPagamento: string; observacao: string }) => {
-    const updated = despesas.map((d) =>
-      d.id === desp.id
-        ? { ...d, status: "Pago" as const, data_pagamento: dados.dataPagamento, usuario_pagou_id: "user-admin", updated_at: new Date().toISOString() }
-        : d
+    updateDespesa.mutate(
+      { id: desp.id, patch: { status: "Pago", data_pagamento: dados.dataPagamento, usuario_pagou_id: "user-admin" } },
+      {
+        onSuccess: () => {
+          addLog({ categoria: "financeiro", acao: "despesa_paga", entidade_id: desp.id, descricao: `Pagamento da despesa "${desp.descricao}" registrado — ${formatCurrency(desp.valor)}`, detalhes: { forma_pagamento: dados.formaPagamento, data_pagamento: dados.dataPagamento } });
+          toast.success(`Pagamento da despesa "${desp.descricao}" registrado com sucesso.`);
+        },
+      }
     );
-    onUpdate(updated);
-    addLog({ categoria: "financeiro", acao: "despesa_paga", entidade_id: desp.id, descricao: `Pagamento da despesa "${desp.descricao}" registrado — ${formatCurrency(desp.valor)}`, detalhes: { forma_pagamento: dados.formaPagamento, data_pagamento: dados.dataPagamento } });
-    toast.success(`Pagamento da despesa "${desp.descricao}" registrado com sucesso.`);
   };
 
   const columns: Column<Despesa>[] = [
     { key: "descricao", header: "Descrição", sortable: true, cell: (d) => <span className="font-medium">{d.descricao}</span> },
-    { key: "categoria", header: "Categoria", sortable: true, cell: (d) => <Badge variant="outline" className="text-xs">{d.categoria}</Badge> },
+    { key: "categoria_id", header: "Categoria", sortable: true, cell: (d) => <Badge variant="outline" className="text-xs">{getCatNome(d)}</Badge> },
     { key: "fornecedor", header: "Fornecedor", sortable: true, cell: (d) => <span>{d.fornecedor}</span> },
     { key: "vencimento", header: "Vencimento", sortable: true, cell: (d) => <span className="text-sm">{formatDateBR(d.vencimento)}</span> },
     {
@@ -88,7 +102,7 @@ export function DespesasTab({ despesas, onUpdate }: DespesasTabProps) {
         <Badge variant={STATUS_DESPESA_VARIANT[d.status]} className="text-xs">{d.status}</Badge>
       </div>
       <div className="flex justify-between text-sm text-muted-foreground">
-        <span>{d.categoria}</span>
+        <span>{getCatNome(d)}</span>
         <span className="font-semibold tabular-nums text-foreground">{formatCurrency(d.valor)}</span>
       </div>
       <div className="flex justify-between text-xs text-muted-foreground">

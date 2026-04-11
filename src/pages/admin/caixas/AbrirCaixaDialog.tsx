@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CurrencyInput } from "@/components/shared/CurrencyInput";
-import { MOCK_ENTREGADORES } from "@/data/mockEntregadores";
+import { useEntregadoresAtivos } from "@/hooks/useEntregadores";
 
 interface AbrirCaixaDialogProps {
   open: boolean;
@@ -16,9 +16,10 @@ interface AbrirCaixaDialogProps {
 export function AbrirCaixaDialog({ open, onOpenChange, onConfirm, existingEntregadorIds }: AbrirCaixaDialogProps) {
   const [entregadorId, setEntregadorId] = useState("");
   const [troco, setTroco] = useState(0);
+  const { data: todosEntregadores = [] } = useEntregadoresAtivos();
 
-  const disponíveis = MOCK_ENTREGADORES.filter(
-    (e) => e.status === "ativo" && !existingEntregadorIds.includes(e.id)
+  const disponíveis = todosEntregadores.filter(
+    (e) => !existingEntregadorIds.includes(e.id)
   );
 
   const handleConfirm = () => {
@@ -34,6 +35,7 @@ export function AbrirCaixaDialog({ open, onOpenChange, onConfirm, existingEntreg
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Abrir Caixa</DialogTitle>
+        <DialogDescription className="sr-only">.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-2">

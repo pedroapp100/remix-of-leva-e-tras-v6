@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import type { Receita } from "@/types/database";
+import { useCategorias } from "@/hooks/useFinanceiro";
 
 interface NovaReceitaDialogProps {
   open: boolean;
@@ -15,17 +16,11 @@ interface NovaReceitaDialogProps {
   editingReceita?: Receita | null;
 }
 
-const CATEGORIAS = [
-  "Taxas de Entrega",
-  "Taxas Express",
-  "Taxa de Retorno",
-  "Recebimento de Fatura",
-  "Outros",
-];
-
 export function NovaReceitaDialog({ open, onOpenChange, onSave, editingReceita }: NovaReceitaDialogProps) {
+  const { data: allCategorias = [] } = useCategorias();
+  const categsReceita = allCategorias.filter((c) => c.tipo === "receita" || c.tipo === "ambos");
   const [descricao, setDescricao] = useState("");
-  const [categoria, setCategoria] = useState("");
+  const [categoriaId, setCategoriaId] = useState("");
   const [valor, setValor] = useState("");
   const [dataRecebimento, setDataRecebimento] = useState("");
   const [observacao, setObservacao] = useState("");
@@ -33,13 +28,13 @@ export function NovaReceitaDialog({ open, onOpenChange, onSave, editingReceita }
   useEffect(() => {
     if (editingReceita) {
       setDescricao(editingReceita.descricao);
-      setCategoria(editingReceita.categoria);
+      setCategoriaId(editingReceita.categoria_id ?? "");
       setValor(String(editingReceita.valor));
       setDataRecebimento(editingReceita.data_recebimento);
       setObservacao(editingReceita.observacao || "");
     } else {
       setDescricao("");
-      setCategoria("");
+      setCategoriaId("");
       setValor("");
       setDataRecebimento(new Date().toISOString().split("T")[0]);
       setObservacao("");
@@ -47,7 +42,7 @@ export function NovaReceitaDialog({ open, onOpenChange, onSave, editingReceita }
   }, [editingReceita, open]);
 
   const handleSubmit = () => {
-    if (!descricao || !categoria || !valor || !dataRecebimento) {
+    if (!descricao || !categoriaId || !valor || !dataRecebimento) {
       toast.error("Preencha todos os campos obrigatórios.");
       return;
     }
@@ -60,7 +55,7 @@ export function NovaReceitaDialog({ open, onOpenChange, onSave, editingReceita }
     const receita: Receita = {
       id: editingReceita?.id || `rec-${Date.now()}`,
       descricao,
-      categoria,
+      categoria_id: categoriaId,
       valor: parsedValor,
       data_recebimento: dataRecebimento,
       observacao: observacao || null,
@@ -78,6 +73,7 @@ export function NovaReceitaDialog({ open, onOpenChange, onSave, editingReceita }
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{editingReceita ? "Editar Receita" : "Nova Receita"}</DialogTitle>
+        <DialogDescription className="sr-only">.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-2">
@@ -87,10 +83,10 @@ export function NovaReceitaDialog({ open, onOpenChange, onSave, editingReceita }
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Categoria *</Label>
-              <Select value={categoria} onValueChange={setCategoria}>
+              <Select value={categoriaId} onValueChange={setCategoriaId}>
                 <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                 <SelectContent>
-                  {CATEGORIAS.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  {categsReceita.map((c) => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
