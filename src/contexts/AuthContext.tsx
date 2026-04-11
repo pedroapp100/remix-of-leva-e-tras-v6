@@ -137,18 +137,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     // === TIMEOUT DE SEGURANÇA ===
-    // Se getSession() travar por qualquer motivo, isto força isReady=true após 20s
-    // OBS: 20s > timeout interno do Supabase (~10-15s) — é apenas um último recurso
+    // Fallback final caso TUDO falhe. Não deve ser atingido normalmente.
     const safetyTimer = setTimeout(() => {
       if (!initialized) {
-        console.warn("[Auth] Safety timeout (20s) — getSession nunca completou. Verifique a conexão com Supabase.");
+        console.warn("[Auth] Safety timeout (8s) — limpando sessão corrompida e reiniciando.");
+        try { localStorage.removeItem("lt-auth-session"); } catch { /**/ }
         completeInitialization();
       }
-    }, 20000);
+    }, 8000);
 
-    // === BUSCAR SESSÃO EXISTENTE ===
+    // === BUSCAR SESSÃO EXISTENTE (com timeout próprio de 5s) ===
+    // O SDK Supabase pode travar indefinidamente se houver sessão expirada no localStorage
+    // que precise de refresh de rede. Promise.race garante que isto nunca bloqueia o app.
     console.log("[Auth] Verificando sessão...");
-    supabase.auth.getSession()
+    const getSessionWithTimeout = Promise.race([
+      supabase.auth.getSession(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("getSession timeout — sessão possivelmente corrompida")), 5000)
+      ),
+    ]);
+
+    getSessionWithTimeout
       .then(async ({ data: { session } }) => {
         if (!mounted) return;
 
@@ -171,8 +180,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .catch((err) => {
         if (!mounted) return;
         console.error("[Auth] Erro ao buscar sessão:", err?.message ?? err);
-        // Limpar localStorage corrompido se houver
+        // Limpar sessão corrompida/expirada — força fresh login na próxima vez
         try { localStorage.removeItem("lt-auth-session"); } catch { /**/ }
+        // Limpa estado interno do SDK sem bloquear (scope:local = sem chamada de rede)
+        void supabase.auth.signOut({ scope: "local" }).catch(() => { /**/ });
         completeInitialization();
       });
 
