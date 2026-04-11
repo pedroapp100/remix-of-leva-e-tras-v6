@@ -137,27 +137,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     // === TIMEOUT DE SEGURANÇA ===
-    // Fallback final caso TUDO falhe. Não deve ser atingido normalmente.
+    // Último recurso. O timeout real está no fetch layer (10s para auth).
+    // Este timer só dispara se algo totalmente inesperado acontecer.
     const safetyTimer = setTimeout(() => {
       if (!initialized) {
-        console.warn("[Auth] Safety timeout (8s) — limpando sessão corrompida e reiniciando.");
+        console.warn("[Auth] Safety timeout (12s) — fallback absoluto.");
         try { localStorage.removeItem("lt-auth-session"); } catch { /**/ }
         completeInitialization();
       }
-    }, 8000);
+    }, 12000);
 
-    // === BUSCAR SESSÃO EXISTENTE (com timeout próprio de 5s) ===
-    // O SDK Supabase pode travar indefinidamente se houver sessão expirada no localStorage
-    // que precise de refresh de rede. Promise.race garante que isto nunca bloqueia o app.
+    // === BUSCAR SESSÃO EXISTENTE ===
+    // O timeout de rede está no fetchWithTimeout (10s para /auth/v1/).
+    // Se o token refresh travar, o fetch aborta em 10s, o SDK retorna erro,
+    // e o .catch() abaixo limpa a sessão e inicializa normalmente.
+    // ⛔ NÃO adicione Promise.race aqui — o fix correto está no fetch layer.
     console.log("[Auth] Verificando sessão...");
-    const getSessionWithTimeout = Promise.race([
-      supabase.auth.getSession(),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("getSession timeout — sessão possivelmente corrompida")), 5000)
-      ),
-    ]);
-
-    getSessionWithTimeout
+    supabase.auth.getSession()
       .then(async ({ data: { session } }) => {
         if (!mounted) return;
 
@@ -180,10 +176,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .catch((err) => {
         if (!mounted) return;
         console.error("[Auth] Erro ao buscar sessão:", err?.message ?? err);
-        // Limpar sessão corrompida/expirada — força fresh login na próxima vez
+        // Se fetch abortou (timeout 10s) ou token expirado → limpa sessão corrompida
         try { localStorage.removeItem("lt-auth-session"); } catch { /**/ }
-        // Limpa estado interno do SDK sem bloquear (scope:local = sem chamada de rede)
-        void supabase.auth.signOut({ scope: "local" }).catch(() => { /**/ });
         completeInitialization();
       });
 

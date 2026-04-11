@@ -19,33 +19,35 @@ if (!supabaseAnonKey || supabaseAnonKey.includes("SEU_ANON_KEY")) {
 }
 
 /**
- * ⚠️ CRITICAL: Custom fetch wrapper com timeout
+ * ⚠️ CRITICAL: Custom fetch wrapper com timeout para TODAS as chamadas.
  *
- * NÃO aplica timeout em endpoints de auth — o Supabase SDK já gerencia internamente
- * o token refresh e requer tempo variável. Aplicar timeout fixo aqui causa o erro
- * "getSession nunca completou" quando o token precisa ser renovado.
+ * HISTÓRICO DO BUG RECORRENTE (Fix #1 → #4 → #8 → #9):
+ * - O bypass total de auth (`if isAuthRequest return fetch()`) causava hang infinito
+ *   quando o token refresh travava (rede lenta, rate limit, token corrupto).
+ * - Workarounds no AuthContext (Promise.race, safety timers) só mascaravam o sintoma.
  *
- * Para outros endpoints (REST, realtime), aplica timeout de 20s como fallback.
+ * SOLUÇÃO DEFINITIVA: Timeout no fetch layer para TODOS os endpoints:
+ *   - Auth (/auth/v1/): 10s — suficiente para refresh normal (~200ms), impede hang
+ *   - Outros (REST, realtime): 20s — operações maiores como queries pesadas
+ *
+ * ⛔ NÃO remova o timeout de auth novamente. Isso causa o bug "getSession nunca completou".
  */
+const AUTH_TIMEOUT_MS = 10_000;
+const DEFAULT_TIMEOUT_MS = 20_000;
+
 const fetchWithTimeout: typeof fetch = (input, init) => {
-  // Detecta se é uma rota de auth — não aplica timeout nelas
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url;
   const isAuthRequest = url.includes("/auth/v1/");
+  const timeoutMs = isAuthRequest ? AUTH_TIMEOUT_MS : DEFAULT_TIMEOUT_MS;
 
-  if (isAuthRequest) {
-    // Deixa o Supabase SDK gerenciar o tempo de auth sem interferência
-    return fetch(input, init);
-  }
-
-  // Para outros requests, aplica timeout de 20s
   const controller = new AbortController();
   const timeoutId = setTimeout(() => {
     if (!controller.signal.aborted) {
       controller.abort();
     }
-  }, 20000);
+  }, timeoutMs);
 
-  // Se há signal externo (do Supabase SDK), respeita também
+  // Respeita signal externo (do Supabase SDK) se presente
   if (init?.signal && !init.signal.aborted) {
     init.signal.addEventListener("abort", () => controller.abort(), { once: true });
   }
