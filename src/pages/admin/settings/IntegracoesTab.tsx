@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import {
   MessageSquare, Mail, CreditCard, MapPin, Bell,
   Settings2, ExternalLink, Plus, Pencil, Trash2, Copy, Eye, EyeOff,
-  CheckCircle2, XCircle, Zap, Send, AlertTriangle,
+  CheckCircle2, XCircle, Zap, Send, AlertTriangle, Loader2,
 } from "lucide-react";
 
 /* ── Types ── */
@@ -195,6 +195,7 @@ export function IntegracoesTab() {
   const [formApiKey, setFormApiKey] = useState("");
   const [formConfig, setFormConfig] = useState<Record<string, string>>({});
   const [filterCategoria, setFilterCategoria] = useState<"todas" | IntegracaoCategoria>("todas");
+  const [testingConnection, setTestingConnection] = useState(false);
 
   /* ── Create form state ── */
   const [selectedPreset, setSelectedPreset] = useState("zapi");
@@ -304,12 +305,63 @@ export function IntegracoesTab() {
     }
   };
 
-  const handleTestConnection = () => {
+  const handleTestConnection = async () => {
     if (!selected) return;
-    if (formApiKey.trim().length > 10) {
-      toast.success(`Chave API de ${selected.nome} validada com sucesso!`);
-    } else {
-      toast.error(`Chave API de ${selected.nome} inválida. Verifique o valor informado.`);
+
+    // Para integrações não-Z-API: validação simples de comprimento
+    if (selected.icone !== "whatsapp") {
+      if (formApiKey.trim().length > 10) {
+        toast.success(`Chave API de ${selected.nome} validada com sucesso!`);
+      } else {
+        toast.error(`Chave API de ${selected.nome} inválida. Verifique o valor informado.`);
+      }
+      return;
+    }
+
+    // Para Z-API: validar campos mínimos antes de tentar
+    const instanceId = formConfig.instance_id?.trim();
+    const token = formApiKey.trim();
+    const clientToken = formConfig.client_token?.trim() ?? "";
+
+    if (!instanceId || !token) {
+      toast.error("Preencha Instance ID e Chave API (Token) antes de testar.");
+      return;
+    }
+
+    setTestingConnection(true);
+    try {
+      const edgeFunctionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/enviar-whatsapp`;
+      const response = await fetch(edgeFunctionUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          action: "status",
+          instance_id: instanceId,
+          token,
+          client_token: clientToken,
+        }),
+      });
+
+      const data = await response.json();
+      console.log("[TestConnection] Z-API status:", data);
+
+      if (data.connected) {
+        toast.success("✅ Z-API conectada! WhatsApp ativo e pronto para enviar mensagens.");
+      } else if (data.errorCode === "INTEGRATION_NOT_FOUND") {
+        toast.error("Integração não encontrada. Salve as configurações primeiro.");
+      } else if (data.errorCode === "INCOMPLETE_CREDENTIALS") {
+        toast.error("Credenciais incompletas. Verifique Instance ID e Token.");
+      } else {
+        const msg = data.error ?? "Instância não conectada ao WhatsApp.";
+        toast.error(`❌ Z-API desconectada: ${msg}`, { duration: 7000 });
+      }
+    } catch {
+      toast.error("Erro de rede ao verificar conexão Z-API. Tente novamente.");
+    } finally {
+      setTestingConnection(false);
     }
   };
 
@@ -509,9 +561,13 @@ export function IntegracoesTab() {
           </div>
 
           <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button variant="outline" onClick={handleTestConnection} className="gap-1.5">
-              <Zap className="h-3.5 w-3.5" />
-              Testar Conexão
+            <Button variant="outline" onClick={handleTestConnection} disabled={testingConnection} className="gap-1.5">
+              {testingConnection ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Zap className="h-3.5 w-3.5" />
+              )}
+              {testingConnection ? "Verificando..." : "Testar Conexão"}
             </Button>
             <div className="flex gap-2">
               <DialogClose asChild>

@@ -395,11 +395,27 @@ export function NotificacoesTab() {
 
       if (!response.ok) {
         console.error("❌ [TestSend] Erro ao enviar:", { status: response.status, ...data });
-        const errorMsg = data?.error || `Erro ${response.status}: ${response.statusText}`;
-        toast.error(`Erro ao enviar: ${errorMsg}`);
         
-        // Atualizar record como falha SEM usar setTestRecords (já está em addTestRecord)
-        // Se precisa atualizar, usar updateTemplate para persistir no BD
+        // Mensagens específicas por código de erro
+        if (data?.errorCode === "INTEGRATION_NOT_FOUND") {
+          toast.error(
+            "Integração Z-API não encontrada. Vá em Configurações → Integrações e configure o WhatsApp.",
+            { duration: 8000 }
+          );
+        } else if (data?.errorCode === "INCOMPLETE_CREDENTIALS") {
+          toast.error(
+            "Credenciais Z-API incompletas (Instance ID e Token são obrigatórios). Configure em Integrações.",
+            { duration: 8000 }
+          );
+        } else if (data?.zapiStatus || data?.zapiResponse) {
+          // Erro vindo diretamente da Z-API
+          const zapiMsg = data?.zapiResponse?.message ?? data?.zapiResponse?.error ?? data?.error ?? `Erro Z-API (${data?.zapiStatus ?? response.status})`;
+          toast.error(`Z-API: ${zapiMsg} — Verifique a conexão da instância em Integrações.`, { duration: 8000 });
+        } else {
+          const errorMsg = data?.error || `Erro ${response.status}: ${response.statusText}`;
+          toast.error(`Erro ao enviar: ${errorMsg}`);
+        }
+        
         console.log("📝 [TestSend] Será implementado: atualizar registro como falha no BD");
         return;
       }

@@ -24,6 +24,11 @@ interface RequestBody {
   mensagem?: string;
   evento?: string;
   variaveis?: Record<string, string>;
+  // Status check action (não envia mensagem — apenas verifica conexão Z-API)
+  action?: "status";
+  instance_id?: string;
+  token?: string;
+  client_token?: string;
 }
 
 interface ZApiCredentials {
@@ -46,6 +51,90 @@ function substituirVariaveis(template: string, vars: Record<string, string>): st
   return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`);
 }
 
+// ── Status Check Helper ──────────────────────────────────────────────────────
+
+async function handleStatusCheck(
+  supabase: ReturnType<typeof createClient>,
+  overrideCreds?: { instance_id?: string; token?: string; client_token?: string },
+): Promise<Response> {
+  let instance_id = overrideCreds?.instance_id ?? "";
+  let token = overrideCreds?.token ?? "";
+  let client_token = overrideCreds?.client_token ?? "";
+
+  // Se não foram fornecidas credenciais, busca do BD
+  const needsDb = !instance_id || !token;
+  if (needsDb) {
+    console.log("[status-check] 🔍 Buscando credenciais do BD...");
+    const { data: integ } = await supabase
+      .from("integracoes")
+      .select("api_key, config, ativo")
+      .eq("icone", "whatsapp")
+      .limit(1)
+      .single();
+
+    if (!integ) {
+      return jsonResponse({
+        connected: false,
+        errorCode: "INTEGRATION_NOT_FOUND",
+        error: "Integração Z-API não encontrada. Configure em Integrações.",
+      });
+    }
+
+    const config = (integ.config ?? {}) as Record<string, string>;
+    instance_id = instance_id || config.instance_id || "";
+    token = token || integ.api_key || config.token || "";
+    client_token = client_token || config.client_token || "";
+  }
+
+  if (!instance_id || !token) {
+    return jsonResponse({
+      connected: false,
+      errorCode: "INCOMPLETE_CREDENTIALS",
+      error: "Credenciais incompletas: preencha Instance ID e Token.",
+    });
+  }
+
+  try {
+    const statusUrl = `${ZAPI_BASE_URL}/instances/${instance_id}/token/${token}/status`;
+    console.log("[status-check] 📡 Verificando status Z-API...");
+    const zapiResp = await fetch(statusUrl, {
+      headers: { "Client-Token": client_token },
+    });
+
+    const zapiData = await zapiResp.json();
+    console.log("[status-check] 📋 Resposta Z-API status:", zapiData);
+
+    // Z-API pode retornar connected: true ou status: "CONNECTED"
+    const connected =
+      zapiData?.connected === true ||
+      zapiData?.status === "CONNECTED" ||
+      zapiData?.smartphoneConnected === true;
+
+    // Actualiza status no BD (apenas se lemos do BD)
+    if (needsDb) {
+      await supabase
+        .from("integracoes")
+        .update({ status: connected ? "conectado" : "desconectado" })
+        .eq("icone", "whatsapp");
+    }
+
+    return jsonResponse({
+      connected,
+      smartphoneConnected: zapiData?.smartphoneConnected ?? null,
+      session: zapiData?.session ?? null,
+      details: zapiData,
+    });
+  } catch (err) {
+    console.error("[status-check] ❌ Erro ao consultar Z-API:", err);
+    return jsonResponse({
+      connected: false,
+      errorCode: "NETWORK_ERROR",
+      error: "Erro ao conectar com Z-API. Verifique se o Instance ID é válido.",
+      details: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 // ── Handler ─────────────────────────────────────────────────────────────────
 
 serve(async (req: Request): Promise<Response> => {
@@ -60,6 +149,11 @@ serve(async (req: Request): Promise<Response> => {
     });
   }
 
+  // ── GET /enviar-whatsapp → verifica status de conexão Z-API ──────────────
+  if (req.method === "GET") {
+    return await handleStatusCheck(createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY));
+  }
+
   if (req.method !== "POST") {
     return new Response("Method Not Allowed", { status: 405 });
   }
@@ -71,7 +165,17 @@ serve(async (req: Request): Promise<Response> => {
     return jsonResponse({ success: false, error: "Invalid JSON" }, 400);
   }
 
-  const { telefone, mensagem, evento, variaveis } = body;
+  const { telefone, mensagem, evento, variaveis, action, instance_id: bodyInstanceId, token: bodyToken, client_token: bodyClientToken } = body;
+
+  // ── Action: verificar status Z-API (sem enviar mensagem) ──────────────────
+  if (action === "status") {
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    return await handleStatusCheck(supabase, {
+      instance_id: bodyInstanceId,
+      token: bodyToken,
+      client_token: bodyClientToken,
+    });
+  }
 
   if (!telefone) {
     return jsonResponse({ success: false, error: "Campo 'telefone' é obrigatório" }, 400);
