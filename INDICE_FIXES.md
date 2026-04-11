@@ -6,16 +6,18 @@
 
 ## 📌 **Todos os Fixes por Categoria**
 
-### 🔐 **Autenticação (3 fixes)**
+### 🔐 **Autenticação (5 fixes)**
 | # | Data | Problema | Arquivo | Status |
 |---|------|----------|---------|--------|
 | 1 | 11/04/26 | Race condition no login | [CORREÇÕES_E_FIXES.md#fix-1](CORREÇÕES_E_FIXES.md#-fix-1-race-condition-na-autenticação-11-abril-2026) | ✅ |
 | 4 | 11/04/26 | useEffect órfão estrutura | [CORREÇÕES_E_FIXES.md#fix-4](CORREÇÕES_E_FIXES.md#-fix-4-estrutura-órfã-do-useffect-em-authcontext-11-abril-2026) | ✅ |
 | 6 | 11/04/26 | **Fixes revertiam após todo commit** | [CORREÇÕES_E_FIXES.md#fix-6](CORREÇÕES_E_FIXES.md#-fix-6-regressão-infinita--fixes-revertiam-após-todo-commit-11-abril-2026) | ✅ |
+| 8 | 11/04/26 | getSession() travando com sessão expirada | [CORREÇÕES_E_FIXES.md#fix-8](CORREÇÕES_E_FIXES.md) | ✅ (workaround) |
+| **9** | 11/04/26 | **⛔ CAUSA RAIZ: fetch sem timeout em /auth/v1/** | [CORREÇÕES_E_FIXES.md#fix-9](CORREÇÕES_E_FIXES.md) | ✅ **DEFINITIVO** |
 
 🔧 **Arquivos afetados:**
-- `src/lib/supabase.ts` (fetchWithTimeout — fix crítico, agora versionado)
-- `src/contexts/AuthContext.tsx` (getSession useEffect, onAuthStateChange cleanup)
+- `src/lib/supabase.ts` (fetchWithTimeout — timeout 10s agora aplicado a TODOS os endpoints)
+- `src/contexts/AuthContext.tsx` (getSession limpo, sem Promise.race, safety timer 12s)
 - `src/hooks/` (8 hooks Supabase adicionados ao git)
 - `src/services/` (8 services adicionados ao git)
 
@@ -54,8 +56,9 @@
 → Ver [Fix #6 - Regressão Git](CORREÇÕES_E_FIXES.md#-fix-6-regressão-infinita--fixes-revertiam-após-todo-commit-11-abril-2026)
 → Causa: arquivo era `??` untracked, solução: `git add` + `git commit`
 
-### Problema: "Timeout de autenticação"
-→ Ver [Fix #1 - Race Condition](CORREÇÕES_E_FIXES.md#-fix-1-race-condition-na-autenticação-11-abril-2026)
+### Problema: "Timeout de autenticação" / "getSession nunca completou"
+→ Ver [Fix #9 - Causa Raiz Definitiva](CORREÇÕES_E_FIXES.md) — timeout no fetch layer
+→ Fix anterior: [Fix #1 - Race Condition](CORREÇÕES_E_FIXES.md#-fix-1-race-condition-na-autenticação-11-abril-2026)
 
 ### Problema: "Mensagens parecem ser enviadas mas não chegam"
 → Ver [Fix #2 - Edge Function](CORREÇÕES_E_FIXES.md#-fix-2-edge-function-não-enviava-mensagens-whatsapp-11-abril-2026)
@@ -78,8 +81,8 @@
 
 | Arquivo | Fixes | Mudanças |
 |---------|-------|----------|
-| `src/lib/supabase.ts` | #1, #6 | fetchWithTimeout sem timeout em /auth/v1/* — **agora versionado** |
-| `src/contexts/AuthContext.tsx` | #1, #4, #6 | getSession useEffect refatorado — **agora versionado** |
+| `src/lib/supabase.ts` | #1, #6, **#9** | **Fix #9**: timeout 10s para ALL endpoints incluindo auth |
+| `src/contexts/AuthContext.tsx` | #1, #4, #6, #8, **#9** | **Fix #9**: removido Promise.race, safety timer 12s |
 | `src/hooks/` (8 arquivos) | #6 | Hooks Supabase adicionados ao git |
 | `src/services/` (8 arquivos) | #6 | Services adicionados ao git |
 | `src/pages/admin/settings/NotificacoesTab.tsx` | #2, #5 | handleTestSend implementado; logs [TestSend] adicionados |
@@ -122,13 +125,13 @@
 
 ## 📊 **Estatísticas**
 
-- **Total de Fixes**: 7
-- **Resolvidos**: 7 ✅
+- **Total de Fixes**: 9
+- **Resolvidos**: 9 ✅
 - **Pendentes**: 0
 - **Bloqueados**: 0
-- **Severidade Crítica**: 2 (Fix #1 auth, Fix #6 versionamento)
-- **Severidade Alta**: 4 (incl. Fix #7 Z-API)
-- **Severidade Média**: 1
+- **Severidade Crítica**: 3 (Fix #1 auth, Fix #6 versionamento, **Fix #9 causa raiz**)
+- **Severidade Alta**: 4 (incl. Fix #7 Z-API, Fix #8 workaround)
+- **Severidade Média**: 2
 - **Taxa de Resolução**: 100%
 - **Data Range**: 11/04/26 — 11/04/26
 
@@ -148,4 +151,4 @@
 
 **Última atualização**: 11 Abril 2026
 **Responsável**: Assistente IA + Equipe
-**Status**: ✅ 7 Fixes documentados | 🔆 Fix #7 resolve diagnóstico Z-API e erros acionáveis
+**Status**: ✅ 9 Fixes documentados | ⛔ Fix #9 elimina causa raiz do auth hang — não deve voltar

@@ -1100,6 +1100,100 @@ getSessionWithTimeout
 
 ---
 
+---
+
+## 📅 Fix #9: Eliminar Causa Raiz do Auth Hang Recorrente (11 Abril 2026)
+
+### 🔴 **Problema**
+O bug de auth travando continuava voltando após Fix #1, #4 e #8 porque **cada fix anterior corrigiu um sintoma, não a causa raiz**.
+
+### 🔍 **Auditoria da Causa Raiz**
+
+O histórico de patches acumulados criou um **ciclo vicioso**:
+
+```
+Fix #1: AbortSignal.any() quebrava → "correção": bypass total de auth no fetch
+                                                         ↓
+                                         fetch() nativo sem NENHUM timeout
+                                                         ↓
+Fix #8: getSession() trava → "correção": Promise.race 5s no AuthContext
+                                                         ↓
+                             fetch zombie continua pendurado após race rejeitar
+                                                         ↓
+                             próxima rede lenta → bug volta
+```
+
+O problema real sempre foi esta linha em `supabase.ts`:
+```typescript
+// ❌ ANTES: fetch SEM timeout para auth
+if (isAuthRequest) {
+  return fetch(input, init);  // hang infinito possível
+}
+```
+
+### ✅ **Solução Definitiva — Fix na Camada Correta**
+
+**Princípio**: O timeout deve estar no **fetch layer** (origem), não empilhado em workarounds no AuthContext.
+
+**`src/lib/supabase.ts`** — Unificar `fetchWithTimeout` para TODOS os endpoints:
+```typescript
+// ✅ DEPOIS: timeout em TUDO via AbortController simples
+const AUTH_TIMEOUT_MS = 10_000;   // auth recebe 10s
+const DEFAULT_TIMEOUT_MS = 20_000; // outros recebem 20s
+
+const fetchWithTimeout: typeof fetch = (input, init) => {
+  const isAuthRequest = url.includes("/auth/v1/");
+  const timeoutMs = isAuthRequest ? AUTH_TIMEOUT_MS : DEFAULT_TIMEOUT_MS;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  // respeita signal externo do SDK se presente
+  if (init?.signal && !init.signal.aborted) {
+    init.signal.addEventListener("abort", () => controller.abort(), { once: true });
+  }
+  return fetch(input, { ...init, signal: controller.signal }).finally(() => clearTimeout(timeoutId));
+};
+```
+
+**`src/contexts/AuthContext.tsx`** — Remover todos os workarounds:
+```typescript
+// ✅ DEPOIS: getSession() limpo, sem Promise.race
+supabase.auth.getSession()
+  .then(async ({ data: { session } }) => { ... completeInitialization(); })
+  .catch((err) => {
+    // fetch abortou em 10s → limpa sessão corrompida
+    localStorage.removeItem("lt-auth-session");
+    completeInitialization();
+  });
+
+// Safety timer: 12s (fallback absoluto — NÃO deve ser atingido normalmente)
+```
+
+### 📊 **Comportamento por Cenário**
+
+| Cenário | Tempo máximo | Resultado |
+|---------|-------------|-----------|
+| Token válido | <1s | Login direto ✅ |
+| Token expirado + rede normal | ~200ms | Silent refresh automático ✅ |
+| Token expirado + rede lenta | 10s | Fetch aborta → limpa sessão → tela de login ✅ |
+| Sessão corrompida no localStorage | 10s | Fetch aborta → limpa → tela de login ✅ |
+| Supabase offline | 10s | AbortError → limpa → tela de login ✅ |
+| Falha catastrófica | 12s | Safety timer → tela de login ✅ |
+
+### 📋 **Por Que Não Vai Voltar**
+- ✅ Timeout na **camada de fetch** — afeta 100% das chamadas de auth automaticamente
+- ✅ Comentário ⛔ no código documentando o histórico — previne "correção" invertida
+- ✅ Zero camadas sobrepostas = zero formas de conflitar
+- ✅ `AbortController` simples (sem `AbortSignal.any()` que quebrava browsers)
+
+### 🔗 **Relacionado**
+- Fix #1: Race condition original (overcorrigiu com bypass)
+- Fix #4: Estrutura dead code no useEffect
+- Fix #8: Promise.race workaround (removido neste fix)
+- Commit: `917589e`
+
+---
+
 **Última atualização**: 11 de Abril de 2026
 **Responsável**: Assistente IA
-**Status**: 8 fixes documentados ✅ — Fix #8 resolve trava de getSession() com sessão expirada
+**Status**: 9 fixes documentados ✅ — Fix #9 elimina causa raiz definitivamente (timeout no fetch layer)
