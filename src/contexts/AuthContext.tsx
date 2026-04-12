@@ -151,19 +151,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // O SDK v2 detecta access token expirado e tenta refresh de rede.
     // Se a rede está lenta/Supabase pausado, esse refresh trava até 8s (timeout).
     // Limpeza antecipada evita toda essa espera: sem token em disco = sem refresh.
+    //
+    // ⛔ FIX #12 — CHAVE CORRETA: O cliente Supabase em supabase.ts usa storageKey: "lt-auth-session".
+    // Antes estava derivando a chave como `sb-${projectRef}-auth-token` (chave padrão do Supabase),
+    // mas como configuramos uma chave customizada, o token NUNCA era encontrado aqui,
+    // fazendo esta proteção nunca funcionar — toda sessão expirada causava o timeout de 8s.
     const clearExpiredLocalSession = (): boolean => {
       try {
-        const url = import.meta.env.VITE_SUPABASE_URL as string;
-        if (!url) return false;
-        const projectRef = url.replace(/^https?:\/\//, "").split(".")[0];
-        const storageKey = `sb-${projectRef}-auth-token`;
-        const raw = localStorage.getItem(storageKey);
+        // Chave customizada definida em src/lib/supabase.ts → storageKey: "lt-auth-session"
+        const STORAGE_KEY = "lt-auth-session";
+        const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return false;
         const parsed = JSON.parse(raw) as { expires_at?: number };
         const expiresAt = parsed?.expires_at;
         if (!expiresAt) return false;
         if (expiresAt * 1000 < Date.now()) {
-          localStorage.removeItem(storageKey);
+          localStorage.removeItem(STORAGE_KEY);
           console.log("[Auth] Token local expirado descartado — login necessário.");
           return true;
         }
