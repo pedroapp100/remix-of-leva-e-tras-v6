@@ -195,15 +195,6 @@ export function useConcluirComCaixa() {
               total_entregas: String(result.total_entregas ?? 0),
             }).catch(() => {/* fire-and-forget */});
           }
-
-          // WhatsApp: fatura auto-fechada
-          if (cliente.telefone) {
-            notificarFaturaFechada(cliente.telefone, {
-              cliente_nome: cliente.nome,
-              fatura_numero: faturaNum,
-              total_entregas: String(result.total_entregas ?? 0),
-            }).catch(() => {/* fire-and-forget */});
-          }
         }
       } catch {
         return { success: true, error: "Solicitação concluída, mas houve erro ao gerar/atualizar fatura." };

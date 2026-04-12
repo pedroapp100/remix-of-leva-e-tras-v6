@@ -235,11 +235,11 @@ export function ClientFormDialog({ open, onOpenChange, editing, onSave }: Client
             <h3 className="text-base font-semibold mb-4">Dados Cadastrais</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2 sm:col-span-2">
-                <Label>Nome *</Label>
-                <Input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome do cliente ou empresa" />
+                <Label htmlFor="field-nome">Nome *</Label>
+                <Input id="field-nome" name="nome" value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome do cliente ou empresa" />
               </div>
               <div className="space-y-2">
-                <Label>Tipo</Label>
+                <Label htmlFor="field-tipo">Tipo</Label>
                 <Select value={tipo} onValueChange={(v) => setTipo(v as typeof tipo)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -249,8 +249,10 @@ export function ClientFormDialog({ open, onOpenChange, editing, onSave }: Client
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Email *</Label>
+                <Label htmlFor="field-email">Email *</Label>
                 <Input
+                  id="field-email"
+                  name="email"
                   type="email"
                   value={email}
                   onChange={(e) => { setEmail(e.target.value); setEmailError(""); }}
@@ -267,34 +269,34 @@ export function ClientFormDialog({ open, onOpenChange, editing, onSave }: Client
                 {emailError && <p className="text-xs text-destructive">{emailError}</p>}
               </div>
               <div className="space-y-2">
-                <Label>Telefone *</Label>
-                <PhoneInput value={telefone} onChange={setTelefone} />
+                <Label htmlFor="field-telefone">Telefone *</Label>
+                <PhoneInput id="field-telefone" name="telefone" value={telefone} onChange={setTelefone} />
               </div>
               <div className="space-y-2">
-                <Label>Endereço</Label>
-                <Input value={endereco} onChange={(e) => setEndereco(e.target.value)} placeholder="Rua, número" />
+                <Label htmlFor="field-endereco">Endereço</Label>
+                <Input id="field-endereco" name="endereco" value={endereco} onChange={(e) => setEndereco(e.target.value)} placeholder="Rua, número" />
               </div>
               <div className="space-y-2">
-                <Label>Cidade</Label>
-                <Input value={cidade} onChange={(e) => setCidade(e.target.value)} placeholder="Cidade" />
+                <Label htmlFor="field-cidade">Cidade</Label>
+                <Input id="field-cidade" name="cidade" value={cidade} onChange={(e) => setCidade(e.target.value)} placeholder="Cidade" />
               </div>
               <div className="space-y-2">
-                <Label>UF</Label>
+                <Label htmlFor="field-uf">UF</Label>
                 <Select value={uf} onValueChange={setUf}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>{UF_LIST.map((u) => (<SelectItem key={u} value={u}>{u}</SelectItem>))}</SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Bairro</Label>
-                <Input value={bairro} onChange={(e) => setBairro(e.target.value)} placeholder="Bairro" />
+                <Label htmlFor="field-bairro">Bairro</Label>
+                <Input id="field-bairro" name="bairro" value={bairro} onChange={(e) => setBairro(e.target.value)} placeholder="Bairro" />
               </div>
               <div className="space-y-2">
-                <Label>Chave PIX</Label>
-                <Input value={chavePix} onChange={(e) => setChavePix(e.target.value)} placeholder="CPF, email, telefone ou chave aleatória" />
+                <Label htmlFor="field-chavepix">Chave PIX</Label>
+                <Input id="field-chavepix" name="chavepix" value={chavePix} onChange={(e) => setChavePix(e.target.value)} placeholder="CPF, email, telefone ou chave aleatória" />
               </div>
               <div className="space-y-2">
-                <Label>Status</Label>
+                <Label htmlFor="field-status">Status</Label>
                 <Select value={status} onValueChange={(v) => setStatus(v as typeof status)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -315,8 +317,10 @@ export function ClientFormDialog({ open, onOpenChange, editing, onSave }: Client
                 <h3 className="text-base font-semibold mb-4">Acesso ao Portal</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Senha de acesso *</Label>
+                    <Label htmlFor="field-senha">Senha de acesso *</Label>
                     <Input
+                      id="field-senha"
+                      name="senha"
                       type="password"
                       value={senha}
                       onChange={(e) => setSenha(e.target.value)}

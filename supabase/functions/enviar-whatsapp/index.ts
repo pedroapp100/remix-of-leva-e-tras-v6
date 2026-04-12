@@ -143,7 +143,7 @@ serve(async (req: Request): Promise<Response> => {
     return new Response("ok", {
       headers: {
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
         "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
       },
     });

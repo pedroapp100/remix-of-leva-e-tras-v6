@@ -278,10 +278,10 @@ export function IntegracoesTab() {
         id: selected.id,
         api_key: formApiKey.trim(),
         config: formConfig,
-        status: hasKey ? "conectado" : "desconectado",
+        status: "desconectado",
         ativo: hasKey,
       });
-      toast.success(`Integração "${selected.nome}" ${hasKey ? "configurada" : "desconectada"} com sucesso!`);
+      toast.success(`Integração "${selected.nome}" salva! Use "Testar Conexão" para verificar.`);
       setConfigOpen(false);
     } catch {
       toast.error("Erro ao salvar integração.");
@@ -297,7 +297,7 @@ export function IntegracoesTab() {
       await updateIntegracao({
         id: item.id,
         ativo: checked,
-        status: checked ? "conectado" : "desconectado",
+        status: checked ? item.status : "desconectado",
       });
       toast.success(`${item.nome} ${checked ? "ativado" : "desativado"}.`);
     } catch {

@@ -147,13 +147,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }, 12000);
 
+    // === PRÉ-CHECK: LIMPAR SESSÃO EXPIRADA ANTES DE CHAMAR getSession ===
+    // O SDK v2 detecta access token expirado e tenta refresh de rede.
+    // Se a rede está lenta/Supabase pausado, esse refresh trava até 8s (timeout).
+    // Limpeza antecipada evita toda essa espera: sem token em disco = sem refresh.
+    const clearExpiredLocalSession = (): boolean => {
+      try {
+        const url = import.meta.env.VITE_SUPABASE_URL as string;
+        if (!url) return false;
+        const projectRef = url.replace(/^https?:\/\//, "").split(".")[0];
+        const storageKey = `sb-${projectRef}-auth-token`;
+        const raw = localStorage.getItem(storageKey);
+        if (!raw) return false;
+        const parsed = JSON.parse(raw) as { expires_at?: number };
+        const expiresAt = parsed?.expires_at;
+        if (!expiresAt) return false;
+        if (expiresAt * 1000 < Date.now()) {
+          localStorage.removeItem(storageKey);
+          console.log("[Auth] Token local expirado descartado — login necessário.");
+          return true;
+        }
+      } catch { /**/ }
+      return false;
+    };
+
     // === BUSCAR SESSÃO EXISTENTE ===
-    // O timeout de rede está no fetchWithTimeout (10s para /auth/v1/).
-    // Se o token refresh travar, o fetch aborta em 10s, o SDK retorna erro,
-    // e o .catch() abaixo limpa a sessão e inicializa normalmente.
-    // ⛔ NÃO adicione Promise.race aqui — o fix correto está no fetch layer.
+    // DEFESA EM PROFUNDIDADE — duas camadas de proteção:
+    //   1. fetchWithTimeout (10s) em supabase.ts: aborta a chamada de rede via AbortController
+    //   2. Promise.race (8s) aqui: protege contra hang interno do SDK
+    //
+    // Por que as duas camadas são necessárias:
+    //   O SDK Supabase v2 pode capturar o AbortError internamente (dentro de _acquireInitializeLock
+    //   ou _refreshAccessToken) e não rejeitar/resolver a promise de getSession(), deixando-a pendurada
+    //   indefinidamente. O fetch layer aborta a rede mas não garante que a promise do SDK resolva.
+    //   A Promise.race captura exatamente esse cenário — SDK hang após fetch abortado.
+    //
+    // Fix #9 estava errado ao remover a Promise.race. Fix #11 restaura ambas as camadas.
     console.log("[Auth] Verificando sessão...");
-    supabase.auth.getSession()
+
+    if (clearExpiredLocalSession()) {
+      void supabase.auth.signOut({ scope: "local" }).catch(() => { /**/ });
+      completeInitialization();
+    } else {
+
+    const getSessionWithTimeout = Promise.race([
+      supabase.auth.getSession(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("getSession timeout — sessão possivelmente corrompida/SDK hang")), 8000)
+      ),
+    ]);
+    getSessionWithTimeout
       .then(async ({ data: { session } }) => {
         if (!mounted) return;
 
@@ -176,10 +219,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .catch((err) => {
         if (!mounted) return;
         console.error("[Auth] Erro ao buscar sessão:", err?.message ?? err);
-        // Se fetch abortou (timeout 10s) ou token expirado → limpa sessão corrompida
+        // Limpa sessão corrompida/expirada do localStorage
         try { localStorage.removeItem("lt-auth-session"); } catch { /**/ }
+        // Limpa estado interno do SDK sem chamada de rede (scope:local)
+        // Isso libera o _acquireInitializeLock, evitando que outro método de auth trave
+        void supabase.auth.signOut({ scope: "local" }).catch(() => { /**/ });
         completeInitialization();
       });
+
+    } // fim else (sessão não expirada no localStorage)
 
     // === SUBSCREVER MUDANÇAS DE AUTENTICAÇÃO ===
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {

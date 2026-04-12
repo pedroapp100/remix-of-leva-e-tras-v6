@@ -407,4 +407,41 @@ describe("AuthContext", () => {
     // Após timeout: loading DEVE ter voltado a false
     expect(getByTestId!("loading").textContent).toBe("false");
   });
+
+  // ── Teste de regressão Fix #11 ────────────────────────────────────────────
+  // ESTE TESTE EXISTE PARA DETECTAR A REGRESSÃO DO FIX #9.
+  // Se alguém remover o Promise.race de 8s do AuthContext (alegando que
+  // fetchWithTimeout basta), este teste vai FALHAR imediatamente.
+  //
+  // Cenário: SDK Supabase captura AbortError internamente e NÃO resolve nem
+  // rejeita a promise de getSession() — o fetch layer aborta a rede, mas o
+  // lock interno do SDK (_acquireInitializeLock) nunca é liberado.
+  // Fix: Promise.race(8s) + signOut({scope:'local'}) no catch.
+  it("[regressão Fix#11] app fica pronto em ≤8s mesmo se getSession() travar infinitamente (SDK hang)", async () => {
+    // Simula exatamente o cenário do Fix#9/#11:
+    // getSession() NUNCA resolve nem rejeita — SDK hang interno
+    mockGetSession.mockReturnValue(new Promise(() => { /* never resolves */ }));
+
+    let getByTestId: (id: string) => HTMLElement;
+    await act(async () => {
+      const result = render(<AuthProvider><TestConsumer /></AuthProvider>);
+      getByTestId = result.getByTestId;
+    });
+
+    // Imediatamente após montar: não deve estar pronto ainda
+    expect(getByTestId!("ready").textContent).toBe("false");
+
+    // Avança 8s + 1ms — Promise.race deve rejeitar e completeInitialization() deve rodar
+    await act(async () => {
+      vi.advanceTimersByTime(8_001);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // App DEVE estar pronto — mesmo com o SDK completamente travado
+    expect(getByTestId!("ready").textContent).toBe("true");
+    // Sem sessão válida — usuário não autenticado
+    expect(getByTestId!("user").textContent).toBe("null");
+  });
 });
