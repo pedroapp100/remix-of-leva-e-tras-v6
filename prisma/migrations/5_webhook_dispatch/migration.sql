@@ -26,7 +26,10 @@ CREATE OR REPLACE FUNCTION dispatch_webhook_event(
 AS $$
 DECLARE
   l_url TEXT := 'https://qbumfnkrqqsthmsgrhfi.supabase.co/functions/v1/dispatch-webhook';
-  l_key TEXT := 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFidW1mbmtycXFzdGhtc2dyaGZpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTY3MzQ5MiwiZXhwIjoyMDkxMjQ5NDkyfQ.mV9so76SdTxTeqSsBu7jYmsKvMuvBpis8m7AuUUj8D0';
+  -- SEGURANÇA: segredo removido do versionamento.
+  -- Esta migration foi substituída por hardening posterior que busca a chave
+  -- no Vault (service_role_key). Este placeholder evita manter segredo no Git.
+  l_key TEXT := 'REDACTED_ROTATE_IMMEDIATELY';
 BEGIN
   -- Disparo assíncrono; não bloqueia nem aborta a transação principal
   PERFORM net.http_post(

@@ -111,16 +111,20 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
 
     // Persist payments to global store
     if (solicitacaoId) {
-      const persistedPagamentos = allPagamentos.map((pag) => ({
-        solicitacao_id: solicitacaoId,
-        rota_id: Object.entries(pagamentosPorRota).find(([, pags]) => pags.some((p) => p.id === pag.id))?.[0] ?? "",
-        forma_pagamento_id: pag.forma_pagamento_id,
-        valor: pag.valor,
-        pertence_a: pag.pertence_a,
-        observacao: null as string | null,
-        created_by: null as string | null,
-      }));
-      createPagamentosMut.mutate(persistedPagamentos);
+      const persistedPagamentos = allPagamentos
+        .filter((pag) => pag.forma_pagamento_id !== FATURAR_ID)
+        .map((pag) => ({
+          solicitacao_id: solicitacaoId,
+          rota_id: Object.entries(pagamentosPorRota).find(([, pags]) => pags.some((p) => p.id === pag.id))?.[0] ?? "",
+          forma_pagamento_id: pag.forma_pagamento_id,
+          valor: pag.valor,
+          pertence_a: pag.pertence_a,
+          observacao: null as string | null,
+          created_by: null as string | null,
+        }));
+      if (persistedPagamentos.length > 0) {
+        createPagamentosMut.mutate(persistedPagamentos);
+      }
     }
 
     onConcluir();

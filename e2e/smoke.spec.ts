@@ -24,7 +24,7 @@ test.describe("Landing & Public Pages", () => {
   test("login page renders complete form", async ({ page }) => {
     await page.goto("/login");
     // Brand
-    await expect(page.getByText("Leva e Traz")).toBeVisible();
+    await expect(page.getByText("Leva e Traz", { exact: true })).toBeVisible();
     // Form fields
     await expect(page.locator("#email")).toBeVisible();
     await expect(page.locator("#password")).toBeVisible();

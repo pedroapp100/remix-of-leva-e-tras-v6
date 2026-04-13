@@ -129,7 +129,7 @@ Edge function aceita GET mas CORS rejeita.
 **Arquivo:** `prisma/migrations/5_webhook_dispatch/migration.sql` (linha 29)
 
 ```sql
-l_key TEXT := 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdWJhYmFzZSIsInJlZiI6InFidW1mbmtycXFzdGhtc2dyaGZpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTY3MzQ5MiwiZXhwIjoyMDkxMjQ5NDkyfQ.mV9so76SdTxTeqSsBu7jYmsKvMuvBpis8m7AuUUj8D0';
+l_key TEXT := '[REDACTED_SERVICE_ROLE_KEY_ROTATE_IMMEDIATELY]';
 -- ☝️ SERVICE ROLE KEY COMPLETA VISÍVEL NO REPOSITÓRIO
 ```
 
@@ -318,7 +318,7 @@ await supabase
 ```sql
 -- 1. Criar secret no Vault
 SELECT vault.create_secret(
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFidW1mbmtycXFzdGhtc2dyaGZpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTY3MzQ5MiwiZXhwIjoyMDkxMjQ5NDkyfQ.mV9so76SdTxTeqSsBu7jYmsKvMuvBpis8m7AuUUj8D0',
+  '[REDACTED_SERVICE_ROLE_KEY_ROTATE_IMMEDIATELY]',
   'service_role_key',
   'Service role key for dispatch-webhook edge function'
 );

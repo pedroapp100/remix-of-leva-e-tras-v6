@@ -2,8 +2,7 @@ import { useState, useMemo } from "react";
 import { DataTable } from "@/components/shared";
 import type { Column } from "@/components/shared/DataTable";
 import type { TipoOperacaoConfig, DiaSemanaConfig } from "@/types/database";
-import { useTiposOperacao, useUpsertTipoOperacao } from "@/hooks/useSettings";
-import { supabase } from "@/lib/supabase";
+import { useTiposOperacao, useUpsertTipoOperacao, useDeleteTipoOperacao } from "@/hooks/useSettings";
 import { Button } from "@/components/ui/button";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -26,8 +25,9 @@ const DIAS_LABELS: Record<DiaSemanaConfig, string> = {
 const ALL_DIAS: DiaSemanaConfig[] = ["seg", "ter", "qua", "qui", "sex", "sab", "dom"];
 
 export function TiposOperacaoTab() {
-  const { data: tipos = [], refetch } = useTiposOperacao();
+  const { data: tipos = [] } = useTiposOperacao();
   const upsertTipo = useUpsertTipoOperacao();
+  const removeTipo = useDeleteTipoOperacao();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<TipoOperacaoConfig | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<TipoOperacaoConfig | null>(null);
@@ -88,8 +88,7 @@ export function TiposOperacaoTab() {
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    await supabase.from("tipos_operacao_config").delete().eq("id", deleteTarget.id);
-    refetch();
+    await removeTipo.mutateAsync(deleteTarget.id);
     toast.success("Tipo de operação removido!");
     setDeleteTarget(null);
   };

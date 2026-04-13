@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { useTaxasExtras, useUpsertTaxaExtra } from "@/hooks/useSettings";
-import { supabase } from "@/lib/supabase";
+import { useTaxasExtras, useUpsertTaxaExtra, useDeleteTaxaExtra } from "@/hooks/useSettings";
 import { useLogStore } from "@/contexts/LogStore";
 import type { TaxaExtraConfig } from "@/types/database";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -22,8 +21,9 @@ const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", curren
 
 export function TaxasExtrasTab() {
   const { addLog } = useLogStore();
-  const { data: taxas = [], refetch } = useTaxasExtras();
+  const { data: taxas = [] } = useTaxasExtras();
   const upsertTaxa = useUpsertTaxaExtra();
+  const removeTaxa = useDeleteTaxaExtra();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<TaxaExtraConfig | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<TaxaExtraConfig | null>(null);
@@ -73,10 +73,9 @@ export function TaxasExtrasTab() {
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    await supabase.from("taxas_extras_config").delete().eq("id", deleteTarget.id);
+    await removeTaxa.mutateAsync(deleteTarget.id);
     addLog({ categoria: "configuracao", acao: "taxa_extra_removida", entidade_id: deleteTarget.id, descricao: `Taxa extra "${deleteTarget.nome}" removida`, detalhes: null });
     toast.success("Taxa extra removida!");
-    refetch();
     setDeleteTarget(null);
   };
 

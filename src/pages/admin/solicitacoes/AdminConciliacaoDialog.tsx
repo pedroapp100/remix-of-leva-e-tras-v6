@@ -1,10 +1,12 @@
 import { useState, useMemo } from "react";
 import type { Rota, PagamentoSolicitacao, Solicitacao } from "@/types/database";
+import { useAuth } from "@/contexts/AuthContext";
 import { useFormasPagamento, useBairros } from "@/hooks/useSettings";
 import { useRotasBySolicitacao, usePagamentosBySolicitacao, useCreatePagamentos } from "@/hooks/useSolicitacoes";
 import { useClientes } from "@/hooks/useClientes";
 import { useEntregadores } from "@/hooks/useEntregadores";
 import { useConcluirComCaixa } from "@/hooks/useConcluirComCaixa";
+import { useFaturas, useConcluirFaturaEntrega } from "@/hooks/useFaturas";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -43,12 +45,15 @@ export function AdminConciliacaoDialog({
   solicitacao,
   onConfirm,
 }: AdminConciliacaoDialogProps) {
+  const { user } = useAuth();
   const { data: rotas = [] } = useRotasBySolicitacao(solicitacao.id);
   const { data: driverPagamentos = [] } = usePagamentosBySolicitacao(solicitacao.id);
   const createPagamentosMut = useCreatePagamentos();
   const { data: clientes = [] } = useClientes();
   const { data: entregadores = [] } = useEntregadores();
   const concluirComCaixa = useConcluirComCaixa();
+  const { data: faturas = [] } = useFaturas();
+  const concluirFaturaMut = useConcluirFaturaEntrega();
   const { data: formasPagamento = [] } = useFormasPagamento();
   const { data: bairros = [] } = useBairros();
 
@@ -181,8 +186,10 @@ export function AdminConciliacaoDialog({
       return;
     }
 
-    // Save admin-validated payments
-    const persistedPagamentos = allPagamentos.map((pag) => ({
+    // Save admin-validated payments (exclude FATURAR_ID sentinel — handled by the fatura system)
+    const persistedPagamentos = allPagamentos
+      .filter((pag) => pag.forma_pagamento_id !== FATURAR_ID)
+      .map((pag) => ({
       solicitacao_id: solicitacao.id,
       rota_id:
         Object.entries(pagamentosPorRota).find(([, pags]) =>
@@ -192,15 +199,47 @@ export function AdminConciliacaoDialog({
       valor: pag.valor,
       pertence_a: pag.pertence_a,
       observacao: "Conferido pelo ADM" as string | null,
-      created_by: "admin" as string | null,
+      created_by: user?.id ?? null,
     }));
-    createPagamentosMut.mutate(persistedPagamentos);
+    if (persistedPagamentos.length > 0) {
+      createPagamentosMut.mutate(persistedPagamentos);
+    }
 
-    // Generate invoice if not already concluded
+    // Generate invoice / conclude delivery
     if (solicitacao.status === "em_andamento") {
+      // em_andamento: conclude delivery + create fatura atomically via useConcluirComCaixa
       const result = await concluirComCaixa(solicitacao.id);
       if (!result.success) {
         toast.error(result.error ?? "Erro ao concluir solicitação.");
+        return;
+      }
+    } else if (solicitacao.status === "concluida" && cliente?.modalidade === "faturado") {
+      // Already concluded + faturado client: call fatura RPC directly (avoid double-caixa)
+      const totalTaxas = rotas.reduce((s, r) => s + (r.taxa_resolvida ?? 0), 0);
+      const totalRecebido = rotas
+        .filter((r) => r.receber_do_cliente)
+        .reduce((s, r) => s + (r.valor_a_receber ?? 0), 0);
+      const activeFatura = faturas.find(
+        (f) => f.cliente_id === solicitacao.cliente_id && f.status_geral === "Aberta"
+      );
+      try {
+        const result = await concluirFaturaMut.mutateAsync({
+          p_fatura_id: activeFatura?.id ?? null,
+          p_sol_id: solicitacao.id,
+          p_cliente_id: solicitacao.cliente_id,
+          p_cliente_nome: cliente.nome,
+          p_tipo_faturamento: (cliente.frequencia_faturamento as string) ?? "manual",
+          p_total_taxas: totalTaxas,
+          p_total_recebido: totalRecebido,
+          p_sol_codigo: solicitacao.codigo,
+          p_num_rotas: rotas.length,
+        });
+        if (!result.success) {
+          toast.error(result.error ?? "Erro ao gerar/atualizar fatura.");
+          return;
+        }
+      } catch (e) {
+        toast.error("Erro ao gerar fatura: " + (e instanceof Error ? e.message : String(e)));
         return;
       }
     }

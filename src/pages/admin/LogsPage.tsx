@@ -35,7 +35,7 @@ const CATEGORIA_CONFIG: Record<LogCategoria, { label: string; icon: React.Elemen
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
 export default function LogsPage() {
-  const { data: logs = [] } = useQuery<LogEntry[]>({
+  const { data: logs = [], isError, error } = useQuery<LogEntry[]>({
     queryKey: ["logs_auditoria"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -135,6 +135,12 @@ export default function LogsPage() {
       subtitle="Rastreabilidade completa de ações no sistema"
       actions={<ExportDropdown onExportPDF={() => exportLogsPDF(filtered)} onExportExcel={() => exportLogsCSV(filtered)} />}
     >
+      {isError && (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          Falha ao carregar logs de auditoria: {error instanceof Error ? error.message : "erro desconhecido"}
+        </div>
+      )}
+
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center flex-wrap">
         <div className="relative flex-1 min-w-0 w-full sm:min-w-[200px]">

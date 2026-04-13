@@ -45,29 +45,74 @@ function rowToNotification(row: {
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [effectiveUserId, setEffectiveUserId] = useState<string | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
-  // Carrega notificações do banco quando o usuário estiver disponível
+  const isUuid = (value: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+
   useEffect(() => {
     if (!user) {
+      setEffectiveUserId(null);
+      return;
+    }
+
+    if (isUuid(user.id)) {
+      setEffectiveUserId(user.id);
+      return;
+    }
+
+    console.warn("[NotificationContext] user.id inválido para UUID; tentando resolver via auth.getUser():", user.id);
+    void supabase.auth.getUser().then(({ data, error }) => {
+      if (error) {
+        console.error("[NotificationContext] Falha ao resolver user id para notifications:", error.message);
+        setEffectiveUserId(null);
+        return;
+      }
+      const resolved = data?.user?.id;
+      setEffectiveUserId(resolved && isUuid(resolved) ? resolved : null);
+    });
+  }, [user]);
+
+  const loadNotifications = useCallback(async () => {
+    if (!effectiveUserId) {
       setNotifications([]);
       return;
     }
 
-    supabase
+    const { data, error } = await supabase
       .from("notifications")
       .select("*")
-      .eq("user_id", user.id)
+      .eq("user_id", effectiveUserId)
       .order("created_at", { ascending: false })
-      .limit(50)
-      .then(({ data }) => {
-        if (data) setNotifications(data.map(rowToNotification));
-      });
-  }, [user]);
+      .limit(50);
+
+    if (error) {
+      console.error("[NotificationContext] Falha ao carregar notificações:", error.message);
+      return;
+    }
+
+    setNotifications((data ?? []).map(rowToNotification));
+  }, [effectiveUserId]);
+
+  // Carrega notificações do banco quando o usuário estiver disponível
+  useEffect(() => {
+    void loadNotifications();
+  }, [loadNotifications]);
+
+  // Fallback para ambientes sem realtime estável: sincroniza periodicamente.
+  useEffect(() => {
+    if (!effectiveUserId) return;
+    const intervalId = window.setInterval(() => {
+      void loadNotifications();
+    }, 15_000);
+
+    return () => window.clearInterval(intervalId);
+  }, [effectiveUserId, loadNotifications]);
 
   // Subscrição realtime: recebe novas notificações e atualizações (mark as read)
   useEffect(() => {
-    if (!user) return;
+    if (!effectiveUserId) return;
 
     // Remove canal anterior se existir
     if (channelRef.current) {
@@ -75,18 +120,18 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }
 
     const channel = supabase
-      .channel(`notifications:${user.id}`)
+      .channel(`notifications:${effectiveUserId}`)
       .on(
         "postgres_changes",
         {
           event: "INSERT",
           schema: "public",
           table: "notifications",
-          filter: `user_id=eq.${user.id}`,
+          filter: `user_id=eq.${effectiveUserId}`,
         },
         (payload) => {
           const newNotif = rowToNotification(payload.new as Parameters<typeof rowToNotification>[0]);
-          setNotifications((prev) => [newNotif, ...prev]);
+          setNotifications((prev) => prev.some((n) => n.id === newNotif.id) ? prev : [newNotif, ...prev]);
         }
       )
       .on(
@@ -95,14 +140,18 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           event: "UPDATE",
           schema: "public",
           table: "notifications",
-          filter: `user_id=eq.${user.id}`,
+          filter: `user_id=eq.${effectiveUserId}`,
         },
         (payload) => {
           const updated = rowToNotification(payload.new as Parameters<typeof rowToNotification>[0]);
           setNotifications((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status !== "SUBSCRIBED") {
+          console.warn("[NotificationContext] Canal realtime não está SUBSCRIBED:", status);
+        }
+      });
 
     channelRef.current = channel;
 
@@ -110,22 +159,31 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       supabase.removeChannel(channel);
       channelRef.current = null;
     };
-  }, [user]);
+  }, [effectiveUserId]);
 
   const addNotification = useCallback(
     async (notification: Omit<Notification, "id" | "read" | "createdAt">) => {
-      if (!user) return;
-      await supabase.from("notifications").insert({
-        user_id: user.id,
+      if (!effectiveUserId) return;
+      const { data, error } = await supabase.from("notifications").insert({
+        user_id: effectiveUserId,
         title: notification.title,
         message: notification.message,
         type: notification.type,
         read: false,
         link: notification.link ?? null,
-      });
-      // O realtime INSERT listener atualiza o estado local automaticamente
+      }).select("*").single();
+
+      if (error) {
+        console.error("[NotificationContext] Falha ao inserir notificação:", error.message);
+        return;
+      }
+
+      if (data) {
+        const created = rowToNotification(data);
+        setNotifications((prev) => prev.some((n) => n.id === created.id) ? prev : [created, ...prev]);
+      }
     },
-    [user]
+    [effectiveUserId]
   );
 
   const markAsRead = useCallback(
@@ -137,14 +195,14 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   );
 
   const markAllAsRead = useCallback(async () => {
-    if (!user) return;
+    if (!effectiveUserId) return;
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     await supabase
       .from("notifications")
       .update({ read: true })
-      .eq("user_id", user.id)
+      .eq("user_id", effectiveUserId)
       .eq("read", false);
-  }, [user]);
+  }, [effectiveUserId]);
 
   // Ouve eventos customizados de saldo baixo e nova fatura
   useEffect(() => {

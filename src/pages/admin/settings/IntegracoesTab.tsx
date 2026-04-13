@@ -1,7 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase";
-import type { Json } from "@/types/supabase";
+import { useIntegracoesData } from "@/hooks/useSettings";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -91,75 +89,6 @@ const INTEGRATION_PRESETS: { label: string; value: string; data: NewIntegracaoFo
   },
 ];
 
-/* ── React Query hook ── */
-function useIntegracoes() {
-  const qc = useQueryClient();
-
-  const { data: integracoes = [], isLoading, error: queryError } = useQuery<IntegracaoEntry[]>({
-    queryKey: ["integracoes"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("integracoes")
-        .select("*")
-        .order("nome");
-      if (error) throw error;
-      return (data ?? []).map((r) => ({
-        ...r,
-        descricao: r.descricao ?? "",
-        icone: r.icone ?? "zap",
-        categoria: r.categoria as IntegracaoCategoria,
-        status: r.status as IntegracaoStatus,
-        api_key: r.api_key ?? undefined,
-        config: (r.config as Record<string, string>) ?? {},
-      }));
-    },
-  });
-
-  const createMut = useMutation({
-    mutationFn: async (entry: { nome: string; descricao: string; categoria: string; icone: string; config: Record<string, string> }) => {
-      const { error } = await supabase.from("integracoes").insert({
-        nome: entry.nome,
-        descricao: entry.descricao,
-        categoria: entry.categoria,
-        icone: entry.icone,
-        config: entry.config as unknown as Json,
-        status: "desconectado",
-        ativo: false,
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["integracoes"] }),
-  });
-
-  const updateMut = useMutation({
-    mutationFn: async ({ id, config, ...rest }: { id: string; api_key?: string; ativo?: boolean; status?: string; config?: Record<string, string> }) => {
-      const update = config !== undefined
-        ? { ...rest, config: config as unknown as Json }
-        : rest;
-      const { error } = await supabase.from("integracoes").update(update).eq("id", id);
-      if (error) throw error;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["integracoes"] }),
-  });
-
-  const deleteMut = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from("integracoes").delete().eq("id", id);
-      if (error) throw error;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["integracoes"] }),
-  });
-
-  return {
-    integracoes,
-    isLoading,
-    queryError,
-    createIntegracao: createMut.mutateAsync,
-    updateIntegracao: updateMut.mutateAsync,
-    deleteIntegracao: deleteMut.mutateAsync,
-  };
-}
-
 /* ── Icon Map ── */
 const ICON_MAP: Record<string, React.ElementType> = {
   whatsapp: MessageSquare,
@@ -186,7 +115,7 @@ const STATUS_CONFIG: Record<IntegracaoStatus, { label: string; variant: "success
 
 /* ── Component ── */
 export function IntegracoesTab() {
-  const { integracoes, isLoading, queryError, createIntegracao, updateIntegracao, deleteIntegracao } = useIntegracoes();
+  const { integracoes, isLoading, queryError, createIntegracao, updateIntegracao, deleteIntegracao } = useIntegracoesData();
   const [configOpen, setConfigOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);

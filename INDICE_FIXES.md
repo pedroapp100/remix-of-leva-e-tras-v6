@@ -6,18 +6,20 @@
 
 ## 📌 **Todos os Fixes por Categoria**
 
-### 🔐 **Autenticação (5 fixes)**
+### 🔐 **Autenticação (7 fixes)**
 | # | Data | Problema | Arquivo | Status |
 |---|------|----------|---------|--------|
 | 1 | 11/04/26 | Race condition no login | [CORREÇÕES_E_FIXES.md#fix-1](CORREÇÕES_E_FIXES.md#-fix-1-race-condition-na-autenticação-11-abril-2026) | ✅ |
 | 4 | 11/04/26 | useEffect órfão estrutura | [CORREÇÕES_E_FIXES.md#fix-4](CORREÇÕES_E_FIXES.md#-fix-4-estrutura-órfã-do-useffect-em-authcontext-11-abril-2026) | ✅ |
 | 6 | 11/04/26 | **Fixes revertiam após todo commit** | [CORREÇÕES_E_FIXES.md#fix-6](CORREÇÕES_E_FIXES.md#-fix-6-regressão-infinita--fixes-revertiam-após-todo-commit-11-abril-2026) | ✅ |
 | 8 | 11/04/26 | getSession() travando com sessão expirada | [CORREÇÕES_E_FIXES.md#fix-8](CORREÇÕES_E_FIXES.md) | ✅ (workaround) |
-| **9** | 11/04/26 | **⛔ CAUSA RAIZ: fetch sem timeout em /auth/v1/** | [CORREÇÕES_E_FIXES.md#fix-9](CORREÇÕES_E_FIXES.md) | ✅ **DEFINITIVO** |
+| **9** | 11/04/26 | **⛔ CAUSA RAIZ: fetch sem timeout em /auth/v1/** | [CORREÇÕES_E_FIXES.md#fix-9](CORREÇÕES_E_FIXES.md) | ✅ |
+| 11 | 12/04/26 | Hang do SDK no `getSession()` | [CORREÇÕES_E_FIXES.md#fix-11](CORREÇÕES_E_FIXES.md#-fix-11-getsession-hang--regressão-do-fix-9-12-abril-2026) | ✅ |
+| **12** | **12/04/26** | **Startup localhost blindado (anti-reincidência)** | [CORREÇÕES_E_FIXES.md#fix-12](CORREÇÕES_E_FIXES.md#-fix-12-auth-startup-localhost-blindado-contra-reincidência-12-abril-2026) | ✅ **VALIDADO** |
 
 🔧 **Arquivos afetados:**
 - `src/lib/supabase.ts` (fetchWithTimeout — timeout 10s agora aplicado a TODOS os endpoints)
-- `src/contexts/AuthContext.tsx` (getSession limpo, sem Promise.race, safety timer 12s)
+- `src/contexts/AuthContext.tsx` (defesa em profundidade para getSession hang + hardening local)
 - `src/hooks/` (8 hooks Supabase adicionados ao git)
 - `src/services/` (8 services adicionados ao git)
 
@@ -65,6 +67,11 @@
 ### Problema: "Timeout de autenticação" / "getSession nunca completou"
 → Ver [Fix #9 - Causa Raiz Definitiva](CORREÇÕES_E_FIXES.md) — timeout no fetch layer
 → Fix anterior: [Fix #1 - Race Condition](CORREÇÕES_E_FIXES.md#-fix-1-race-condition-na-autenticação-11-abril-2026)
+→ Reforço de estabilidade em localhost: [Fix #12](CORREÇÕES_E_FIXES.md#-fix-12-auth-startup-localhost-blindado-contra-reincidência-12-abril-2026)
+
+### Problema: "Depois de reiniciar localhost o bug volta"
+→ Ver [Fix #12 - Startup localhost blindado](CORREÇÕES_E_FIXES.md#-fix-12-auth-startup-localhost-blindado-contra-reincidência-12-abril-2026)
+→ Documento operacional: [FIX_AUTH_STARTUP_LOCALHOST_12-04-2026.md](Documentos/FIX_AUTH_STARTUP_LOCALHOST_12-04-2026.md)
 
 ### Problema: "Mensagens parecem ser enviadas mas não chegam"
 → Ver [Fix #2 - Edge Function](CORREÇÕES_E_FIXES.md#-fix-2-edge-function-não-enviava-mensagens-whatsapp-11-abril-2026)
@@ -88,7 +95,7 @@
 | Arquivo | Fixes | Mudanças |
 |---------|-------|----------|
 | `src/lib/supabase.ts` | #1, #6, **#9** | **Fix #9**: timeout 10s para ALL endpoints incluindo auth |
-| `src/contexts/AuthContext.tsx` | #1, #4, #6, #8, **#9** | **Fix #9**: removido Promise.race, safety timer 12s |
+| `src/contexts/AuthContext.tsx` | #1, #4, #6, #8, #11, **#12** | **Fix #12**: hardening de bootstrap em localhost + sanitização robusta de sessão |
 | `src/hooks/` (8 arquivos) | #6 | Hooks Supabase adicionados ao git |
 | `src/services/` (8 arquivos) | #6 | Services adicionados ao git |
 | `src/pages/admin/settings/NotificacoesTab.tsx` | #2, #5 | handleTestSend implementado; logs [TestSend] adicionados |
@@ -131,15 +138,15 @@
 
 ## 📊 **Estatísticas**
 
-- **Total de Fixes**: 9
-- **Resolvidos**: 9 ✅
+- **Total de Fixes**: 12
+- **Resolvidos**: 12 ✅
 - **Pendentes**: 0
 - **Bloqueados**: 0
-- **Severidade Crítica**: 3 (Fix #1 auth, Fix #6 versionamento, **Fix #9 causa raiz**)
-- **Severidade Alta**: 4 (incl. Fix #7 Z-API, Fix #8 workaround)
-- **Severidade Média**: 2
+- **Severidade Crítica**: 4 (Fix #1 auth, Fix #6 versionamento, Fix #11 lock SDK, Fix #12 anti-reincidência)
+- **Severidade Alta**: 5 (incl. Fix #7 Z-API, Fix #8 workaround)
+- **Severidade Média**: 3
 - **Taxa de Resolução**: 100%
-- **Data Range**: 11/04/26 — 11/04/26
+- **Data Range**: 11/04/26 — 12/04/26
 
 ---
 
@@ -155,6 +162,6 @@
 
 ---
 
-**Última atualização**: 11 Abril 2026
+**Última atualização**: 12 Abril 2026
 **Responsável**: Assistente IA + Equipe
-**Status**: ✅ 9 Fixes documentados | ⛔ Fix #9 elimina causa raiz do auth hang — não deve voltar
+**Status**: ✅ 12 Fixes documentados | 🔐 Fix #12 blinda startup em localhost e valida com testes automáticos

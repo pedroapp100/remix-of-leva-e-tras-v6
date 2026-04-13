@@ -36,6 +36,7 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const showDevHint = import.meta.env.DEV;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -207,16 +208,18 @@ export default function LoginPage() {
             )}
           </form>
 
-          {/* Test credentials */}
-          <div className="rounded-xl border border-border/50 bg-muted/20 dark:bg-[hsl(230_30%_12%)] dark:border-[hsl(230_25%_20%)] p-4 space-y-2">
-            <p className="text-sm font-semibold text-muted-foreground flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-              Credenciais de acesso
-            </p>
-            <div className="text-sm text-muted-foreground space-y-1 font-mono">
-              <p>pedroaps100@gmail.com / Pedro123@</p>
+          {/* Development hint (sem credenciais hardcoded) */}
+          {showDevHint && (
+            <div className="rounded-xl border border-border/50 bg-muted/20 dark:bg-[hsl(230_30%_12%)] dark:border-[hsl(230_25%_20%)] p-4 space-y-2">
+              <p className="text-sm font-semibold text-muted-foreground flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+                Ambiente de desenvolvimento
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Use credenciais de teste configuradas localmente (não exibidas na interface).
+              </p>
             </div>
-          </div>
+          )}
         </motion.div>
       </div>
 

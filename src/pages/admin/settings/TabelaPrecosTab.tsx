@@ -87,12 +87,27 @@ export function TabelaPrecosTab({ initialClienteId }: TabelaPrecosTabProps) {
   const upsertPreco = useUpsertTabelaPreco();
   const removePreco = useDeleteTabelaPreco();
 
+  const normalizeBairroValue = (value: string) =>
+    value && value !== "all" && value !== "none" ? value : null;
+
+  const normalizeRegiaoValue = (value: string) =>
+    value && value !== "none" && value !== "all" ? value : null;
+
   const handleSave = () => {
     if (taxaBase <= 0) { toast.error("Taxa base deve ser maior que zero."); return; }
+
+    const normalizedBairroId = normalizeBairroValue(bairroId);
+    const normalizedRegiaoId = normalizeRegiaoValue(regiaoId);
+
+    if (normalizedBairroId && normalizedRegiaoId) {
+      toast.error("Selecione apenas Bairro ou Região. Não é permitido usar os dois na mesma regra.");
+      return;
+    }
+
     const payload = {
       cliente_id: selectedCliente,
-      bairro_destino_id: bairroId || null,
-      regiao_id: regiaoId || null,
+      bairro_destino_id: normalizedBairroId,
+      regiao_id: normalizedRegiaoId,
       tipo_operacao: tipoOp as TabelaPrecoCliente["tipo_operacao"],
       taxa_base: taxaBase, taxa_retorno: taxaRetorno, taxa_espera: taxaEspera,
       taxa_urgencia: taxaUrgencia, ativo, observacao: observacao || null,
@@ -102,8 +117,16 @@ export function TabelaPrecosTab({ initialClienteId }: TabelaPrecosTabProps) {
       onSuccess: () => {
         const action = editing ? "preco_editado" : "preco_criado";
         const desc = editing ? `Regra de preço atualizada — taxa base ${fmt(taxaBase)}` : `Regra de preço criada — taxa base ${fmt(taxaBase)}`;
-        addLog({ categoria: "configuracao", acao: action, entidade_id: editing?.id ?? "", descricao: desc, detalhes: { bairro: getBairroName(bairroId || null), taxa_base: taxaBase } });
+        addLog({ categoria: "configuracao", acao: action, entidade_id: editing?.id ?? "", descricao: desc, detalhes: { bairro: getBairroName(normalizedBairroId), taxa_base: taxaBase } });
         toast.success(editing ? "Regra de preço atualizada!" : "Regra de preço criada!");
+      },
+      onError: (error) => {
+        const message = error instanceof Error ? error.message : "Erro ao salvar regra de preço.";
+        if (message.includes("chk_bairro_ou_regiao")) {
+          toast.error("Regra inválida: escolha Bairro OU Região (não ambos).");
+          return;
+        }
+        toast.error(message);
       },
     });
     setDialogOpen(false);
@@ -235,7 +258,12 @@ export function TabelaPrecosTab({ initialClienteId }: TabelaPrecosTabProps) {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Bairro Destino</Label>
-                <Select value={bairroId} onValueChange={setBairroId}>
+                <Select value={bairroId} onValueChange={(value) => {
+                  setBairroId(value);
+                  if (value && value !== "all" && value !== "none") {
+                    setRegiaoId("none");
+                  }
+                }}>
                   <SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos</SelectItem>
@@ -245,7 +273,12 @@ export function TabelaPrecosTab({ initialClienteId }: TabelaPrecosTabProps) {
               </div>
               <div className="space-y-2">
                 <Label>Região</Label>
-                <Select value={regiaoId} onValueChange={setRegiaoId}>
+                <Select value={regiaoId} onValueChange={(value) => {
+                  setRegiaoId(value);
+                  if (value && value !== "none" && value !== "all") {
+                    setBairroId("all");
+                  }
+                }}>
                   <SelectTrigger><SelectValue placeholder="Nenhuma" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Nenhuma</SelectItem>

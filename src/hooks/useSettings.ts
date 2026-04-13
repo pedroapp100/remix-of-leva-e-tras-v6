@@ -6,11 +6,18 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   fetchRegioes, fetchBairros, fetchBairrosByRegiao, upsertBairro, deleteBairro,
-  fetchFormasPagamento, updateFormaPagamento,
+  fetchFormasPagamento, updateFormaPagamento, createFormaPagamento,
   fetchCargos, upsertCargo, deleteCargo,
-  fetchTiposOperacao, upsertTipoOperacao,
-  fetchTaxasExtras, upsertTaxaExtra,
+  fetchTiposOperacao, upsertTipoOperacao, deleteTipoOperacao,
+  fetchTaxasExtras, upsertTaxaExtra, deleteTaxaExtra,
   fetchFeriados, upsertFeriado, deleteFeriado,
+  upsertRegiao, deleteRegiao,
+  fetchIntegracoes, createIntegracao, updateIntegracao, removeIntegracao,
+  fetchNotificationTemplateRows, updateNotificationTemplate, createNotificationTemplate, deleteNotificationTemplate,
+  fetchWebhooks, createWebhook, updateWebhook, removeWebhook,
+  type IntegracaoEntry,
+  type NotificationTemplateRow,
+  type WebhookEntry,
 } from "@/services/settings";
 import type { Regiao, Bairro, FormaPagamento, Cargo, TipoOperacaoConfig, TaxaExtraConfig, Feriado } from "@/types/database";
 
@@ -23,6 +30,25 @@ export function useRegioes() {
     queryKey: ["regioes"],
     queryFn: fetchRegioes,
     staleTime: STALE_10MIN,
+  });
+}
+
+export function useUpsertRegiao() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (regiao: Omit<Regiao, "id"> & { id?: string }) => upsertRegiao(regiao),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["regioes"] }),
+  });
+}
+
+export function useDeleteRegiao() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteRegiao(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["regioes"] });
+      qc.invalidateQueries({ queryKey: ["bairros"] });
+    },
   });
 }
 
@@ -80,6 +106,15 @@ export function useUpdateFormaPagamento() {
   });
 }
 
+export function useCreateFormaPagamento() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: Pick<FormaPagamento, "name" | "description" | "enabled" | "order">) =>
+      createFormaPagamento(payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["formas_pagamento"] }),
+  });
+}
+
 // ── Cargos ────────────────────────────────────────────────────────────────────
 
 export function useCargos() {
@@ -124,6 +159,14 @@ export function useUpsertTipoOperacao() {
   });
 }
 
+export function useDeleteTipoOperacao() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteTipoOperacao(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tipos_operacao"] }),
+  });
+}
+
 // ── Taxas Extras ──────────────────────────────────────────────────────────────
 
 export function useTaxasExtras() {
@@ -138,6 +181,14 @@ export function useUpsertTaxaExtra() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (taxa: Partial<TaxaExtraConfig> & { id?: string }) => upsertTaxaExtra(taxa),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["taxas_extras"] }),
+  });
+}
+
+export function useDeleteTaxaExtra() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteTaxaExtra(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["taxas_extras"] }),
   });
 }
@@ -166,4 +217,120 @@ export function useDeleteFeriado() {
     mutationFn: (id: string) => deleteFeriado(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["feriados"] }),
   });
+}
+
+// ── Integrações / Notificações / Webhooks ───────────────────────────────────
+
+export function useIntegracoesData() {
+  const qc = useQueryClient();
+
+  const { data: integracoes = [], isLoading, error: queryError } = useQuery<IntegracaoEntry[]>({
+    queryKey: ["integracoes"],
+    queryFn: fetchIntegracoes,
+  });
+
+  const createMut = useMutation({
+    mutationFn: (entry: { nome: string; descricao: string; categoria: string; icone: string; config: Record<string, string> }) =>
+      createIntegracao(entry),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["integracoes"] }),
+  });
+
+  const updateMut = useMutation({
+    mutationFn: ({ id, ...rest }: { id: string; api_key?: string; ativo?: boolean; status?: string; config?: Record<string, string> }) =>
+      updateIntegracao({ id, ...rest }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["integracoes"] }),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => removeIntegracao(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["integracoes"] }),
+  });
+
+  return {
+    integracoes,
+    isLoading,
+    queryError,
+    createIntegracao: createMut.mutateAsync,
+    updateIntegracao: updateMut.mutateAsync,
+    deleteIntegracao: deleteMut.mutateAsync,
+  };
+}
+
+export function useNotificationTemplateRows() {
+  const qc = useQueryClient();
+
+  const { data: rows = [], isError } = useQuery<NotificationTemplateRow[]>({
+    queryKey: ["notification_templates"],
+    queryFn: fetchNotificationTemplateRows,
+  });
+
+  async function updateTemplate(
+    id: string,
+    data: Partial<{
+      evento: string;
+      evento_label: string;
+      categoria: string;
+      titulo: string;
+      mensagem: string;
+      canal: string;
+      variaveis: string[];
+      ativo: boolean;
+    }>
+  ) {
+    await updateNotificationTemplate(id, data);
+    await qc.invalidateQueries({ queryKey: ["notification_templates"] });
+  }
+
+  async function addTemplate(data: {
+    evento: string;
+    evento_label: string;
+    categoria: string;
+    titulo: string;
+    mensagem: string;
+    canal: string;
+    ativo: boolean;
+    variaveis: string[];
+  }) {
+    await createNotificationTemplate(data);
+    await qc.invalidateQueries({ queryKey: ["notification_templates"] });
+  }
+
+  async function removeTemplate(id: string) {
+    await deleteNotificationTemplate(id);
+    await qc.invalidateQueries({ queryKey: ["notification_templates"] });
+  }
+
+  return { rows, isError, updateTemplate, addTemplate, removeTemplate };
+}
+
+export function useWebhooksData() {
+  const qc = useQueryClient();
+
+  const { data: webhooks = [] } = useQuery<WebhookEntry[]>({
+    queryKey: ["webhooks"],
+    queryFn: fetchWebhooks,
+  });
+
+  const addMut = useMutation({
+    mutationFn: (w: Omit<WebhookEntry, "id" | "created_at" | "updated_at" | "ultimo_erro">) => createWebhook(w),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["webhooks"] }),
+  });
+
+  const updateMut = useMutation({
+    mutationFn: ({ id, ...data }: { id: string } & Partial<Omit<WebhookEntry, "id" | "created_at" | "updated_at">>) =>
+      updateWebhook(id, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["webhooks"] }),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => removeWebhook(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["webhooks"] }),
+  });
+
+  return {
+    webhooks,
+    addWebhook: addMut.mutateAsync,
+    updateWebhook: updateMut.mutateAsync,
+    deleteWebhook: deleteMut.mutateAsync,
+  };
 }

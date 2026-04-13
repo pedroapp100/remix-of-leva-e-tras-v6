@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase";
+import { useNotificationTemplateRows } from "@/hooks/useSettings";
 import { DataTable, SearchInput, StatusBadge } from "@/components/shared";
 import type { Column } from "@/components/shared/DataTable";
 import { Button } from "@/components/ui/button";
@@ -78,79 +77,6 @@ const VARIAVEIS_POR_CATEGORIA: Record<string, { var: string; desc: string }[]> =
   ],
 };
 
-/* ── React Query hook ── */
-function useNotificacoes() {
-  const qc = useQueryClient();
-  const [testRecords, setTestRecords] = useState<Record<string, TestSendRecord[]>>({});
-
-  const { data: dbRows = [], isError } = useQuery({
-    queryKey: ["notification_templates"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("notification_templates")
-        .select("*")
-        .order("evento");
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
-
-  const templates: NotificacaoTemplate[] = dbRows.map((r) => ({
-    id: r.id,
-    evento: r.evento ?? r.name ?? "",
-    evento_label: r.evento_label ?? r.evento ?? r.name ?? "",
-    categoria: r.categoria ?? r.type ?? "",
-    titulo: r.titulo ?? r.subject ?? "",
-    mensagem: r.mensagem ?? r.body ?? "",
-    canal: r.canal ?? "whatsapp",
-    variaveis: r.variaveis ?? r.variables ?? [],
-    status: (r.ativo ? "ativo" : "inativo") as NotificacaoStatus,
-    updated_at: r.updated_at,
-    historico_testes: testRecords[r.id] ?? [],
-  }));
-
-  async function updateTemplate(id: string, data: Partial<Omit<NotificacaoTemplate, "id">>) {
-    const { status, historico_testes, updated_at, ...rest } = data;
-    const update: Partial<{
-      evento: string; evento_label: string; categoria: string;
-      titulo: string; mensagem: string; canal: string;
-      variaveis: string[]; ativo: boolean;
-    }> = { ...rest };
-    if (status !== undefined) update.ativo = status === "ativo";
-    const { error } = await supabase
-      .from("notification_templates")
-      .update(update)
-      .eq("id", id);
-    if (error) throw error;
-    await qc.invalidateQueries({ queryKey: ["notification_templates"] });
-  }
-
-  async function addTemplate(data: Omit<NotificacaoTemplate, "id" | "updated_at" | "historico_testes">) {
-    const { status, ...rest } = data;
-    const { error } = await supabase.from("notification_templates").insert({
-      ...rest,
-      ativo: status === "ativo",
-    });
-    if (error) throw error;
-    await qc.invalidateQueries({ queryKey: ["notification_templates"] });
-  }
-
-  async function removeTemplate(id: string) {
-    const { error } = await supabase.from("notification_templates").delete().eq("id", id);
-    if (error) throw error;
-    await qc.invalidateQueries({ queryKey: ["notification_templates"] });
-  }
-
-  function addTestRecord(templateId: string, record: TestSendRecord) {
-    setTestRecords((prev) => ({
-      ...prev,
-      [templateId]: [record, ...(prev[templateId] ?? [])],
-    }));
-  }
-
-  return { templates, updateTemplate, addTemplate, removeTemplate, addTestRecord, isError };
-}
-
 /* ── Preview Component ── */
 function MensagemPreview({ mensagem }: { mensagem: string }) {
   // Sanitize: escape HTML entities first, then apply safe formatting
@@ -174,7 +100,29 @@ function MensagemPreview({ mensagem }: { mensagem: string }) {
 
 /* ── Main Component ── */
 export function NotificacoesTab() {
-  const { templates, updateTemplate, addTemplate, removeTemplate, addTestRecord, isError } = useNotificacoes();
+  const { rows, updateTemplate, addTemplate, removeTemplate, isError } = useNotificationTemplateRows();
+  const [testRecords, setTestRecords] = useState<Record<string, TestSendRecord[]>>({});
+
+  const templates: NotificacaoTemplate[] = rows.map((r) => ({
+    id: r.id,
+    evento: r.evento ?? "",
+    evento_label: r.evento_label ?? r.evento ?? "",
+    categoria: r.categoria ?? "",
+    titulo: r.titulo ?? "",
+    mensagem: r.mensagem ?? "",
+    canal: r.canal ?? "whatsapp",
+    variaveis: r.variaveis ?? [],
+    status: (r.ativo ? "ativo" : "inativo") as NotificacaoStatus,
+    updated_at: r.updated_at,
+    historico_testes: testRecords[r.id] ?? [],
+  }));
+
+  function addTestRecord(templateId: string, record: TestSendRecord) {
+    setTestRecords((prev) => ({
+      ...prev,
+      [templateId]: [record, ...(prev[templateId] ?? [])],
+    }));
+  }
 
   const [search, setSearch] = useState("");
   const [categoriaFilter, setCategoriaFilter] = useState<string>("todos");
@@ -265,7 +213,7 @@ export function NotificacoesTab() {
         titulo: newTitulo.trim(),
         mensagem: newMensagem.trim(),
         canal: "whatsapp",
-        status: "ativo",
+        ativo: true,
         variaveis: [],
       });
       toast.success("Novo evento de notificação criado com sucesso!");

@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase";
+import { useWebhooksData } from "@/hooks/useSettings";
 import { DataTable, SearchInput, ConfirmDialog, StatusBadge, PermissionGuard } from "@/components/shared";
 import type { Column } from "@/components/shared/DataTable";
 import { Button } from "@/components/ui/button";
@@ -58,54 +57,6 @@ const EVENTOS_DISPONIVEIS = [
   { value: "entregador.criado", label: "Entregador criado" },
 ];
 
-/* ── React Query hook ── */
-function useWebhooks() {
-  const qc = useQueryClient();
-
-  const { data: webhooks = [] } = useQuery<WebhookEntry[]>({
-    queryKey: ["webhooks"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("webhooks")
-        .select("*")
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return (data as WebhookEntry[]) ?? [];
-    },
-  });
-
-  const addMut = useMutation({
-    mutationFn: async (w: Omit<WebhookEntry, "id" | "created_at" | "updated_at" | "ultimo_erro">) => {
-      const { error } = await supabase.from("webhooks").insert({ ...w, ultimo_erro: null });
-      if (error) throw error;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["webhooks"] }),
-  });
-
-  const updateMut = useMutation({
-    mutationFn: async ({ id, ...data }: { id: string } & Partial<Omit<WebhookEntry, "id" | "created_at" | "updated_at">>) => {
-      const { error } = await supabase.from("webhooks").update(data).eq("id", id);
-      if (error) throw error;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["webhooks"] }),
-  });
-
-  const deleteMut = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from("webhooks").delete().eq("id", id);
-      if (error) throw error;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["webhooks"] }),
-  });
-
-  return {
-    webhooks,
-    addWebhook: addMut.mutateAsync,
-    updateWebhook: updateMut.mutateAsync,
-    deleteWebhook: deleteMut.mutateAsync,
-  };
-}
-
 /* ── Form ── */
 interface WebhookFormData {
   nome: string;
@@ -128,7 +79,7 @@ function generateSecret() {
 
 /* ── Component ── */
 export function WebhooksTab() {
-  const { webhooks, addWebhook, updateWebhook, deleteWebhook } = useWebhooks();
+  const { webhooks, addWebhook, updateWebhook, deleteWebhook } = useWebhooksData();
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("todos");

@@ -114,8 +114,11 @@ export default function EntregasPage() {
     let ativas = 0, concluidas = 0, canceladas = 0, totalTaxas = 0, totalRepasse = 0;
 
     for (const e of entregas) {
-      tiposSet.add(e.tipo_operacao);
-      if (e.entregador_id) entregadorSet.add(e.entregador_id);
+      const tipoOperacao = (e.tipo_operacao ?? "").trim();
+      if (tipoOperacao) tiposSet.add(tipoOperacao);
+
+      const entregadorId = (e.entregador_id ?? "").trim();
+      if (entregadorId) entregadorSet.add(entregadorId);
 
       const st = e.rota.status;
       if (st === "ativa") ativas++;

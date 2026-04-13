@@ -21,6 +21,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { SimuladorOperacoes } from "@/components/shared/SimuladorOperacoes";
 import { toast } from "sonner";
 import { useNotifications } from "@/contexts/NotificationContext";
+import { supabase } from "@/lib/supabase";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { lazy, Suspense } from "react";
 const LaunchSolicitacaoDialog = lazy(() => import("./solicitacoes/LaunchSolicitacaoDialog").then(m => ({ default: m.LaunchSolicitacaoDialog })));
@@ -127,6 +128,7 @@ export default function SolicitacoesPage() {
   const [justifyTarget, setJustifyTarget] = useState<{ sol: Solicitacao; action: "cancelar" | "rejeitar" } | null>(null);
   const [simuladorOpen, setSimuladorOpen] = useState(false);
   const [adminConciliacaoTarget, setAdminConciliacaoTarget] = useState<Solicitacao | null>(null);
+  const [adminConciliadasIds, setAdminConciliadasIds] = useState<Set<string>>(new Set());
 
   // useSolicitacoes (90-day windowed cache) is used only for metrics, tab counts, and code generation.
   // The table itself is powered by useSolicitacoesPageable (server-side paginated).
@@ -165,10 +167,13 @@ export default function SolicitacoesPage() {
   }, [solicitacoes]);
 
   // Actions
-  const handleLaunch = (data: { clienteId: string; tipoOperacao: string; tipoColeta?: string; pontoColeta: string; entregadorId?: string; dataRetroativa?: string; retroativoConcluida?: boolean; rotas: { id?: string; bairro_destino_id?: string; responsavel?: string; telefone?: string; observacoes?: string; receber_do_cliente?: boolean; valor_a_receber?: number; taxa_resolvida: number | null; taxas_extras?: { nome: string; valor: number }[] }[] }) => {
+  const handleLaunch = async (data: { clienteId: string; tipoOperacao: string; tipoColeta?: string; pontoColeta: string; entregadorId?: string; dataRetroativa?: string; retroativoConcluida?: boolean; rotas: { id?: string; bairro_destino_id?: string; responsavel?: string; telefone?: string; observacoes?: string; receber_do_cliente?: boolean; valor_a_receber?: number; taxa_resolvida: number | null; taxas_extras?: { nome: string; valor: number }[] }[] }) => {
     const now = data.dataRetroativa ?? new Date().toISOString();
     const dateForCode = data.dataRetroativa ? data.dataRetroativa.slice(0, 10) : new Date().toISOString().slice(0, 10);
-    const codigo = `LT-${dateForCode.replace(/-/g, "")}-${String(solicitacoes.length + 1).padStart(5, "0")}`;
+    const { data: codigoGerado } = await supabase.rpc("gerar_codigo_solicitacao");
+    const codigo = (codigoGerado && codigoGerado.trim().length > 0)
+      ? codigoGerado
+      : `LT-${dateForCode.replace(/-/g, "")}-${String(solicitacoes.length + 1).padStart(5, "0")}`;
     
     const isRetroativoConcluida = !!data.retroativoConcluida;
 
@@ -197,35 +202,41 @@ export default function SolicitacoesPage() {
       status: isRetroativoConcluida ? "concluida" as const : "ativa" as const,
     }));
 
-    createSolMut.mutate({
-      sol: {
-        codigo,
-        cliente_id: data.clienteId,
-        entregador_id: data.entregadorId || null,
-        status,
-        tipo_operacao: data.tipoOperacao,
-        ponto_coleta: data.pontoColeta,
-        data_solicitacao: now,
-        data_inicio: dataInicio,
-        data_conclusao: dataConclusao,
-        justificativa: null,
-        retroativo: !!data.dataRetroativa,
-      },
-      rotas: rotaInserts,
-    }, {
-      onSuccess: () => {
-        toast.success(`Solicitação ${codigo} criada!`);
-        if (data.entregadorId) {
-          addNotification({
-            title: "Nova corrida atribuída",
-            message: `Solicitação ${codigo} foi atribuída a ${getEntregadorNome(data.entregadorId)}.`,
-            type: "info",
-            link: "/entregador/solicitacoes",
-          });
-        }
-      },
-      onError: (err) => toast.error(`Erro ao criar solicitação: ${err.message}`),
-    });
+    try {
+      await createSolMut.mutateAsync({
+        sol: {
+          codigo,
+          cliente_id: data.clienteId,
+          entregador_id: data.entregadorId || null,
+          status,
+          tipo_operacao: data.tipoOperacao,
+          ponto_coleta: data.pontoColeta,
+          data_solicitacao: now,
+          data_inicio: dataInicio,
+          data_conclusao: dataConclusao,
+          justificativa: null,
+          retroativo: !!data.dataRetroativa,
+        },
+        rotas: rotaInserts,
+      });
+
+      toast.success(`Solicitação ${codigo} criada!`);
+
+      if (data.entregadorId) {
+        addNotification({
+          title: "Nova corrida atribuída",
+          message: `Solicitação ${codigo} foi atribuída a ${getEntregadorNome(data.entregadorId)}.`,
+          type: "info",
+          link: "/entregador/solicitacoes",
+        });
+      }
+
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro desconhecido ao criar solicitação.";
+      toast.error(`Erro ao criar solicitação: ${message}`);
+      return false;
+    }
   };
 
   const handleAssign = (solId: string, entregadorId: string) => {
@@ -337,7 +348,12 @@ export default function SolicitacoesPage() {
         )}
         {sol.status === "concluida" && (
           <PermissionGuard permission="solicitacoes.edit">
-            <ActionButton tooltip="Conciliação ADM" icon={ClipboardCheck} onClick={() => setAdminConciliacaoTarget(sol)} variant="success" />
+            <ActionButton
+              tooltip={adminConciliadasIds.has(sol.id) ? "Conciliação ADM (já realizada)" : "Conciliação ADM"}
+              icon={ClipboardCheck}
+              onClick={() => setAdminConciliacaoTarget(sol)}
+              variant={adminConciliadasIds.has(sol.id) ? "info" : "success"}
+            />
             <ActionButton tooltip="Editar conciliação" icon={Pencil} onClick={() => setConciliacaoTarget(sol)} variant="info" />
           </PermissionGuard>
         )}
@@ -536,7 +552,12 @@ export default function SolicitacoesPage() {
             open={!!adminConciliacaoTarget}
             onOpenChange={(open) => !open && setAdminConciliacaoTarget(null)}
             solicitacao={adminConciliacaoTarget}
-            onConfirm={() => setAdminConciliacaoTarget(null)}
+            onConfirm={() => {
+              if (adminConciliacaoTarget) {
+                setAdminConciliadasIds((prev) => new Set(prev).add(adminConciliacaoTarget.id));
+              }
+              setAdminConciliacaoTarget(null);
+            }}
           />
         )}
       </Suspense>

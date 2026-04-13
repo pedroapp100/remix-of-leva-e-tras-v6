@@ -3,8 +3,7 @@ import { DataTable, SearchInput } from "@/components/shared";
 import { useLogStore } from "@/contexts/LogStore";
 import type { Column } from "@/components/shared/DataTable";
 import type { FormaPagamento } from "@/types/database";
-import { useFormasPagamento, useUpdateFormaPagamento } from "@/hooks/useSettings";
-import { supabase } from "@/lib/supabase";
+import { useFormasPagamento, useUpdateFormaPagamento, useCreateFormaPagamento } from "@/hooks/useSettings";
 import { Button } from "@/components/ui/button";
 import { Plus, Pencil } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
@@ -19,8 +18,9 @@ import { toast } from "sonner";
 
 export function FormasPagamentoTab() {
   const { addLog } = useLogStore();
-  const { data: formas = [], refetch } = useFormasPagamento();
+  const { data: formas = [] } = useFormasPagamento();
   const updateForma = useUpdateFormaPagamento();
+  const createForma = useCreateFormaPagamento();
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<FormaPagamento | null>(null);
@@ -47,9 +47,8 @@ export function FormasPagamentoTab() {
       addLog({ categoria: "configuracao", acao: "forma_pagamento_editada", entidade_id: editing.id, descricao: `Forma de pagamento "${name}" atualizada`, detalhes: { nome: name } });
       toast.success("Forma de pagamento atualizada!");
     } else {
-      const { data: inserted } = await supabase.from("formas_pagamento").insert({ name, description: description || null, enabled: true, order: formas.length + 1 }).select().single();
+      const inserted = await createForma.mutateAsync({ name, description: description || null, enabled: true, order: formas.length + 1 });
       addLog({ categoria: "configuracao", acao: "forma_pagamento_criada", entidade_id: inserted?.id ?? "new", descricao: `Forma de pagamento "${name}" criada`, detalhes: { nome: name } });
-      refetch();
       toast.success("Forma de pagamento criada!");
     }
     setDialogOpen(false);

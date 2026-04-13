@@ -1353,7 +1353,7 @@ Edge function aceita GET mas CORS rejeita.
 **Arquivo:** `prisma/migrations/5_webhook_dispatch/migration.sql` linha 29
 
 ```sql
-l_key TEXT := 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFidW1mbmtycXFzdGhtc2dyaGZpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTY3MzQ5MiwiZXhwIjoyMDkxMjQ5NDkyfQ.mV9so76SdTxTeqSsBu7jYmsKvMuvBpis8m7AuUUj8D0';
+l_key TEXT := '[REDACTED_SERVICE_ROLE_KEY_ROTATE_IMMEDIATELY]';
 -- ☝️ SERVICE ROLE KEY EXPOSTA NO REPOSITÓRIO
 ```
 
@@ -1601,6 +1601,72 @@ SELECT status, ativo FROM integracoes WHERE icone = 'whatsapp';
 
 ---
 
-**Última atualização**: 11 de Abril de 2026
+## 📅 Fix #12: Auth Startup Localhost Blindado Contra Reincidência (12 Abril 2026)
+
+### 🔴 **Problema**
+Mesmo após correções anteriores, o erro de autenticação voltava em alguns reinícios do servidor local (`localhost`), causando timeout no bootstrap de sessão e instabilidade no login.
+
+### 📊 **Sintomas**
+- ❌ Erro recorrente: `getSession timeout — sessão possivelmente corrompida/SDK hang`
+- ❌ Falha intermitente ao logar logo após subir o app
+- ❌ Problema reaparecia após restart do Vite
+
+### 🔍 **Causa Raiz**
+Havia reincidência por combinação de estado local inconsistente + lock interno do SDK de auth:
+
+1. Sessão persistida inválida/malformada no `localStorage`
+2. Possível coexistência de chave nova (`lt-auth-session`) e legada (`sb-<projectRef>-auth-token`)
+3. Em cenários de timeout, o SDK podia manter lock interno até recuperação manual
+
+### ✅ **Solução Aplicada**
+
+**Arquivo**: `src/contexts/AuthContext.tsx`
+
+1. Sanitização robusta no bootstrap:
+  - limpa `lt-auth-session` e chave legada quando sessão inválida
+  - remove sessão ao detectar JSON inválido ou ausência de tokens
+2. Hardening específico para dev local:
+  - em `MODE === "development"` + host `localhost/127.0.0.1`, inicia com sessão local limpa
+  - executa `signOut({ scope: "local" })` no bootstrap
+3. Recovery de hang do SDK preservado:
+  - mantém estratégia de timeout para `getSession` + recuperação local
+  - reload único controlado para destravar runtime em cenário extremo
+
+### 🧪 **Testes Executados**
+
+#### ✅ Teste 1 — Regressão AuthContext
+```bash
+npm run test -- src/contexts/AuthContext.test.tsx
+```
+Resultado: **9/9 testes passando**.
+
+#### ✅ Teste 2 — Smoke login E2E
+```bash
+npx playwright test e2e/admin-auth.spec.ts --grep "admin login works and redirects to /admin"
+```
+Resultado: **1/1 passando** (login redireciona para `/admin`).
+
+#### ✅ Teste 3 — Revalidação após restart real
+- encerrado processo em `:8080`
+- executado novamente o smoke E2E
+
+Resultado: **1/1 passando após restart**.
+
+### 🛡️ **Checklist Anti-Regressão (obrigatório)**
+- [ ] Não remover limpeza de `lt-auth-session` e chave legada em sessão inválida
+- [ ] Não remover guard `MODE === "development"` no hardening local
+- [ ] Não trocar `signOut({ scope: "local" })` por `signOut()` no bootstrap de recuperação
+- [ ] Manter teste de regressão de hang em `src/contexts/AuthContext.test.tsx`
+- [ ] Rodar sempre os testes mínimos antes de fechar fix de auth:
+  - `npm run test -- src/contexts/AuthContext.test.tsx`
+  - `npx playwright test e2e/admin-auth.spec.ts --grep "admin login works and redirects to /admin"`
+
+### 🔗 **Relacionado**
+- Documento operacional detalhado: [FIX_AUTH_STARTUP_LOCALHOST_12-04-2026.md](Documentos/FIX_AUTH_STARTUP_LOCALHOST_12-04-2026.md)
+- Fix #11: primeira contenção do hang de `getSession`
+
+---
+
+**Última atualização**: 12 de Abril de 2026
 **Responsável**: Assistente IA + MCP Supabase
-**Status**: 10 fixes documentados ✅ — Fix #10 recupera Z-API totalmente (7 problemas corrigidos, 2 mensagens testadas)
+**Status**: 12 fixes documentados ✅ — Auth localhost blindado no restart + suíte de regressão validada

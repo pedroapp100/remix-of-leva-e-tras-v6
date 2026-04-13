@@ -85,7 +85,7 @@ const TIPOS_COLETA = [
 interface LaunchSolicitacaoDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (data: { clienteId: string; tipoOperacao: string; tipoColeta: TipoColeta; pontoColeta: string; entregadorId?: string; dataRetroativa?: string; retroativoConcluida?: boolean; rotas: RotaForm[] }) => void;
+  onSubmit: (data: { clienteId: string; tipoOperacao: string; tipoColeta: TipoColeta; pontoColeta: string; entregadorId?: string; dataRetroativa?: string; retroativoConcluida?: boolean; rotas: RotaForm[] }) => Promise<boolean> | boolean;
 }
 
 export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit }: LaunchSolicitacaoDialogProps) {
@@ -232,20 +232,23 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit }: Launch
     else if (step === 2 && validateStep2()) setStep(3);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (retroativoEnabled && !dataRetroativa) {
       toast.error("Selecione a data retroativa.");
       return;
     }
-    onSubmit({
+    const success = await onSubmit({
       clienteId, tipoOperacao, tipoColeta: tipoColeta as TipoColeta, pontoColeta,
       entregadorId: entregadorId || undefined,
       dataRetroativa: retroativoEnabled && dataRetroativa ? dataRetroativa.toISOString() : undefined,
       retroativoConcluida: retroativoEnabled && retroativoConcluida ? true : undefined,
       rotas,
     });
-    resetForm();
-    onOpenChange(false);
+
+    if (success) {
+      resetForm();
+      onOpenChange(false);
+    }
   };
 
   // Totals

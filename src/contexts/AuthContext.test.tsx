@@ -105,6 +105,75 @@ describe("AuthContext", () => {
     expect(getByTestId!("user").textContent).toBe("null");
   });
 
+  it("[regressão] sessão local expirada é limpa sem pular getSession", async () => {
+    localStorage.setItem("lt-auth-session", JSON.stringify({
+      expires_at: Math.floor(Date.now() / 1000) - 60,
+      access_token: "expired-access",
+      refresh_token: "expired-refresh",
+    }));
+
+    mockGetSession.mockResolvedValue({ data: { session: null } });
+
+    let getByTestId: (id: string) => HTMLElement;
+
+    await act(async () => {
+      const result = render(
+        <AuthProvider><TestConsumer /></AuthProvider>
+      );
+      getByTestId = result.getByTestId;
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockGetSession).toHaveBeenCalledTimes(1);
+    expect(mockSignOut).not.toHaveBeenCalledWith({ scope: "local" });
+    expect(getByTestId!("ready").textContent).toBe("true");
+    expect(getByTestId!("user").textContent).toBe("null");
+  });
+
+  it("[regressão] sessão local incompleta não força logout se getSession for válido", async () => {
+    localStorage.setItem("lt-auth-session", JSON.stringify({
+      expires_at: Math.floor(Date.now() / 1000) + 3600,
+      currentSession: {
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+      },
+    }));
+
+    mockGetSession.mockResolvedValue({
+      data: {
+        session: {
+          user: { id: "u1", email: "admin@test.com" },
+        },
+      },
+    });
+
+    profileResponse = {
+      data: { id: "u1", nome: "Admin", role: "admin", cargo_id: null, avatar: null, ativo: true },
+      error: null,
+    };
+
+    let getByTestId: (id: string) => HTMLElement;
+
+    await act(async () => {
+      const result = render(
+        <AuthProvider><TestConsumer /></AuthProvider>
+      );
+      getByTestId = result.getByTestId;
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockGetSession).toHaveBeenCalledTimes(1);
+    expect(getByTestId!("ready").textContent).toBe("true");
+    expect(getByTestId!("user").textContent).toBe("Admin");
+  });
+
   it("should become ready with a valid session", async () => {
     mockGetSession.mockResolvedValue({
       data: {
@@ -134,6 +203,162 @@ describe("AuthContext", () => {
     });
 
     expect(getByTestId!("ready").textContent).toBe("true");
+    expect(getByTestId!("user").textContent).toBe("Admin");
+  });
+
+  it("[regressão] evento transitório com session nula não deve deslogar sem SIGNED_OUT", async () => {
+    let authStateCallback: ((event: string, session: unknown) => Promise<void>) | undefined;
+    mockOnAuthStateChange.mockImplementation((cb: (event: string, session: unknown) => Promise<void>) => {
+      authStateCallback = cb;
+      return {
+        data: { subscription: { unsubscribe: vi.fn() } },
+      };
+    });
+
+    mockGetSession.mockResolvedValue({
+      data: {
+        session: {
+          user: { id: "u1", email: "admin@test.com" },
+        },
+      },
+    });
+
+    profileResponse = {
+      data: { id: "u1", nome: "Admin", role: "admin", cargo_id: null, avatar: null, ativo: true },
+      error: null,
+    };
+
+    let getByTestId: (id: string) => HTMLElement;
+
+    await act(async () => {
+      const result = render(
+        <AuthProvider><TestConsumer /></AuthProvider>
+      );
+      getByTestId = result.getByTestId;
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getByTestId!("user").textContent).toBe("Admin");
+    expect(authStateCallback).toBeDefined();
+
+    await act(async () => {
+      await authStateCallback!("TOKEN_REFRESHED", null);
+      await Promise.resolve();
+    });
+
+    expect(getByTestId!("user").textContent).toBe("Admin");
+  });
+
+  it("[regressão] SIGNED_OUT transitório com sessão local presente não deve derrubar usuário", async () => {
+    let authStateCallback: ((event: string, session: unknown) => Promise<void>) | undefined;
+    mockOnAuthStateChange.mockImplementation((cb: (event: string, session: unknown) => Promise<void>) => {
+      authStateCallback = cb;
+      return {
+        data: { subscription: { unsubscribe: vi.fn() } },
+      };
+    });
+
+    mockGetSession.mockResolvedValue({
+      data: {
+        session: {
+          user: { id: "u1", email: "admin@test.com" },
+        },
+      },
+    });
+
+    profileResponse = {
+      data: { id: "u1", nome: "Admin", role: "admin", cargo_id: null, avatar: null, ativo: true },
+      error: null,
+    };
+
+    localStorage.setItem("lt-auth-session", JSON.stringify({
+      expires_at: Math.floor(Date.now() / 1000) + 3600,
+      access_token: "access",
+      refresh_token: "refresh",
+    }));
+
+    let getByTestId: (id: string) => HTMLElement;
+
+    await act(async () => {
+      const result = render(
+        <AuthProvider><TestConsumer /></AuthProvider>
+      );
+      getByTestId = result.getByTestId;
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getByTestId!("user").textContent).toBe("Admin");
+    expect(authStateCallback).toBeDefined();
+
+    await act(async () => {
+      await authStateCallback!("SIGNED_OUT", null);
+      await Promise.resolve();
+    });
+
+    expect(getByTestId!("user").textContent).toBe("Admin");
+  });
+
+  it("[regressão] erro transitório de profile em TOKEN_REFRESHED não limpa usuário atual", async () => {
+    let authStateCallback: ((event: string, session: unknown) => Promise<void>) | undefined;
+    mockOnAuthStateChange.mockImplementation((cb: (event: string, session: unknown) => Promise<void>) => {
+      authStateCallback = cb;
+      return {
+        data: { subscription: { unsubscribe: vi.fn() } },
+      };
+    });
+
+    mockGetSession.mockResolvedValue({
+      data: {
+        session: {
+          user: { id: "u1", email: "admin@test.com" },
+        },
+      },
+    });
+
+    profileResponse = {
+      data: { id: "u1", nome: "Admin", role: "admin", cargo_id: null, avatar: null, ativo: true },
+      error: null,
+    };
+
+    let getByTestId: (id: string) => HTMLElement;
+
+    await act(async () => {
+      const result = render(
+        <AuthProvider><TestConsumer /></AuthProvider>
+      );
+      getByTestId = result.getByTestId;
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getByTestId!("user").textContent).toBe("Admin");
+    expect(authStateCallback).toBeDefined();
+
+    // Simula falha de DB no refresh
+    profileResponse = {
+      data: null,
+      error: { message: "db temporarily unavailable" },
+    };
+
+    await act(async () => {
+      await authStateCallback!("TOKEN_REFRESHED", {
+        user: { id: "u1", email: "admin@test.com" },
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
     expect(getByTestId!("user").textContent).toBe("Admin");
   });
 

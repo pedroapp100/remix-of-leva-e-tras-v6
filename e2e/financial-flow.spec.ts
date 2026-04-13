@@ -9,6 +9,14 @@ import { test, expect, type Page } from "@playwright/test";
 const EMAIL = process.env.E2E_ADMIN_EMAIL!;
 const PASSWORD = process.env.E2E_ADMIN_PASSWORD!;
 
+const SIDEBAR_HREFS: Record<string, string> = {
+  Dashboard: "/admin",
+  Entregas: "/admin/entregas",
+  Caixas: "/admin/caixas-entregadores",
+  Faturas: "/admin/faturas",
+  Financeiro: "/admin/financeiro",
+};
+
 async function waitForAppReady(page: Page) {
   const loader = page.getByText("Carregando...");
   await loader.waitFor({ state: "visible", timeout: 5_000 }).catch(() => {});
@@ -35,14 +43,23 @@ async function adminLogin(page: Page) {
   await waitForAppReady(page);
 }
 
+async function navigateViaSidebar(page: Page, linkName: keyof typeof SIDEBAR_HREFS) {
+  const href = SIDEBAR_HREFS[linkName];
+  const link = page.locator(`a[href="${href}"]`);
+  await link.scrollIntoViewIfNeeded();
+  await link.click();
+  await page.waitForURL(new RegExp(`${href.replace("/", "\\/")}$`));
+  await page.waitForLoadState("networkidle");
+  await waitForAppReady(page);
+}
+
 test.describe("Financial Flow — Admin Pages", () => {
   test.beforeEach(async ({ page }) => {
     await adminLogin(page);
   });
 
   test("faturas page loads with table and filters", async ({ page }) => {
-    await page.goto("/admin/faturas");
-    await waitForAppReady(page);
+    await navigateViaSidebar(page, "Faturas");
 
     // Page title
     await expect(page.getByRole("heading", { name: /Faturas/i })).toBeVisible({ timeout: 15_000 });
@@ -62,8 +79,7 @@ test.describe("Financial Flow — Admin Pages", () => {
   });
 
   test("financeiro page loads with summary cards", async ({ page }) => {
-    await page.goto("/admin/financeiro");
-    await waitForAppReady(page);
+    await navigateViaSidebar(page, "Financeiro");
 
     await expect(page.getByRole("heading", { name: /Financeiro/i })).toBeVisible({ timeout: 15_000 });
 
@@ -73,17 +89,16 @@ test.describe("Financial Flow — Admin Pages", () => {
   });
 
   test("caixas entregadores page loads", async ({ page }) => {
-    await page.goto("/admin/caixas-entregadores");
-    await waitForAppReady(page);
+    await navigateViaSidebar(page, "Caixas");
 
-    await expect(page.getByRole("heading", { name: /Caixa/i })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: "Caixas Entregadores", exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("button", { name: /Abrir Caixa/i })).toBeVisible({ timeout: 10_000 });
   });
 
   test("entregas page loads with data or empty state", async ({ page }) => {
-    await page.goto("/admin/entregas");
-    await waitForAppReady(page);
+    await navigateViaSidebar(page, "Entregas");
 
-    await expect(page.getByRole("heading", { name: /Entregas/i })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByPlaceholder(/Buscar por código/i)).toBeVisible({ timeout: 15_000 });
 
     // Should have table or empty state
     const table = page.locator("table");
@@ -94,8 +109,7 @@ test.describe("Financial Flow — Admin Pages", () => {
   });
 
   test("dashboard shows financial KPIs", async ({ page }) => {
-    await page.goto("/admin");
-    await waitForAppReady(page);
+    await navigateViaSidebar(page, "Dashboard");
 
     // Dashboard should have cards with financial metrics
     const kpiCards = page.locator("[class*='card'], [class*='Card']");
@@ -110,8 +124,7 @@ test.describe("Financial Flow — Admin Pages", () => {
 
   test("sidebar navigation between financial pages works", async ({ page }) => {
     // Start at dashboard
-    await page.goto("/admin");
-    await waitForAppReady(page);
+    await navigateViaSidebar(page, "Dashboard");
 
     // Navigate to Faturas via sidebar
     await page.locator('a[href="/admin/faturas"]').click();

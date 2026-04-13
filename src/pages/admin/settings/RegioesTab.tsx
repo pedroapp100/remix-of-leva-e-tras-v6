@@ -2,8 +2,7 @@ import { useState } from "react";
 import { DataTable, SearchInput, ConfirmDialog } from "@/components/shared";
 import type { Column } from "@/components/shared/DataTable";
 import type { Regiao } from "@/types/database";
-import { useRegioes } from "@/hooks/useSettings";
-import { supabase } from "@/lib/supabase";
+import { useRegioes, useUpsertRegiao, useDeleteRegiao } from "@/hooks/useSettings";
 import { Button } from "@/components/ui/button";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,7 +16,9 @@ import { useLogStore } from "@/contexts/LogStore";
 
 export function RegioesTab() {
   const { addLog } = useLogStore();
-  const { data: regioes = [], refetch } = useRegioes();
+  const { data: regioes = [] } = useRegioes();
+  const upsertRegiao = useUpsertRegiao();
+  const removeRegiao = useDeleteRegiao();
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Regiao | null>(null);
@@ -33,24 +34,22 @@ export function RegioesTab() {
   const handleSave = async () => {
     if (!name.trim()) { toast.error("Nome é obrigatório."); return; }
     if (editing) {
-      await supabase.from("regioes").update({ name, description: description || null }).eq("id", editing.id);
+      await upsertRegiao.mutateAsync({ id: editing.id, name, description: description || null });
       addLog({ categoria: "configuracao", acao: "regiao_editada", entidade_id: editing.id, descricao: `Região "${name}" atualizada`, detalhes: { nome: name } });
       toast.success("Região atualizada!");
     } else {
-      await supabase.from("regioes").insert({ name, description: description || null });
+      await upsertRegiao.mutateAsync({ name, description: description || null });
       addLog({ categoria: "configuracao", acao: "regiao_criada", entidade_id: "new", descricao: `Região "${name}" criada`, detalhes: { nome: name } });
       toast.success("Região criada!");
     }
-    refetch();
     setDialogOpen(false);
   };
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    await supabase.from("regioes").delete().eq("id", deleteTarget.id);
+    await removeRegiao.mutateAsync(deleteTarget.id);
     addLog({ categoria: "configuracao", acao: "regiao_removida", entidade_id: deleteTarget.id, descricao: `Região "${deleteTarget.name}" removida`, detalhes: null });
     toast.success("Região removida!");
-    refetch();
     setDeleteTarget(null);
   };
 

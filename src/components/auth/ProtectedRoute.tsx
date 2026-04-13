@@ -1,4 +1,5 @@
 import { Navigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
 import { BrandedLoader } from "@/components/shared/BrandedLoader";
@@ -18,12 +19,49 @@ interface ProtectedRouteProps {
 export function ProtectedRoute({ children, allowedRoles, requiredPermission }: ProtectedRouteProps) {
   const { user, role, isReady } = useAuth();
   const { hasPermission } = usePermissions();
+  const [redirectGraceElapsed, setRedirectGraceElapsed] = useState(false);
+  const hadAuthenticatedUserRef = useRef(false);
+
+  const hasLocalSessionHint = (() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return Boolean(window.localStorage.getItem("lt-auth-session"));
+    } catch {
+      return false;
+    }
+  })();
+
+  useEffect(() => {
+    if (user) {
+      hadAuthenticatedUserRef.current = true;
+    }
+  }, [user]);
+
+  const shouldHoldForRecovery = isReady && !user && (hasLocalSessionHint || hadAuthenticatedUserRef.current);
+
+  useEffect(() => {
+    if (!shouldHoldForRecovery) {
+      setRedirectGraceElapsed(false);
+      return;
+    }
+
+    const id = window.setTimeout(() => {
+      setRedirectGraceElapsed(true);
+    }, 8000);
+
+    return () => {
+      window.clearTimeout(id);
+    };
+  }, [shouldHoldForRecovery]);
 
   if (!isReady) {
     return <BrandedLoader fullPage size="lg" text="Carregando..." />;
   }
 
   if (!user) {
+    if (shouldHoldForRecovery && !redirectGraceElapsed) {
+      return <BrandedLoader fullPage size="lg" text="Restaurando sessão..." />;
+    }
     return <Navigate to="/login" replace />;
   }
 
