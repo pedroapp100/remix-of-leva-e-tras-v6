@@ -3,7 +3,7 @@
  * React Query hooks para dados de configuração.
  * Stale time elevado — dados de lookup mudam raramente.
  */
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   fetchRegioes, fetchBairros, fetchBairrosByRegiao, upsertBairro, deleteBairro,
   fetchFormasPagamento, updateFormaPagamento, createFormaPagamento,
@@ -20,6 +20,7 @@ import {
   type WebhookEntry,
 } from "@/services/settings";
 import type { Regiao, Bairro, FormaPagamento, Cargo, TipoOperacaoConfig, TaxaExtraConfig, Feriado } from "@/types/database";
+import { fetchAllNotificationsAdmin, fetchProfilesForSelector, type AdminNotificationRow } from "@/services/notifications";
 
 const STALE_10MIN = 10 * 60 * 1000;
 
@@ -333,4 +334,34 @@ export function useWebhooksData() {
     updateWebhook: updateMut.mutateAsync,
     deleteWebhook: deleteMut.mutateAsync,
   };
+}
+
+// ── Notificações Internas (Admin) ─────────────────────────────────────────────
+
+type AdminNotifFilters = Omit<NonNullable<Parameters<typeof fetchAllNotificationsAdmin>[0]>, "cursor">;
+
+export const ADMIN_NOTIF_PAGE_SIZE = 20;
+
+export function useAllNotificationsAdmin(filters?: AdminNotifFilters) {
+  return useInfiniteQuery<AdminNotificationRow[], Error, { pages: AdminNotificationRow[][] }, [string, AdminNotifFilters | undefined], { created_at: string; id: string } | undefined>({
+    queryKey: ["all-notifications-admin", filters],
+    queryFn: ({ pageParam }) =>
+      fetchAllNotificationsAdmin({ ...filters, limit: ADMIN_NOTIF_PAGE_SIZE, cursor: pageParam }),
+    initialPageParam: undefined,
+    getNextPageParam: (lastPage) => {
+      if (lastPage.length < ADMIN_NOTIF_PAGE_SIZE) return undefined;
+      const last = lastPage[lastPage.length - 1];
+      return last ? { created_at: last.created_at, id: last.id } : undefined;
+    },
+    refetchInterval: 30_000,
+    staleTime: 10_000,
+  });
+}
+
+export function useProfilesForSelector(role?: "admin" | "entregador" | "cliente") {
+  return useQuery({
+    queryKey: ["profiles-selector", role ?? "all"],
+    queryFn: () => fetchProfilesForSelector(role),
+    staleTime: STALE_10MIN,
+  });
 }

@@ -139,6 +139,9 @@ export interface Tables {
       numero_de_entregas_para_faturamento: number | null;
       dia_da_semana_faturamento: DbDiaSemana | null;
       dia_do_mes_faturamento: number | null;
+      prazo_vencimento_dias: number;
+      logo_url: string | null;
+      exibir_logo_landing: boolean;
       created_at: string;
       updated_at: string;
     };
@@ -381,6 +384,7 @@ export interface Tables {
       role: DbRole;
       avatar: string | null;
       cargo_id: string | null;
+      documento: string | null;
       ativo: boolean;
       created_at: string;
     };
@@ -479,6 +483,7 @@ export interface Tables {
       data_solicitacao: string;
       data_inicio: string | null;
       data_conclusao: string | null;
+      admin_conciliada_at: string | null;
       justificativa: string | null;
       retroativo: boolean;
       created_at: string;
@@ -584,6 +589,16 @@ export interface Database {
       auth_role: { Args: Record<never, never>; Returns: string };
       cliente_id_atual: { Args: Record<never, never>; Returns: string };
       entregador_id_atual: { Args: Record<never, never>; Returns: string };
+      notify_role: {
+        Args: {
+          p_role: string;
+          p_title: string;
+          p_message: string;
+          p_type: string;
+          p_link?: string | null;
+        };
+        Returns: void;
+      };
       concluir_fatura_entrega: {
         Args: {
           p_fatura_id: string | null;

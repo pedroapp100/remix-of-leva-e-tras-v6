@@ -18,6 +18,8 @@ interface NotificationContextType {
   markAsRead: (id: string) => void;
   markAllAsRead: () => void;
   unreadCount: number;
+  pushPermission: NotificationPermission | "unsupported";
+  requestPushPermission: () => Promise<void>;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
@@ -47,6 +49,56 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [effectiveUserId, setEffectiveUserId] = useState<string | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+
+  // ── Browser Push Permission ──
+  const [pushPermission, setPushPermission] = useState<NotificationPermission | "unsupported">(
+    () => ("Notification" in window ? Notification.permission : "unsupported")
+  );
+
+  const requestPushPermission = useCallback(async () => {
+    if (!("Notification" in window)) return;
+    const result = await Notification.requestPermission();
+    setPushPermission(result);
+  }, []);
+
+  // Toca um bip suave via Web Audio API (sem arquivo externo).
+  // Só funciona após interação do usuário com a página (política do browser).
+  const playNotificationSound = useCallback(() => {
+    try {
+      const AudioCtx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const oscillator = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(880, ctx.currentTime);           // Lá5 — tom suave
+      oscillator.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.15); // desce para Lá4
+      gainNode.gain.setValueAtTime(0.25, ctx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+      oscillator.start(ctx.currentTime);
+      oscillator.stop(ctx.currentTime + 0.4);
+      oscillator.onended = () => ctx.close();
+    } catch {
+      // Ignorar: contexto de áudio bloqueado antes de interação do usuário
+    }
+  }, []);
+
+  const firePushNotification = useCallback((title: string, body: string, link?: string) => {
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    const n = new Notification(title, {
+      body,
+      icon: "/favicon.ico",
+      tag: `levatras-${Date.now()}`,
+    });
+    n.onclick = () => {
+      window.focus();
+      if (link) window.location.hash = link;
+      n.close();
+    };
+    playNotificationSound();
+  }, [playNotificationSound]);
 
   const isUuid = (value: string) =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -118,7 +170,6 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
     }
-
     const channel = supabase
       .channel(`notifications:${effectiveUserId}`)
       .on(
@@ -132,6 +183,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         (payload) => {
           const newNotif = rowToNotification(payload.new as Parameters<typeof rowToNotification>[0]);
           setNotifications((prev) => prev.some((n) => n.id === newNotif.id) ? prev : [newNotif, ...prev]);
+          firePushNotification(newNotif.title, newNotif.message, newNotif.link);
         }
       )
       .on(
@@ -255,7 +307,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   return (
-    <NotificationContext.Provider value={{ notifications, addNotification, markAsRead, markAllAsRead, unreadCount }}>
+    <NotificationContext.Provider value={{ notifications, addNotification, markAsRead, markAllAsRead, unreadCount, pushPermission, requestPushPermission }}>
       {children}
     </NotificationContext.Provider>
   );

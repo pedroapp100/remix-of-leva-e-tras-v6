@@ -39,10 +39,10 @@ export async function createCliente(input: ClienteInsert): Promise<ClienteRow> {
   const { data, error } = await supabase
     .from("clientes")
     .insert(input)
-    .select()
-    .single();
+    .select();
   if (error) throw new Error(error.message);
-  return data as ClienteRow;
+  if (!data || data.length === 0) throw new Error("Falha ao criar cliente.");
+  return data[0] as ClienteRow;
 }
 
 export async function updateCliente(
@@ -53,10 +53,10 @@ export async function updateCliente(
     .from("clientes")
     .update(patch)
     .eq("id", id)
-    .select()
-    .single();
+    .select();
   if (error) throw new Error(error.message);
-  return data as ClienteRow;
+  if (!data || data.length === 0) throw new Error("Cliente não encontrado ou sem permissão para atualizar.");
+  return data[0] as ClienteRow;
 }
 
 export async function deleteCliente(id: string): Promise<void> {
@@ -84,10 +84,10 @@ export async function upsertTabelaPreco(
   const { data, error } = await supabase
     .from("tabela_precos_cliente")
     .upsert(tp, { onConflict: "id" })
-    .select()
-    .single();
+    .select();
   if (error) throw new Error(error.message);
-  return data as TabelaPrecoRow;
+  if (!data || data.length === 0) throw new Error("Falha ao salvar tabela de preço.");
+  return data[0] as TabelaPrecoRow;
 }
 
 export async function deleteTabelaPreco(id: string): Promise<void> {

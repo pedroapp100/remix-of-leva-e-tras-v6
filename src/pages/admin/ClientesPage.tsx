@@ -84,10 +84,11 @@ export default function ClientesPage() {
 
       // Auto-criar conta de acesso via Supabase Auth
       if (senha) {
+        const docDigits = data.documento?.replace(/\D/g, "") || undefined;
         const { error } = await supabase.auth.signUp({
           email: data.email,
           password: senha,
-          options: { data: { nome: data.nome, role: "cliente" } },
+          options: { data: { nome: data.nome, role: "cliente", documento: docDigits } },
         });
         if (error) {
           toast.warning(`Cliente cadastrado, mas erro ao criar acesso: ${error.message}`);

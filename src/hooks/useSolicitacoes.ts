@@ -18,6 +18,7 @@ import {
   createRota,
   createRotas,
   updateRota,
+  bulkUpdateRotasStatus,
   fetchPagamentosBySolicitacao,
   fetchAllPagamentos,
   createPagamentos,
@@ -220,6 +221,19 @@ export function useUpdateRota() {
       updateRota(id, patch),
     onSuccess: (data) =>
       qc.invalidateQueries({ queryKey: ["rotas", data.solicitacao_id] }),
+  });
+}
+
+export function useUpdateRotasBulk() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ solicitacaoId, status }: { solicitacaoId: string; status: "concluida" | "cancelada" }) =>
+      bulkUpdateRotasStatus(solicitacaoId, status),
+    onSuccess: (_, { solicitacaoId }) => {
+      qc.invalidateQueries({ queryKey: ["rotas", solicitacaoId] });
+      qc.invalidateQueries({ queryKey: ["rotas", "windowed"] });
+      qc.invalidateQueries({ queryKey: ["rotas", "by-ids"] });
+    },
   });
 }
 

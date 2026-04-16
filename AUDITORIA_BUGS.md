@@ -1,9 +1,18 @@
 # Auditoria de Bugs — Leva e Traz
 
+## ✅ STATUS FINAL — 16/04/2026
+
+**TODOS OS 3 BUGS ESTÃO RESOLVIDOS.** Suite E2E: **65/65 passando** (16/04/2026).
+
+> Este documento estava desatualizado. As correções foram aplicadas em commits anteriores
+> (Fix #9, Fix #12, Fix #13 — ver CORREÇÕES_E_FIXES.md). A auditoria abaixo é histórica.
+
 ## Resumo dos Problemas Reportados
-1. **Login falha intermitentemente em localhost**
-2. **Sidebar não funciona (não fecha no mobile, cliques não respondem)**
-3. **Aba de Notificações fecha ao interagir**
+1. **Login falha intermitentemente em localhost** → ✅ RESOLVIDO (Fix #13)
+2. **Sidebar não funciona (não fecha no mobile, cliques não respondem)** → ✅ RESOLVIDO (já corrigido)
+3. **Aba de Notificações fecha ao interagir** → ✅ RESOLVIDO (stopPropagation já presente)
+
+---
 
 ---
 

@@ -11,11 +11,12 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Plus, Users, UserCheck, Package, Clock, Pencil, Trash2, X } from "lucide-react";
+import { Plus, Users, UserCheck, Package, Clock, Pencil, Trash2, X, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useSolicitacoes } from "@/hooks/useSolicitacoes";
 import { EntregadorFormDialog } from "./entregadores/EntregadorFormDialog";
+import { EntregadorProfileModal } from "./entregadores/EntregadorProfileModal";
 
 export default function EntregadoresPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -37,6 +38,7 @@ export default function EntregadoresPage() {
   }, [search, statusFilter, veiculoFilter, setSearchParams]);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Entregador | null>(null);
+  const [viewingEntregador, setViewingEntregador] = useState<Entregador | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Entregador | null>(null);
 
   const { data: solicitacoes = [] } = useSolicitacoes();
@@ -99,10 +101,11 @@ export default function EntregadoresPage() {
 
       // Auto-criar conta de acesso via Supabase Auth
       if (senha) {
+        const docDigits = data.documento?.replace(/\D/g, "") || undefined;
         const { error } = await supabase.auth.signUp({
           email: data.email,
           password: senha,
-          options: { data: { nome: data.nome, role: "entregador" } },
+          options: { data: { nome: data.nome, role: "entregador", documento: docDigits } },
         });
         if (error) {
           toast.warning(`Entregador cadastrado, mas erro ao criar acesso: ${error.message}`);
@@ -163,6 +166,12 @@ export default function EntregadoresPage() {
       cell: (r) => (
         <TooltipProvider delayDuration={200}>
           <div className="flex items-center justify-end gap-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-muted-foreground hover:bg-accent transition-colors" onClick={(e) => { e.stopPropagation(); setViewingEntregador(r); }}><Eye className="h-4 w-4" /></Button>
+              </TooltipTrigger>
+              <TooltipContent>Ver detalhes</TooltipContent>
+            </Tooltip>
             <PermissionGuard permission="entregadores.edit">
             <Tooltip>
               <TooltipTrigger asChild>
@@ -283,6 +292,13 @@ export default function EntregadoresPage() {
         onOpenChange={setFormOpen}
         editing={editing}
         onSave={handleSave}
+      />
+
+      {/* Profile Modal */}
+      <EntregadorProfileModal
+        entregador={viewingEntregador}
+        onClose={() => setViewingEntregador(null)}
+        onEdit={(e) => { setViewingEntregador(null); openEdit(e); }}
       />
 
       {/* Delete Confirm */}

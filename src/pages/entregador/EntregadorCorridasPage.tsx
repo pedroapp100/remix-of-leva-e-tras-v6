@@ -8,9 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { formatCurrency, formatDateBR } from "@/lib/formatters";
+import { formatDateBR } from "@/lib/formatters";
 import { useSolicitacoesByEntregador, useUpdateSolicitacao, useRotasBySolicitacaoIds } from "@/hooks/useSolicitacoes";
-import { useClientes } from "@/hooks/useClientes";
 import { useBairros } from "@/hooks/useSettings";
 import { STATUS_SOLICITACAO_LABELS } from "@/types/database";
 import { TipoOperacaoBadge } from "@/components/shared/TipoOperacaoBadge";
@@ -21,7 +20,7 @@ import {
 } from "lucide-react";
 import { ViewSolicitacaoDialog } from "@/pages/admin/solicitacoes/ViewSolicitacaoDialog";
 import { toast } from "sonner";
-import { useNotifications } from "@/contexts/NotificationContext";
+import { sendNotificationToRole } from "@/services/notifications";
 import { lazy, Suspense } from "react";
 import { useEntregadorId } from "@/hooks/useEntregadorId";
 
@@ -29,11 +28,8 @@ const ConciliacaoDialog = lazy(() =>
   import("@/pages/admin/solicitacoes/ConciliacaoDialog").then((m) => ({ default: m.ConciliacaoDialog }))
 );
 
-const getBairroName = (_id: string) => _id; // resolved inside component via useBairros
 const fmt = (v: number | null | undefined) =>
   v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
-const fmtDateTime = (d: string | null | undefined) =>
-  d ? new Date(d).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "—";
 
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.08 } } };
 const fadeUp = {
@@ -43,14 +39,11 @@ const fadeUp = {
 
 export default function EntregadorCorridasPage() {
   const { entregadorId: ENTREGADOR_ID } = useEntregadorId();
-  const { addNotification } = useNotifications();
   const { data: solicitacoes = [] } = useSolicitacoesByEntregador(ENTREGADOR_ID ?? "");
   const updateSolMut = useUpdateSolicitacao();
   const solIds = useMemo(() => solicitacoes.map((s) => s.id), [solicitacoes]);
   const { data: allRotas = [] } = useRotasBySolicitacaoIds(solIds);
-  const { data: clientes = [] } = useClientes();
   const { data: bairros = [] } = useBairros();
-  const getClienteNome = (id: string) => clientes.find((c) => c.id === id)?.nome ?? id;
   const getBairroNome = (id: string) => bairros.find((b) => b.id === id)?.nome ?? id;
   const [activeTab, setActiveTab] = useState<"ativas" | "todas">("ativas");
   const [viewSol, setViewSol] = useState<Solicitacao | null>(null);
@@ -86,9 +79,9 @@ export default function EntregadorCorridasPage() {
       data_inicio: new Date().toISOString(),
     } });
     toast.success("Corrida iniciada! Boa entrega! 🚀");
-    addNotification({
+    void sendNotificationToRole("admin", {
       title: "Corrida iniciada",
-      message: `Entregador iniciou a corrida ${sol.codigo} — ${getClienteNome(sol.cliente_id)}.`,
+      message: `Entregador iniciou a corrida ${sol.codigo} — ${sol.cliente_nome ?? sol.codigo}.`,
       type: "info",
       link: "/admin/solicitacoes",
     });
@@ -100,9 +93,9 @@ export default function EntregadorCorridasPage() {
       data_conclusao: new Date().toISOString(),
     } });
     toast.success("Entrega concluída com sucesso! ✅");
-    addNotification({
-      title: "Entrega concluída",
-      message: `Corrida ${sol.codigo} foi concluída e conciliada — ${getClienteNome(sol.cliente_id)}.`,
+    void sendNotificationToRole("admin", {
+      title: "Entrega conclueída",
+      message: `Corrida ${sol.codigo} foi conclueída — ${sol.cliente_nome ?? sol.codigo}.`,
       type: "success",
       link: "/admin/solicitacoes",
     });
@@ -180,7 +173,7 @@ export default function EntregadorCorridasPage() {
                           <TipoOperacaoBadge tipoOperacao={sol.tipo_operacao} />
                         </div>
                         <p className="text-sm text-muted-foreground mt-1">
-                          <span className="font-medium text-foreground">{getClienteNome(sol.cliente_id)}</span>
+                          <span className="font-medium text-foreground">{sol.cliente_nome ?? "—"}</span>
                           {" • "}{formatDateBR(sol.data_solicitacao)}
                         </p>
                       </div>
@@ -195,7 +188,7 @@ export default function EntregadorCorridasPage() {
                     {/* Rotas resumo */}
                     {rotas.length > 0 && (
                       <div className="grid gap-2 sm:grid-cols-2 mb-3">
-                        {rotas.map((rota, i) => (
+                        {rotas.map((rota) => (
                           <div key={rota.id} className="flex items-center gap-2 text-sm rounded-md border border-border/60 px-3 py-2 bg-muted/20">
                             <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                             <span className="truncate font-medium">{getBairroNome(rota.bairro_destino_id)}</span>

@@ -118,11 +118,13 @@ export default function FaturasPage() {
       sortable: true,
       cell: (f) => {
         const saldo = f.saldo_liquido ?? 0;
+        // saldo_liquido = total_creditos_loja - total_debitos_loja
+        // Negativo = cliente deve à empresa (a cobrar); positivo = empresa deve ao cliente (crédito)
         return (
           <span className={cn("font-semibold tabular-nums",
-            saldo > 0 ? "text-emerald-500" : saldo < 0 ? "text-destructive" : "text-muted-foreground"
+            saldo < 0 ? "text-emerald-500" : saldo > 0 ? "text-destructive" : "text-muted-foreground"
           )}>
-            {formatCurrency(saldo)}
+            {formatCurrency(Math.abs(saldo))}
           </span>
         );
       },
@@ -236,7 +238,13 @@ export default function FaturasPage() {
         <MetricCard title="Abertas" value={metrics.abertas} icon={Clock} />
         <MetricCard title="Vencidas" value={metrics.vencidas} icon={AlertTriangle} subtitle={metrics.valorVencido > 0 ? formatCurrency(metrics.valorVencido) : undefined} />
         <MetricCard title="Finalizadas" value={metrics.finalizadas} icon={CheckCircle} />
-        <MetricCard title="Saldo Pendente" value={formatCurrency(metrics.saldoTotal)} icon={DollarSign} />
+        <MetricCard
+          title="Saldo Pendente"
+          value={formatCurrency(Math.abs(metrics.saldoTotal))}
+          icon={DollarSign}
+          valueColor={metrics.saldoTotal < 0 ? "text-emerald-500" : metrics.saldoTotal > 0 ? "text-destructive" : undefined}
+          subtitle={metrics.saldoTotal < 0 ? "a receber da loja" : metrics.saldoTotal > 0 ? "a repassar à loja" : "quitado"}
+        />
       </div>
 
       {/* Filters + Table */}

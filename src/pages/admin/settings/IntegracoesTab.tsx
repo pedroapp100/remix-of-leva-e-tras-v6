@@ -277,6 +277,11 @@ export function IntegracoesTab() {
       const data = await response.json();
       console.log("[TestConnection] Z-API status:", data);
 
+      const newStatus = data.connected ? "conectado" : "desconectado";
+      if (selected?.id) {
+        await updateIntegracao({ id: selected.id, status: newStatus });
+      }
+
       if (data.connected) {
         toast.success("✅ Z-API conectada! WhatsApp ativo e pronto para enviar mensagens.");
       } else if (data.errorCode === "INTEGRATION_NOT_FOUND") {

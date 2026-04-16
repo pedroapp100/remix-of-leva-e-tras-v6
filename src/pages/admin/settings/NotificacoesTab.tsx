@@ -186,10 +186,10 @@ export function NotificacoesTab() {
   }
 
   async function handleToggleStatus(t: NotificacaoTemplate) {
-    const newStatus = t.status === "ativo" ? "inativo" : "ativo";
+    const newAtivo = t.status !== "ativo";
     try {
-      await updateTemplate(t.id, { status: newStatus });
-      toast.success(`Notificação ${newStatus === "ativo" ? "ativada" : "desativada"}.`);
+      await updateTemplate(t.id, { ativo: newAtivo });
+      toast.success(`Notificação ${newAtivo ? "ativada" : "desativada"}.`);
     } catch {
       toast.error("Erro ao alterar status.");
     }

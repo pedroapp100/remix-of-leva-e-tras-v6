@@ -13,7 +13,7 @@ export function CTASection() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
         transition={{ duration: 0.6 }}
-        className="relative rounded-3xl border border-primary/20 bg-gradient-to-br from-primary/8 via-card/60 to-primary/4 backdrop-blur-sm p-12 sm:p-16 text-center overflow-hidden"
+        className="relative rounded-3xl border border-white/20 bg-white/10 backdrop-blur-xl p-12 sm:p-16 text-center overflow-hidden shadow-2xl shadow-black/30 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),inset_0_0_0_1px_rgba(255,255,255,0.05)]"
       >
         <div className="absolute top-[-60px] right-[-60px] w-[200px] h-[200px] bg-primary/8 rounded-full blur-[80px]" />
         <div className="absolute bottom-[-40px] left-[-40px] w-[150px] h-[150px] bg-primary/6 rounded-full blur-[60px]" />
@@ -41,7 +41,7 @@ export function CTASection() {
               size="lg"
               variant="outline"
               className="rounded-full font-semibold text-sm px-8 border-primary/30"
-              onClick={() => window.open("https://wa.me/5562999999999", "_blank")}
+              onClick={() => window.open("https://wa.link/c0nk5e", "_blank", "noopener,noreferrer")}
             >
               Falar no WhatsApp
             </Button>

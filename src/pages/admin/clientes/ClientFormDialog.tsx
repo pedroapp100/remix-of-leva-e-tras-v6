@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useClientes } from "@/hooks/useClientes";
 import type { Cliente, Modalidade, FrequenciaFaturamento, DiaSemana } from "@/types/database";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -11,6 +11,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
 import { PhoneInput } from "@/components/shared/PhoneInput";
 import { toast } from "sonner";
+import { Upload, X } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 
 interface ClientFormDialogProps {
   open: boolean;
@@ -40,6 +42,12 @@ export function ClientFormDialog({ open, onOpenChange, editing, onSave }: Client
   const [numEntregas, setNumEntregas] = useState<number | "">("");
   const [diaSemana, setDiaSemana] = useState<DiaSemana | "">("");
   const [diaMes, setDiaMes] = useState<number | "">("");
+  const [prazoVencimento, setPrazoVencimento] = useState<number>(7);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [exibirLogoLanding, setExibirLogoLanding] = useState(false);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
   const [senha, setSenha] = useState("");
 
   useEffect(() => {
@@ -60,16 +68,51 @@ export function ClientFormDialog({ open, onOpenChange, editing, onSave }: Client
       setNumEntregas(editing.numero_de_entregas_para_faturamento ?? "");
       setDiaSemana(editing.dia_da_semana_faturamento ?? "");
       setDiaMes(editing.dia_do_mes_faturamento ?? "");
+      setPrazoVencimento(editing.prazo_vencimento_dias ?? 7);
+      setLogoPreview(editing.logo_url ?? null);
+      setExibirLogoLanding(editing.exibir_logo_landing ?? false);
+      setLogoFile(null);
     } else {
       setNome(""); setTipo("pessoa_fisica"); setEmail(""); setTelefone("");
       setEndereco(""); setBairro(""); setCidade(""); setUf("CE");
       setChavePix(""); setStatus("ativo"); setModalidade("pre_pago");
       setFaturamentoAuto(false); setFrequencia(""); setNumEntregas(""); setDiaSemana(""); setDiaMes("");
+      setPrazoVencimento(7);
+      setLogoFile(null); setLogoPreview(null); setExibirLogoLanding(false);
       setSenha("");
     }
   }, [editing, open]);
 
-  const handleSubmit = () => {
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Imagem muito grande. Máximo 2 MB.");
+      return;
+    }
+    setLogoFile(file);
+    setLogoPreview(URL.createObjectURL(file));
+  };
+
+  const handleRemoveLogo = () => {
+    setLogoFile(null);
+    setLogoPreview(null);
+    if (logoInputRef.current) logoInputRef.current.value = "";
+  };
+
+  const uploadLogo = async (clienteId: string): Promise<string | null> => {
+    if (!logoFile) return logoPreview; // keep existing URL if no new file
+    const ext = logoFile.name.split(".").pop();
+    const path = `${clienteId}/logo.${ext}`;
+    const { error } = await supabase.storage
+      .from("client-logos")
+      .upload(path, logoFile, { upsert: true, contentType: logoFile.type });
+    if (error) throw new Error(error.message);
+    const { data } = supabase.storage.from("client-logos").getPublicUrl(path);
+    return data.publicUrl;
+  };
+
+  const handleSubmit = async () => {
     if (!nome.trim() || !email.trim() || !telefone.trim()) {
       toast.error("Preencha todos os campos obrigatórios.");
       return;
@@ -88,6 +131,17 @@ export function ClientFormDialog({ open, onOpenChange, editing, onSave }: Client
     }
 
     const now = new Date().toISOString();
+    setLogoUploading(true);
+    let resolvedLogoUrl: string | null = logoPreview;
+    try {
+      const tempId = editing?.id ?? crypto.randomUUID();
+      resolvedLogoUrl = await uploadLogo(tempId);
+    } catch (e) {
+      toast.error("Erro ao enviar logo. Tente novamente.");
+      setLogoUploading(false);
+      return;
+    }
+    setLogoUploading(false);
     onSave({
       id: editing?.id ?? "",
       nome: nome.trim(),
@@ -106,6 +160,9 @@ export function ClientFormDialog({ open, onOpenChange, editing, onSave }: Client
       numero_de_entregas_para_faturamento: frequencia === "por_entrega" && numEntregas ? Number(numEntregas) : null,
       dia_da_semana_faturamento: frequencia === "semanal" && diaSemana ? diaSemana as DiaSemana : null,
       dia_do_mes_faturamento: frequencia === "mensal" && diaMes ? Number(diaMes) : null,
+      prazo_vencimento_dias: prazoVencimento,
+      logo_url: resolvedLogoUrl,
+      exibir_logo_landing: exibirLogoLanding,
       created_at: editing?.created_at ?? now,
       updated_at: now,
     }, !editing ? senha.trim() : undefined);
@@ -122,6 +179,70 @@ export function ClientFormDialog({ open, onOpenChange, editing, onSave }: Client
         </DialogHeader>
 
         <div className="space-y-6 py-2">
+          {/* Seção 0: Logo da Empresa */}
+          <div className="rounded-lg border border-border p-5 space-y-4">
+            <h3 className="text-base font-semibold">Logo da Empresa</h3>
+            <div className="flex items-center gap-5">
+              {/* Preview */}
+              <button
+                type="button"
+                onClick={() => logoInputRef.current?.click()}
+                className="relative h-20 w-20 rounded-xl border-2 border-dashed border-border bg-muted/40 flex items-center justify-center overflow-hidden shrink-0 hover:border-primary/60 transition-colors group"
+                title="Clique para alterar o logo"
+              >
+                {logoPreview ? (
+                  <img src={logoPreview} alt="Logo" className="h-full w-full object-contain p-1" />
+                ) : (
+                  <Upload className="h-6 w-6 text-muted-foreground group-hover:text-primary transition-colors" />
+                )}
+              </button>
+
+              <div className="space-y-2 flex-1">
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => logoInputRef.current?.click()}
+                  >
+                    <Upload className="h-3.5 w-3.5 mr-1.5" />
+                    {logoPreview ? "Alterar logo" : "Enviar logo"}
+                  </Button>
+                  {logoPreview && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:text-destructive"
+                      onClick={handleRemoveLogo}
+                    >
+                      <X className="h-3.5 w-3.5 mr-1" />
+                      Remover
+                    </Button>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">JPG, PNG ou WebP — máx. 2 MB</p>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="exibir-logo-landing"
+                    checked={exibirLogoLanding}
+                    onCheckedChange={(v) => setExibirLogoLanding(v === true)}
+                  />
+                  <Label htmlFor="exibir-logo-landing" className="cursor-pointer text-sm">
+                    Exibir logo na landing page
+                  </Label>
+                </div>
+              </div>
+            </div>
+            <input
+              ref={logoInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/svg+xml,image/gif"
+              className="hidden"
+              onChange={handleLogoChange}
+            />
+          </div>
+
           {/* Seção 1: Configuração de Faturamento (card destacado) */}
           <div className="rounded-lg border border-border p-5 space-y-4">
             <h3 className="text-base font-semibold">Configuração de Faturamento</h3>
@@ -148,6 +269,22 @@ export function ClientFormDialog({ open, onOpenChange, editing, onSave }: Client
                   <Label htmlFor="faturamento-auto" className="cursor-pointer text-sm">
                     Ativar fechamento automático de fatura
                   </Label>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="field-prazo-vencimento">Prazo de vencimento após fechamento</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="field-prazo-vencimento"
+                      type="number"
+                      min={1}
+                      max={365}
+                      value={prazoVencimento}
+                      onChange={(e) => setPrazoVencimento(Math.max(1, Math.min(365, Number(e.target.value) || 7)))}
+                      className="w-24"
+                    />
+                    <span className="text-sm text-muted-foreground">dias após o fechamento da fatura</span>
+                  </div>
                 </div>
 
                 {faturamentoAuto && (
@@ -346,7 +483,9 @@ export function ClientFormDialog({ open, onOpenChange, editing, onSave }: Client
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button onClick={handleSubmit}>{editing ? "Salvar" : "Cadastrar Cliente"}</Button>
+          <Button onClick={handleSubmit} disabled={logoUploading}>
+            {logoUploading ? "Enviando logo..." : editing ? "Salvar Alterações" : "Cadastrar Cliente"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

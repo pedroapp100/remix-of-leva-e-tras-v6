@@ -7,7 +7,6 @@ import { STATUS_SOLICITACAO_LABELS } from "@/types/database";
 import { TipoOperacaoBadge } from "@/components/shared/TipoOperacaoBadge";
 
 import { useSolicitacoesByEntregador, useUpdateSolicitacao, useRotasBySolicitacaoIds } from "@/hooks/useSolicitacoes";
-import { useClientes } from "@/hooks/useClientes";
 import { useConcluirComCaixa } from "@/hooks/useConcluirComCaixa";
 import { DatePickerWithRange } from "@/components/shared/DatePickerWithRange";
 import type { DateRange } from "react-day-picker";
@@ -18,7 +17,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ClipboardList, CheckCircle, Truck, Eye, Play, CheckCheck, Package, Clock, X } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { toast } from "sonner";
-import { useNotifications } from "@/contexts/NotificationContext";
+import { sendNotificationToRole } from "@/services/notifications";
 import { lazy, Suspense } from "react";
 import { useEntregadorId } from "@/hooks/useEntregadorId";
 
@@ -42,15 +41,12 @@ const STATUS_TABS_DRIVER = [
 
 export default function EntregadorSolicitacoesPage() {
   const { entregadorId: ENTREGADOR_ID } = useEntregadorId();
-  const { addNotification } = useNotifications();
   const { data: solicitacoes = [] } = useSolicitacoesByEntregador(ENTREGADOR_ID ?? "");
   const updateSolMut = useUpdateSolicitacao();
   const solIds = useMemo(() => solicitacoes.map((s) => s.id), [solicitacoes]);
   const { data: allRotas = [] } = useRotasBySolicitacaoIds(solIds);
-  const { data: clientes = [] } = useClientes();
   const getRotasBySolicitacao = (solId: string) => allRotas.filter(r => r.solicitacao_id === solId);
   const concluirComCaixa = useConcluirComCaixa();
-  const getClienteNome = (id: string) => clientes.find((c) => c.id === id)?.nome ?? id;
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState("todas");
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
@@ -61,7 +57,7 @@ export default function EntregadorSolicitacoesPage() {
     return solicitacoes.filter((s) => {
       const matchSearch =
         s.codigo.toLowerCase().includes(search.toLowerCase()) ||
-        getClienteNome(s.cliente_id).toLowerCase().includes(search.toLowerCase());
+        (s.cliente_nome ?? "").toLowerCase().includes(search.toLowerCase());
       const matchTab = activeTab === "todas" || s.status === activeTab;
 
       let matchDate = true;
@@ -104,24 +100,25 @@ export default function EntregadorSolicitacoesPage() {
       data_inicio: new Date().toISOString(),
     } });
     toast.success("Corrida iniciada! Boa entrega! 🚀");
-    addNotification({
+    void sendNotificationToRole("admin", {
       title: "Corrida iniciada",
-      message: `Entregador iniciou a corrida ${sol.codigo} — ${getClienteNome(sol.cliente_id)}.`,
+      message: `Entregador iniciou a corrida ${sol.codigo} — ${sol.cliente_nome ?? sol.codigo}.`,
       type: "info",
       link: "/admin/solicitacoes",
     });
   };
 
   const handleConcluir = async (sol: Solicitacao) => {
-    const result = await concluirComCaixa(sol.id);
+    // skipFatura: fatura é responsabilidade do admin na conciliação administrativa
+    const result = await concluirComCaixa(sol.id, { skipFatura: true });
     if (!result.success) {
       toast.error(result.error ?? "Erro ao concluir entrega.");
       return;
     }
     toast.success("Entrega concluída com sucesso! ✅");
-    addNotification({
-      title: "Entrega concluída",
-      message: `Corrida ${sol.codigo} foi concluída e conciliada — ${getClienteNome(sol.cliente_id)}.`,
+    void sendNotificationToRole("admin", {
+      title: "Entrega conclueída",
+      message: `Corrida ${sol.codigo} foi conclueída — ${sol.cliente_nome ?? sol.codigo}.`,
       type: "success",
       link: "/admin/solicitacoes",
     });
@@ -191,7 +188,7 @@ export default function EntregadorSolicitacoesPage() {
     {
       key: "cliente_id",
       header: "Cliente",
-      cell: (r) => <span className="font-medium">{getClienteNome(r.cliente_id)}</span>,
+      cell: (r) => <span className="font-medium">{r.cliente_nome ?? "—"}</span>,
     },
     {
       key: "tipo_operacao",
@@ -275,7 +272,7 @@ export default function EntregadorSolicitacoesPage() {
                   <StatusBadge status={r.status} label={STATUS_SOLICITACAO_LABELS[r.status]} />
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="font-medium">{getClienteNome(r.cliente_id)}</span>
+                  <span className="font-medium">{r.cliente_nome ?? "—"}</span>
                   <TipoOperacaoBadge tipoOperacao={r.tipo_operacao} />
                 </div>
                 <div className="flex items-center justify-between text-sm text-muted-foreground">

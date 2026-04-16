@@ -48,7 +48,7 @@ export function StatsSection() {
               whileInView={{ opacity: 1, scale: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: 0.1 + i * 0.08, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-              className="group relative rounded-2xl border border-border/15 bg-card/20 backdrop-blur-md p-6 sm:p-8 text-center overflow-hidden transition-all duration-500 hover:border-primary/30 hover:bg-card/40 hover:shadow-xl hover:shadow-primary/5"
+              className="group relative rounded-2xl border border-white/20 bg-white/10 backdrop-blur-xl p-6 sm:p-8 text-center overflow-hidden transition-all duration-500 hover:border-primary/50 hover:bg-white/15 hover:shadow-2xl hover:shadow-primary/15 shadow-lg shadow-black/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),inset_0_0_0_1px_rgba(255,255,255,0.05)]"
             >
               {/* Glow effect */}
               <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none">

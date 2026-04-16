@@ -1,4 +1,4 @@
-import { Bell, LogOut, Sun, Moon, Monitor, Calendar, Menu, CheckCheck, AlertTriangle, AlertCircle, Info, CheckCircle2, Shield } from "lucide-react";
+import { Bell, LogOut, Sun, Moon, Monitor, Calendar, Menu, CheckCheck, AlertTriangle, AlertCircle, Info, CheckCircle2, Shield, BellOff, BellRing, ArrowRight } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import logoLevaTraz from "@/assets/logo-leva-e-traz.png";
 import { useTheme } from "@/contexts/ThemeProvider";
@@ -20,10 +20,24 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useSidebar } from "@/components/ui/sidebar";
 
+const ROLE_PREFIXES = ["/admin/", "/cliente/", "/entregador/"] as const;
+
+function resolveNotifLink(link: string | undefined, role: string | undefined): string {
+  const base = role ? `/${role}` : "/";
+  if (!link) return `${base}/solicitacoes`;
+  for (const prefix of ROLE_PREFIXES) {
+    if (link.startsWith(prefix)) {
+      const rest = link.slice(prefix.length);
+      return `${base}/${rest}`;
+    }
+  }
+  return link;
+}
+
 export function AppHeader() {
   const { user, logout, changeCargo } = useAuth();
   const { theme, setTheme } = useTheme();
-  const { notifications, markAsRead, markAllAsRead, unreadCount } = useNotifications();
+  const { notifications, markAsRead, markAllAsRead, unreadCount, pushPermission, requestPushPermission } = useNotifications();
   const navigate = useNavigate();
   const { isMobile, toggleSidebar } = useSidebar();
   const { data: cargos = [] } = useCargos();
@@ -126,19 +140,37 @@ export function AppHeader() {
                 <p className="text-sm font-semibold">Notificações</p>
                 <p className="text-xs text-muted-foreground">{unreadCount} não lidas</p>
               </div>
-              {unreadCount > 0 && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    markAllAsRead();
-                  }}
-                  className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
-                >
-                  <CheckCheck className="h-3.5 w-3.5" />
-                  Marcar todas
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {pushPermission === "default" && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); e.preventDefault(); void requestPushPermission(); }}
+                    className="flex items-center gap-1 text-xs text-amber-500 hover:text-amber-400 transition-colors"
+                    title="Ativar notificações de desktop"
+                  >
+                    <BellRing className="h-3.5 w-3.5" />
+                    Ativar push
+                  </button>
+                )}
+                {pushPermission === "denied" && (
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground" title="Notificações bloqueadas no navegador">
+                    <BellOff className="h-3.5 w-3.5" />
+                    Bloqueado
+                  </span>
+                )}
+                {unreadCount > 0 && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      markAllAsRead();
+                    }}
+                    className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
+                  >
+                    <CheckCheck className="h-3.5 w-3.5" />
+                    Marcar todas
+                  </button>
+                )}
+              </div>
             </div>
             <div className="max-h-80 overflow-y-auto">
               {notifications.length > 0 ? notifications.map((notif) => {
@@ -160,7 +192,7 @@ export function AppHeader() {
                       e.stopPropagation();
                       e.preventDefault();
                       markAsRead(notif.id);
-                      if (notif.link) navigate(notif.link);
+                      navigate(resolveNotifLink(notif.link, user?.role));
                     }}
                   >
                     <div className={`mt-0.5 h-8 w-8 rounded-lg ${bgColor} flex items-center justify-center shrink-0`}>
@@ -184,6 +216,17 @@ export function AppHeader() {
                 </div>
               )}
             </div>
+            {user?.role === "admin" && (
+              <div className="border-t border-border">
+                <button
+                  onClick={(e) => { e.stopPropagation(); e.preventDefault(); navigate("/admin/notificacoes"); }}
+                  className="w-full flex items-center justify-center gap-1.5 py-2.5 text-xs text-primary hover:text-primary/80 hover:bg-muted/50 transition-colors"
+                >
+                  Ver todas as notificações
+                  <ArrowRight className="h-3 w-3" />
+                </button>
+              </div>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
 

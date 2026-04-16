@@ -13,6 +13,7 @@ import {
   ChevronRight,
   ScrollText,
   Wallet,
+  Bell,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -24,6 +25,7 @@ import { fetchFaturasVencidasCount } from "@/services/faturas";
 import { fetchClientes } from "@/services/clientes";
 import { fetchEntregadores } from "@/services/entregadores";
 import { fetchFaturas } from "@/services/faturas";
+import { useNotifications } from "@/contexts/NotificationContext";
 
 import {
   Sidebar,
@@ -48,6 +50,7 @@ const navItems = [
   { title: "Financeiro", url: "/admin/financeiro", icon: DollarSign },
   { title: "Relatórios", url: "/admin/relatorios", icon: BarChart3 },
   { title: "Logs", url: "/admin/logs", icon: ScrollText },
+  { title: "Notificações", url: "/admin/notificacoes", icon: Bell },
 ];
 
 export function AdminSidebar() {
@@ -89,6 +92,7 @@ export function AdminSidebar() {
     staleTime: 60_000,
     refetchInterval: 60_000,
   });
+  const { unreadCount } = useNotifications();
   const { canAccessSidebarItem, hasPermission } = usePermissions();
 
   const visibleNavItems = navItems.filter(item => canAccessSidebarItem(item.title));
@@ -119,6 +123,7 @@ export function AdminSidebar() {
                 const active = isActive(item.url);
                 const badgeCount = item.title === "Solicitações" ? solicitacoesPendentes
                   : item.title === "Faturas" ? faturasVencidas
+                  : item.title === "Notificações" ? unreadCount
                   : 0;
                 return (
                   <SidebarMenuItem key={item.title} className={collapsed ? "flex justify-center" : ""} onMouseEnter={() => handlePrefetch(item.url)}>

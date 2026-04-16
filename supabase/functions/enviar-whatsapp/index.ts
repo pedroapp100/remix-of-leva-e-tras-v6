@@ -96,19 +96,46 @@ async function handleStatusCheck(
 
   try {
     const statusUrl = `${ZAPI_BASE_URL}/instances/${instance_id}/token/${token}/status`;
-    console.log("[status-check] 📡 Verificando status Z-API...");
-    const zapiResp = await fetch(statusUrl, {
-      headers: { "Client-Token": client_token },
-    });
+    console.log("[status-check] 📡 Verificando status Z-API:", statusUrl);
 
-    const zapiData = await zapiResp.json();
-    console.log("[status-check] 📋 Resposta Z-API status:", zapiData);
+    // Tenta com Client-Token primeiro; se retornar "Instance not found" (auth obfuscado),
+    // tenta sem Client-Token (feature pode não estar ativada na conta)
+    const headers: Record<string, string> = {};
+    if (client_token) headers["Client-Token"] = client_token;
 
-    // Z-API pode retornar connected: true ou status: "CONNECTED"
+    let zapiResp = await fetch(statusUrl, { headers });
+    let zapiData = await zapiResp.json();
+    console.log("[status-check] 📋 Resposta com Client-Token (HTTP", zapiResp.status, "):", JSON.stringify(zapiData));
+
+    // Se recebeu "Instance not found" e havia um Client-Token, tenta sem ele
+    // (Client-Token pode estar errado ou não ativado na conta)
+    if (zapiData?.error === "Instance not found" && client_token) {
+      console.log("[status-check] ⚠️ Instance not found com Client-Token — tentando sem...");
+      const fallbackResp = await fetch(statusUrl, {});
+      const fallbackData = await fallbackResp.json();
+      console.log("[status-check] 📋 Resposta sem Client-Token (HTTP", fallbackResp.status, "):", JSON.stringify(fallbackData));
+
+      if (!fallbackData?.error) {
+        zapiResp = fallbackResp;
+        zapiData = fallbackData;
+        console.log("[status-check] ✅ Funciona sem Client-Token — Security Token não está ativado na conta Z-API");
+      }
+    }
+
+    // Z-API Multi Device pode retornar vários formatos:
+    // { connected: true }
+    // { status: "CONNECTED" }
+    // { value: "CONNECTED" }         ← Multi Device
+    // { smartphoneConnected: true }
+    // { session: "CONNECTED" }
     const connected =
-      zapiData?.connected === true ||
-      zapiData?.status === "CONNECTED" ||
-      zapiData?.smartphoneConnected === true;
+      zapiResp.status === 200 && (
+        zapiData?.connected === true ||
+        zapiData?.status === "CONNECTED" ||
+        zapiData?.value === "CONNECTED" ||
+        zapiData?.session === "CONNECTED" ||
+        zapiData?.smartphoneConnected === true
+      );
 
     // Actualiza status no BD (apenas se lemos do BD)
     if (needsDb) {
@@ -272,12 +299,12 @@ serve(async (req: Request): Promise<Response> => {
   });
 
   try {
+    const sendHeaders: Record<string, string> = { "Content-Type": "application/json" };
+    if (creds.client_token) sendHeaders["Client-Token"] = creds.client_token;
+
     const zapiResp = await fetch(zapiUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Client-Token": creds.client_token,
-      },
+      headers: sendHeaders,
       body: JSON.stringify({
         phone: phoneFormatted,
         message: textoFinal,

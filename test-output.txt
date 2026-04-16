@@ -1,0 +1,198 @@
+﻿
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90mC:/Users/TRABALHO/Downloads/Leva e Tras VS/remix-of-leva-e-tras-v6[39m
+
+[90mstdout[2m | src/contexts/AuthContext.test.tsx[2m > [22m[2mAuthContext[2m > [22m[2mshould become ready even with no session
+[22m[39m[Auth] Nenhuma sess├úo local encontrada.
+
+[90mstdout[2m | src/contexts/AuthContext.test.tsx[2m > [22m[2mAuthContext[2m > [22m[2m[regress├úo] sess├úo local expirada ├® limpa sem pular getSession
+[22m[39m[Auth] Nenhuma sess├úo local encontrada.
+
+[90mstdout[2m | src/contexts/AuthContext.test.tsx[2m > [22m[2mAuthContext[2m > [22m[2m[regress├úo Fix#13] sess├úo local v├ílida ├® restaurada via fetch direto (getSession n├úo ├® chamado)
+[22m[39m[Auth] Sess├úo local encontrada, carregando profile via fetch direto...
+
+[90mstdout[2m | src/contexts/AuthContext.test.tsx[2m > [22m[2mAuthContext[2m > [22m[2m[regress├úo Fix#13] sess├úo local v├ílida ├® restaurada via fetch direto (getSession n├úo ├® chamado)
+[22m[39m[Auth] Ô£ô Sess├úo restaurada: Admin
+
+[90mstdout[2m | src/contexts/AuthContext.test.tsx[2m > [22m[2mAuthContext[2m > [22m[2mshould become ready with a valid session
+[22m[39m[Auth] Sess├úo local encontrada, carregando profile via fetch direto...
+
+[90mstdout[2m | src/contexts/AuthContext.test.tsx[2m > [22m[2mAuthContext[2m > [22m[2mshould become ready with a valid session
+[22m[39m[Auth] Ô£ô Sess├úo restaurada: Admin
+
+[90mstdout[2m | src/contexts/AuthContext.test.tsx[2m > [22m[2mAuthContext[2m > [22m[2m[regress├úo] evento transit├│rio com session nula n├úo deve deslogar sem SIGNED_OUT
+[22m[39m[Auth] Sess├úo local encontrada, carregando profile via fetch direto...
+
+[90mstdout[2m | src/contexts/AuthContext.test.tsx[2m > [22m[2mAuthContext[2m > [22m[2m[regress├úo] evento transit├│rio com session nula n├úo deve deslogar sem SIGNED_OUT
+[22m[39m[Auth] Ô£ô Sess├úo restaurada: Admin
+
+[90mstdout[2m | src/contexts/AuthContext.test.tsx[2m > [22m[2mAuthContext[2m > [22m[2m[regress├úo Fix#13] SIGNED_OUT desloga usu├írio imediatamente (comportamento atual)
+[22m[39m[Auth] Sess├úo local encontrada, carregando profile via fetch direto...
+
+[90mstdout[2m | src/contexts/AuthContext.test.tsx[2m > [22m[2mAuthContext[2m > [22m[2m[regress├úo Fix#13] SIGNED_OUT desloga usu├írio imediatamente (comportamento atual)
+[22m[39m[Auth] Ô£ô Sess├úo restaurada: Admin
+
+[90mstdout[2m | src/contexts/AuthContext.test.tsx[2m > [22m[2mAuthContext[2m > [22m[2m[regress├úo] erro transit├│rio de profile em TOKEN_REFRESHED n├úo limpa usu├írio atual
+[22m[39m[Auth] Sess├úo local encontrada, carregando profile via fetch direto...
+
+[90mstdout[2m | src/contexts/AuthContext.test.tsx[2m > [22m[2mAuthContext[2m > [22m[2m[regress├úo] erro transit├│rio de profile em TOKEN_REFRESHED n├úo limpa usu├írio atual
+[22m[39m[Auth] Ô£ô Sess├úo restaurada: Admin
+
+[90mstdout[2m | src/contexts/AuthContext.test.tsx[2m > [22m[2mAuthContext[2m > [22m[2mshould NOT sign out on DB error during login ÔÇö should show DB error message
+[22m[39m[Auth] Nenhuma sess├úo local encontrada.
+
+[90mstdout[2m | src/contexts/AuthContext.test.tsx[2m > [22m[2mAuthContext[2m > [22m[2mshould sign out when user is inactive
+[22m[39m[Auth] Nenhuma sess├úo local encontrada.
+
+[90mstdout[2m | src/contexts/AuthContext.test.tsx[2m > [22m[2mAuthContext[2m > [22m[2m[regress├úo] loading volta a false ap├│s credenciais inv├ílidas
+[22m[39m[Auth] Nenhuma sess├úo local encontrada.
+
+[90mstdout[2m | src/contexts/AuthContext.test.tsx[2m > [22m[2mAuthContext[2m > [22m[2m[regress├úo] loading volta a false quando signInWithPassword lan├ºa exce├º├úo
+[22m[39m[Auth] Nenhuma sess├úo local encontrada.
+
+node.exe : [90mstderr[2m | src/contexts/AuthContext.test.tsx[2m > 
+[22m[2mAuthContext[2m > [22m[2m[regress├úo] loading volta a false quando 
+signInWithPassword lan├ºa exce├º├úo
+No C:\Program Files\nodejs\npx.ps1:29 caractere:3
++   & $NODE_EXE $NPX_CLI_JS $args
++   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([90mstderr[2m...an├ºa exce├º├úo 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[22m[39m[Auth] login error: Error: Network error
+    at [90mC:\Users\TRABALHO\Downloads\Leva e Tras 
+VS\remix-of-leva-e-tras-v6\[39msrc\contexts\AuthContext.test.tsx:533:46
+    at [90mfile:///C:/Users/TRABALHO/Downloads/Leva%20e%20Tras%20VS/remix-of-l
+eva-e-tras-v6/[39mnode_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:155
+:11
+    at [90mfile:///C:/Users/TRABALHO/Downloads/Leva%20e%20Tras%20VS/remix-of-l
+eva-e-tras-v6/[39mnode_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:752
+:26
+    at [90mfile:///C:/Users/TRABALHO/Downloads/Leva%20e%20Tras%20VS/remix-of-l
+eva-e-tras-v6/[39mnode_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:189
+7:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///C:/Users/TRABALHO/Downloads/Leva%20e%20Tras
+%20VS/remix-of-leva-e-tras-v6/[39mnode_modules/[4m@vitest[24m/runner/dist/ch
+unk-hooks.js:1863:10[90m)[39m
+    at runTest [90m(file:///C:/Users/TRABALHO/Downloads/Leva%20e%20Tras%20VS/r
+emix-of-leva-e-tras-v6/[39mnode_modules/[4m@vitest[24m/runner/dist/chunk-hoo
+ks.js:1574:12[90m)[39m
+    at runSuite [90m(file:///C:/Users/TRABALHO/Downloads/Leva%20e%20Tras%20VS/
+remix-of-leva-e-tras-v6/[39mnode_modules/[4m@vitest[24m/runner/dist/chunk-ho
+oks.js:1729:8[90m)[39m
+    at runSuite [90m(file:///C:/Users/TRABALHO/Downloads/Leva%20e%20Tras%20VS/
+remix-of-leva-e-tras-v6/[39mnode_modules/[4m@vitest[24m/runner/dist/chunk-ho
+oks.js:1729:8[90m)[39m
+    at runFiles [90m(file:///C:/Users/TRABALHO/Downloads/Leva%20e%20Tras%20VS/
+remix-of-leva-e-tras-v6/[39mnode_modules/[4m@vitest[24m/runner/dist/chunk-ho
+oks.js:1787:3[90m)[39m
+
+[90mstdout[2m | src/contexts/AuthContext.test.tsx[2m > [22m[2mAuthContext[2m > [22m[2m[regress├úo] loading volta a false ap├│s login bem-sucedido
+[22m[39m[Auth] Nenhuma sess├úo local encontrada.
+
+[90mstdout[2m | src/contexts/AuthContext.test.tsx[2m > [22m[2mAuthContext[2m > [22m[2m[regress├úo] loading volta a false quando login ultrapassa 20s (timeout de seguran├ºa)
+[22m[39m[Auth] Nenhuma sess├úo local encontrada.
+
+[90mstdout[2m | src/contexts/AuthContext.test.tsx[2m > [22m[2mAuthContext[2m > [22m[2m[regress├úo Fix#11/13] app fica pronto em Ôëñ6s mesmo se fetch de profile travar infinitamente
+[22m[39m[Auth] Sess├úo local encontrada, carregando profile via fetch direto...
+
+[90mstderr[2m | src/contexts/AuthContext.test.tsx[2m > 
+[22m[2mAuthContext[2m > [22m[2m[regress├úo Fix#11/13] app fica pronto em 
+Ôëñ6s mesmo se fetch de profile travar infinitamente
+[22m[39m[Auth] Safety timeout (6s) ÔÇö for├ºando inicializa├º├úo.
+
+ [32mÔ£ô[39m src/contexts/AuthContext.test.tsx [2m([22m[2m14 tests[22m[2m)[22m[33m 392[2mms[22m[39m
+ [31mÔØ»[39m src/hooks/useConcluirComCaixa.test.ts [2m([22m[2m6 tests[22m[2m | [22m[31m3 failed[39m[2m)[22m[32m 164[2mms[22m[39m
+   [32mÔ£ô[39m useConcluirComCaixa[2m > [22mreturns error when solicita├º├úo not found[32m 44[2mms[22m[39m
+   [32mÔ£ô[39m useConcluirComCaixa[2m > [22mreturns error when fetchRotas fails[32m 10[2mms[22m[39m
+   [32mÔ£ô[39m useConcluirComCaixa[2m > [22mblocks pre-paid client with insufficient balance[32m 58[2mms[22m[39m
+[31m   [31m├ù[31m useConcluirComCaixa[2m > [22mconcludes successfully for faturado client[39m[32m 27[2mms[22m[39m
+[31m     ÔåÆ Cannot read properties of undefined (reading 'catch')[39m
+[31m   [31m├ù[31m useConcluirComCaixa[2m > [22mauto-adds cash recebimento to caixa when rota has valor_a_receber[39m[32m 8[2mms[22m[39m
+[31m     ÔåÆ Cannot read properties of undefined (reading 'catch')[39m
+[31m   [31m├ù[31m useConcluirComCaixa[2m > [22mreturns success with error message when fatura RPC fails[39m[32m 13[2mms[22m[39m
+[31m     ÔåÆ Cannot read properties of undefined (reading 'catch')[39m
+ [32mÔ£ô[39m src/test/accessibility.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[33m 3312[2mms[22m[39m
+   [33m[2mÔ£ô[22m[39m Accessibility (axe-core)[2m > [22mErrorBoundary fallback has no a11y violations [33m 885[2mms[22m[39m
+   [33m[2mÔ£ô[22m[39m Accessibility (axe-core)[2m > [22mBrandedLoader has no a11y violations [33m 2110[2mms[22m[39m
+ [32mÔ£ô[39m src/lib/formatters.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 69[2mms[22m[39m
+ [32mÔ£ô[39m src/components/layouts/AppHeader.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[33m 337[2mms[22m[39m
+ [32mÔ£ô[39m src/hooks/use-mobile.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 76[2mms[22m[39m
+ [32mÔ£ô[39m src/lib/mappers.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32mÔ£ô[39m src/test/example.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 5[2mms[22m[39m
+
+[31mÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»[39m[1m[41m Failed Tests 3 
+[49m[22m[31mÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»[39m
+
+[41m[1m FAIL [22m[49m src/hooks/useConcluirComCaixa.test.ts[2m > 
+[22museConcluirComCaixa[2m > [22mconcludes successfully for faturado client
+[31m[1mTypeError[22m: Cannot read properties of undefined (reading 
+'catch')[39m
+[36m [2mÔØ»[22m Object.current 
+src/hooks/useConcluirComCaixa.ts:[2m107:82[22m[39m
+    [90m105| [39m
+    [90m106| [39m      // ÔöÇÔöÇ Update rotas status to 'concluida' 
+(fire-and-forget, non-fÔÇª
+    [90m107| [39m      updateRotasBulkMut.mutateAsync({ solicitacaoId: 
+solId, status: "ÔÇª
+    [90m   | [39m                                                            
+                     [31m^[39m
+    [90m108| [39m
+    [90m109| [39m      [90m// ÔöÇÔöÇ WhatsApp: entrega conclu├¡da 
+ÔöÇÔöÇ[39m
+[90m [2mÔØ»[22m src/hooks/useConcluirComCaixa.test.ts:[2m162:13[22m[39m
+
+[31m[2mÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»Ô
+Ä»[1/3]ÔÄ»[22m[39m
+
+[41m[1m FAIL [22m[49m src/hooks/useConcluirComCaixa.test.ts[2m > 
+[22museConcluirComCaixa[2m > [22mauto-adds cash recebimento to caixa when 
+rota has valor_a_receber
+[31m[1mTypeError[22m: Cannot read properties of undefined (reading 
+'catch')[39m
+[36m [2mÔØ»[22m Object.current 
+src/hooks/useConcluirComCaixa.ts:[2m107:82[22m[39m
+    [90m105| [39m
+    [90m106| [39m      // ÔöÇÔöÇ Update rotas status to 'concluida' 
+(fire-and-forget, non-fÔÇª
+    [90m107| [39m      updateRotasBulkMut.mutateAsync({ solicitacaoId: 
+solId, status: "ÔÇª
+    [90m   | [39m                                                            
+                     [31m^[39m
+    [90m108| [39m
+    [90m109| [39m      [90m// ÔöÇÔöÇ WhatsApp: entrega conclu├¡da 
+ÔöÇÔöÇ[39m
+[90m [2mÔØ»[22m src/hooks/useConcluirComCaixa.test.ts:[2m182:7[22m[39m
+
+[31m[2mÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»Ô
+Ä»[2/3]ÔÄ»[22m[39m
+
+[41m[1m FAIL [22m[49m src/hooks/useConcluirComCaixa.test.ts[2m > 
+[22museConcluirComCaixa[2m > [22mreturns success with error message when 
+fatura RPC fails
+[31m[1mTypeError[22m: Cannot read properties of undefined (reading 
+'catch')[39m
+[36m [2mÔØ»[22m Object.current 
+src/hooks/useConcluirComCaixa.ts:[2m107:82[22m[39m
+    [90m105| [39m
+    [90m106| [39m      // ÔöÇÔöÇ Update rotas status to 'concluida' 
+(fire-and-forget, non-fÔÇª
+    [90m107| [39m      updateRotasBulkMut.mutateAsync({ solicitacaoId: 
+solId, status: "ÔÇª
+    [90m   | [39m                                                            
+                     [31m^[39m
+    [90m108| [39m
+    [90m109| [39m      [90m// ÔöÇÔöÇ WhatsApp: entrega conclu├¡da 
+ÔöÇÔöÇ[39m
+[90m [2mÔØ»[22m src/hooks/useConcluirComCaixa.test.ts:[2m196:13[22m[39m
+
+[31m[2mÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»Ô
+Ä»[3/3]ÔÄ»[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m7 passed[39m[22m[90m (8)[39m
+[2m      Tests [22m [1m[31m3 failed[39m[22m[2m | [22m[1m[32m45 passed[39m[22m[90m (48)[39m
+[2m   Start at [22m 15:09:12
+[2m   Duration [22m 19.72s[2m (transform 983ms, setup 4.94s, collect 6.95s, tests 4.37s, environment 27.47s, prepare 7.14s)[22m
+

@@ -6,7 +6,7 @@
 
 ## 📌 **Todos os Fixes por Categoria**
 
-### 🔐 **Autenticação (7 fixes)**
+### 🔐 **Autenticação (8 fixes)**
 | # | Data | Problema | Arquivo | Status |
 |---|------|----------|---------|--------|
 | 1 | 11/04/26 | Race condition no login | [CORREÇÕES_E_FIXES.md#fix-1](CORREÇÕES_E_FIXES.md#-fix-1-race-condition-na-autenticação-11-abril-2026) | ✅ |
@@ -16,6 +16,7 @@
 | **9** | 11/04/26 | **⛔ CAUSA RAIZ: fetch sem timeout em /auth/v1/** | [CORREÇÕES_E_FIXES.md#fix-9](CORREÇÕES_E_FIXES.md) | ✅ |
 | 11 | 12/04/26 | Hang do SDK no `getSession()` | [CORREÇÕES_E_FIXES.md#fix-11](CORREÇÕES_E_FIXES.md#-fix-11-getsession-hang--regressão-do-fix-9-12-abril-2026) | ✅ |
 | **12** | **12/04/26** | **Startup localhost blindado (anti-reincidência)** | [CORREÇÕES_E_FIXES.md#fix-12](CORREÇÕES_E_FIXES.md#-fix-12-auth-startup-localhost-blindado-contra-reincidência-12-abril-2026) | ✅ **VALIDADO** |
+| **13** | **13/04/26** | **Eliminar getSession() da init — bypass definitivo** | CORREÇÕES_E_FIXES.md#fix-13 | ✅ **DEFINITIVO** |
 
 🔧 **Arquivos afetados:**
 - `src/lib/supabase.ts` (fetchWithTimeout — timeout 10s agora aplicado a TODOS os endpoints)
@@ -95,7 +96,7 @@
 | Arquivo | Fixes | Mudanças |
 |---------|-------|----------|
 | `src/lib/supabase.ts` | #1, #6, **#9** | **Fix #9**: timeout 10s para ALL endpoints incluindo auth |
-| `src/contexts/AuthContext.tsx` | #1, #4, #6, #8, #11, **#12** | **Fix #12**: hardening de bootstrap em localhost + sanitização robusta de sessão |
+| `src/contexts/AuthContext.tsx` | #1, #4, #6, #8, #11, #12, **#13** | **Fix #13**: elimina getSession() da init — lê localStorage diretamente |
 | `src/hooks/` (8 arquivos) | #6 | Hooks Supabase adicionados ao git |
 | `src/services/` (8 arquivos) | #6 | Services adicionados ao git |
 | `src/pages/admin/settings/NotificacoesTab.tsx` | #2, #5 | handleTestSend implementado; logs [TestSend] adicionados |
@@ -138,15 +139,20 @@
 
 ## 📊 **Estatísticas**
 
-- **Total de Fixes**: 12
-- **Resolvidos**: 12 ✅
+- **Total de Fixes**: 14
+- **Resolvidos**: 14 ✅
 - **Pendentes**: 0
 - **Bloqueados**: 0
-- **Severidade Crítica**: 4 (Fix #1 auth, Fix #6 versionamento, Fix #11 lock SDK, Fix #12 anti-reincidência)
-- **Severidade Alta**: 5 (incl. Fix #7 Z-API, Fix #8 workaround)
+- **Severidade Crítica**: 5 (Fix #1 auth, Fix #6 versionamento, Fix #11 lock SDK, Fix #12 anti-reincidência, Fix #13 bypass definitivo)
+- **Severidade Alta**: 6 (incl. Fix #7 Z-API, Fix #8 workaround, Fix #14 E2E)
 - **Severidade Média**: 3
 - **Taxa de Resolução**: 100%
-- **Data Range**: 11/04/26 — 12/04/26
+- **Data Range**: 11/04/26 — 16/04/26
+
+### 🧪 **E2E (1 FIX)**
+| # | Data | Problema | Arquivo | Status |
+|---|------|----------|---------|--------|
+| **14** | **16/04/26** | **spaNavigate não re-renderizava rota** | CORREÇÕES_E_FIXES.md#fix-14 | ✅ **65/65 passando** |
 
 ---
 
@@ -162,6 +168,6 @@
 
 ---
 
-**Última atualização**: 12 Abril 2026
+**Última atualização**: 16 Abril 2026
 **Responsável**: Assistente IA + Equipe
-**Status**: ✅ 12 Fixes documentados | 🔐 Fix #12 blinda startup em localhost e valida com testes automáticos
+**Status**: ✅ 14 Fixes documentados | 🚀 65/65 testes E2E passando | App pronto para produção (Vercel)

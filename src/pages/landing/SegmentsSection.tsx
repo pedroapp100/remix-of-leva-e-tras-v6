@@ -45,7 +45,7 @@ export function SegmentsSection() {
           {segments.map((seg) => (
             <div
               key={seg.label}
-              className="flex items-center gap-3 rounded-full border border-border/40 bg-card/40 backdrop-blur-sm px-6 py-3 hover:border-primary/30 hover:bg-card/60 transition-all duration-300"
+              className="flex items-center gap-3 rounded-full border border-white/20 bg-white/10 backdrop-blur-xl px-6 py-3 hover:border-primary/50 hover:bg-white/15 hover:shadow-lg hover:shadow-primary/15 transition-all duration-300 shadow-md shadow-black/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),inset_0_0_0_1px_rgba(255,255,255,0.05)] cursor-default"
             >
               <seg.icon className="h-4 w-4 text-primary" />
               <span className="text-sm font-medium">{seg.label}</span>

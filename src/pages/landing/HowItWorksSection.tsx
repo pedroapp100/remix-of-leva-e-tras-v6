@@ -66,7 +66,7 @@ export function HowItWorksSection() {
           >
             {/* Step number circle */}
             <div className="relative mx-auto mb-5">
-              <div className="h-[88px] w-[88px] mx-auto rounded-2xl bg-gradient-to-br from-card/80 to-card/40 border border-border/20 backdrop-blur-md flex items-center justify-center group-hover:border-primary/30 group-hover:shadow-xl group-hover:shadow-primary/10 transition-all duration-500">
+              <div className="h-[88px] w-[88px] mx-auto rounded-2xl border border-white/20 bg-white/10 backdrop-blur-xl flex items-center justify-center group-hover:border-primary/50 group-hover:bg-white/15 group-hover:shadow-2xl group-hover:shadow-primary/15 transition-all duration-500 shadow-lg shadow-black/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),inset_0_0_0_1px_rgba(255,255,255,0.05)]">
                 <s.icon className="h-8 w-8 text-primary group-hover:scale-110 transition-transform duration-300" />
               </div>
               {/* Step number badge */}

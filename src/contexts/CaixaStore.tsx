@@ -127,7 +127,8 @@ export function CaixaStoreProvider({ children }: { children: ReactNode }) {
       status: "aberto",
       aberto_por_id: null,
       fechado_por_id: null,
-    }).select("id").single().then(({ data: inserted }) => {
+    }).select("id").then(({ data: rows }) => {
+      const inserted = rows?.[0];
       if (inserted) {
         setCaixas((prev) => prev.map((c) => c.id === novo.id ? { ...c, id: inserted.id } : c));
       }
@@ -239,7 +240,8 @@ export function CaixaStoreProvider({ children }: { children: ReactNode }) {
         valor,
         pertence_a: "loja" as const,
         observacao: `${solicitacaoCodigo} - ${clienteNome}`,
-      }).select("id, created_at").single().then(({ data: inserted }) => {
+      }).select("id, created_at").then(({ data: rows }) => {
+        const inserted = rows?.[0];
         const novoRecebimento: RecebimentoDinheiro = {
           id: inserted?.id ?? `rec-${Date.now()}`,
           solicitacao_codigo: solicitacaoCodigo,

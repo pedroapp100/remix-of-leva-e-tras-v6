@@ -1,8 +1,8 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import type { Rota, PagamentoSolicitacao, Solicitacao } from "@/types/database";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFormasPagamento, useBairros } from "@/hooks/useSettings";
-import { useRotasBySolicitacao, usePagamentosBySolicitacao, useCreatePagamentos } from "@/hooks/useSolicitacoes";
+import { useRotasBySolicitacao, usePagamentosBySolicitacao, useCreatePagamentos, useUpdateSolicitacao } from "@/hooks/useSolicitacoes";
 import { useClientes } from "@/hooks/useClientes";
 import { useEntregadores } from "@/hooks/useEntregadores";
 import { useConcluirComCaixa } from "@/hooks/useConcluirComCaixa";
@@ -47,13 +47,14 @@ export function AdminConciliacaoDialog({
 }: AdminConciliacaoDialogProps) {
   const { user } = useAuth();
   const { data: rotas = [] } = useRotasBySolicitacao(solicitacao.id);
-  const { data: driverPagamentos = [] } = usePagamentosBySolicitacao(solicitacao.id);
+  const { data: driverPagamentos = [], isLoading: isLoadingPagamentos } = usePagamentosBySolicitacao(solicitacao.id);
   const createPagamentosMut = useCreatePagamentos();
   const { data: clientes = [] } = useClientes();
   const { data: entregadores = [] } = useEntregadores();
   const concluirComCaixa = useConcluirComCaixa();
   const { data: faturas = [] } = useFaturas();
   const concluirFaturaMut = useConcluirFaturaEntrega();
+  const updateSolMut = useUpdateSolicitacao();
   const { data: formasPagamento = [] } = useFormasPagamento();
   const { data: bairros = [] } = useBairros();
 
@@ -83,26 +84,29 @@ export function AdminConciliacaoDialog({
     return map;
   }, [driverPagamentos, rotas]);
 
-  // Admin pagamentos state — pre-filled from driver data
-  const [pagamentosPorRota, setPagamentosPorRota] = useState<Record<string, PagamentoLinha[]>>(
-    () => {
-      const initial: Record<string, PagamentoLinha[]> = {};
-      rotas.forEach((r) => {
-        const driverPags = driverByRota[r.id] || [];
-        if (driverPags.length > 0) {
-          initial[r.id] = driverPags.map((dp) => ({
-            id: `admin-${dp.id}`,
-            forma_pagamento_id: dp.forma_pagamento_id,
-            valor: dp.valor,
-            pertence_a: dp.pertence_a ?? "operacao",
-          }));
-        } else {
-          initial[r.id] = [];
-        }
-      });
-      return initial;
-    }
-  );
+  // Admin pagamentos state — synced from driver data when queries resolve
+  const [pagamentosPorRota, setPagamentosPorRota] = useState<Record<string, PagamentoLinha[]>>({});
+  const hasSyncedRef = useRef(false);
+
+  useEffect(() => {
+    if (hasSyncedRef.current || rotas.length === 0) return;
+    hasSyncedRef.current = true;
+    const initial: Record<string, PagamentoLinha[]> = {};
+    rotas.forEach((r) => {
+      const driverPags = driverByRota[r.id] || [];
+      if (driverPags.length > 0) {
+        initial[r.id] = driverPags.map((dp) => ({
+          id: `admin-${dp.id}`,
+          forma_pagamento_id: dp.forma_pagamento_id,
+          valor: dp.valor,
+          pertence_a: dp.pertence_a ?? "operacao",
+        }));
+      } else {
+        initial[r.id] = [];
+      }
+    });
+    setPagamentosPorRota(initial);
+  }, [rotas, driverByRota]);
 
   const addPagamento = (rotaId: string) => {
     setPagamentosPorRota((prev) => ({
@@ -244,6 +248,18 @@ export function AdminConciliacaoDialog({
       }
     }
 
+    // Persist admin_conciliada_at synchronously here — after all fatura mutations and
+    // before onConfirm fires — so cache invalidations from concluirFaturaMut cannot
+    // trigger a refetch that arrives before this write completes (race condition fix).
+    try {
+      await updateSolMut.mutateAsync({
+        id: solicitacao.id,
+        patch: { admin_conciliada_at: new Date().toISOString() },
+      });
+    } catch {
+      // Non-fatal: fatura was created successfully.
+      // The solicitacoes cache will self-correct on the next refetch.
+    }
     onConfirm();
     onOpenChange(false);
     toast.success("Conciliação conferida e fatura gerada! ✅");
@@ -307,7 +323,7 @@ export function AdminConciliacaoDialog({
               </Alert>
             )}
 
-            {driverPagamentos.length === 0 && (
+            {!isLoadingPagamentos && driverPagamentos.length === 0 && (
               <Alert className="border-amber-500/30 bg-amber-500/5">
                 <AlertTriangle className="h-4 w-4 text-amber-500" />
                 <AlertDescription className="text-xs">

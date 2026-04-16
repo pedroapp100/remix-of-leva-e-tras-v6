@@ -42,10 +42,8 @@ const features = [
 
 export function FeaturesSection() {
   return (
-    <section id="funcionalidades" className="relative container mx-auto px-4 sm:px-6 py-20 sm:py-28">
-      {/* Ambient glow */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[500px] rounded-full blur-[180px] pointer-events-none opacity-[0.06]" style={{ background: "hsl(var(--primary))" }} />
-
+    <section id="funcionalidades" className="relative z-10 w-full bg-slate-100 py-20 sm:py-28">
+      <div className="relative container mx-auto px-4 sm:px-6">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
@@ -53,15 +51,15 @@ export function FeaturesSection() {
         transition={{ duration: 0.6 }}
         className="relative text-center mb-16"
       >
-        <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/8 backdrop-blur-md px-4 py-1.5 mb-6">
+        <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 backdrop-blur-md px-4 py-1.5 mb-6">
           <span className="text-[10px] font-semibold tracking-[0.15em] uppercase text-primary">
             Para lojistas
           </span>
         </div>
-        <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
+        <h2 className="text-3xl sm:text-4xl font-bold tracking-tight" style={{ color: '#141729' }}>
           Tudo que sua loja precisa
         </h2>
-        <p className="mt-4 text-sm sm:text-base text-muted-foreground max-w-lg mx-auto leading-relaxed">
+        <p className="mt-4 text-sm sm:text-base text-slate-500 max-w-lg mx-auto leading-relaxed">
           Ferramentas pensadas para o dia a dia do varejo. Solicite, acompanhe e controle suas entregas em um só lugar.
         </p>
         <div className="mx-auto mt-8 w-20 h-[2px] bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
@@ -75,7 +73,7 @@ export function FeaturesSection() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-40px" }}
             transition={{ delay: i * 0.08, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-            className="group relative rounded-2xl border border-border/15 bg-card/15 backdrop-blur-md p-7 sm:p-8 overflow-hidden transition-all duration-500 hover:border-primary/25 hover:bg-card/40 hover:shadow-2xl hover:shadow-primary/5 hover:-translate-y-0.5"
+            className="group relative rounded-2xl border border-slate-200 bg-white p-7 sm:p-8 overflow-hidden transition-all duration-500 hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5 hover:-translate-y-0.5 shadow-sm"
           >
             {/* Corner glow on hover */}
             <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full blur-[60px] bg-primary/0 group-hover:bg-primary/8 transition-all duration-700 pointer-events-none" />
@@ -87,11 +85,12 @@ export function FeaturesSection() {
               <div className={`mb-5 inline-flex rounded-xl bg-gradient-to-br ${feat.gradient} p-3.5 text-primary border border-primary/10 group-hover:border-primary/25 group-hover:bg-primary group-hover:text-primary-foreground transition-all duration-500 group-hover:shadow-xl group-hover:shadow-primary/20 group-hover:scale-110`}>
                 <feat.icon className="h-5 w-5" />
               </div>
-              <h3 className="text-[15px] font-semibold tracking-tight">{feat.title}</h3>
-              <p className="mt-2.5 text-[13px] text-muted-foreground/80 leading-relaxed">{feat.desc}</p>
+              <h3 className="text-[15px] font-semibold tracking-tight" style={{ color: '#141729' }}>{feat.title}</h3>
+              <p className="mt-2.5 text-[13px] text-slate-500 leading-relaxed">{feat.desc}</p>
             </div>
           </motion.div>
         ))}
+      </div>
       </div>
     </section>
   );

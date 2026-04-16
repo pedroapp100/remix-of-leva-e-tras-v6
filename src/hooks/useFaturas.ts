@@ -165,6 +165,8 @@ export function useConcluirFaturaEntrega() {
       }
       qc.invalidateQueries({ queryKey: ["lancamentos", "cliente", params.p_cliente_id] });
       qc.invalidateQueries({ queryKey: ["saldo_pre_pago", params.p_cliente_id] });
+      // Refresh solicitacoes table so admin_conciliada_at is always up-to-date after fatura creation
+      qc.invalidateQueries({ queryKey: ["solicitacoes"] });
     },
   });
 }

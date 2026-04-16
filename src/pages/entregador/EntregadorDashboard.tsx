@@ -7,8 +7,7 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency, formatDateBR } from "@/lib/formatters";
-import { useSolicitacoes } from "@/hooks/useSolicitacoes";
-import { useClientes } from "@/hooks/useClientes";
+import { useSolicitacoesByEntregador } from "@/hooks/useSolicitacoes";
 import { useComissao } from "@/hooks/useComissao";
 import { useEntregadorId } from "@/hooks/useEntregadorId";
 
@@ -20,9 +19,7 @@ const fadeUp = {
 
 export default function EntregadorDashboard() {
   const { entregadorId: ENTREGADOR_ID } = useEntregadorId();
-  const { data: solicitacoes = [] } = useSolicitacoes();
-  const { data: clientes = [] } = useClientes();
-  const getClienteNome = (id: string) => clientes.find((c) => c.id === id)?.nome ?? id;
+  const { data: solicitacoes = [] } = useSolicitacoesByEntregador(ENTREGADOR_ID ?? "");
   const comissaoData = useComissao(ENTREGADOR_ID);
 
   const { metrics, recentEntregas } = useMemo(() => {
@@ -31,7 +28,6 @@ export default function EntregadorDashboard() {
     const concluidas: typeof solicitacoes = [];
 
     for (const s of solicitacoes) {
-      if (s.entregador_id !== ENTREGADOR_ID) continue;
       if (s.status === "em_andamento" || s.status === "aceita") corridasAtivas++;
       if (s.status === "concluida") {
         if (s.data_conclusao?.slice(0, 10) === today) concluidasHoje++;
@@ -89,7 +85,7 @@ export default function EntregadorDashboard() {
                   >
                     <div className="min-w-0">
                       <p className="text-sm font-medium">{s.codigo}</p>
-                      <p className="text-xs text-muted-foreground">{getClienteNome(s.cliente_id)} • {formatDateBR(s.data_conclusao!)}</p>
+                      <p className="text-xs text-muted-foreground">{s.cliente_nome ?? "—"} • {formatDateBR(s.data_conclusao!)}</p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <StatusBadge status={s.status} />

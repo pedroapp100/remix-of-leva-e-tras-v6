@@ -1,10 +1,9 @@
-import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   ClipboardList, FileText, DollarSign, Users, Truck, Settings, ShieldCheck,
-  ChevronDown, ChevronUp, X, Search, Filter,
+  ChevronDown, ChevronUp, X, Search, Filter, Activity, CalendarDays, UserCheck,
 } from "lucide-react";
 import { PageContainer } from "@/components/shared/PageContainer";
 import { ExportDropdown } from "@/components/shared/ExportDropdown";
@@ -12,6 +11,8 @@ import { DatePickerWithRange } from "@/components/shared/DatePickerWithRange";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -19,6 +20,8 @@ import {
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { supabase } from "@/lib/supabase";
 import { exportLogsCSV, exportLogsPDF } from "@/lib/exportLogs";
+import { useQueryClient } from "@tanstack/react-query";
+import { useLogsQuery, useLogsMetrics, type LogsFilter } from "@/hooks/useLogsQuery";
 import type { LogCategoria, LogEntry } from "@/types/database";
 import type { DateRange } from "react-day-picker";
 
@@ -32,71 +35,111 @@ const CATEGORIA_CONFIG: Record<LogCategoria, { label: string; icon: React.Elemen
   autenticacao:  { label: "Autenticação", icon: ShieldCheck,   color: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300" },
 };
 
-const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+function MetricCard({
+  label, value, icon: Icon, loading,
+}: { label: string; value: number; icon: React.ElementType; loading: boolean }) {
+  return (
+    <Card>
+      <CardContent className="flex items-center gap-4 p-4">
+        <div className="rounded-lg bg-primary/10 p-2">
+          <Icon className="h-5 w-5 text-primary" />
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">{label}</p>
+          {loading
+            ? <Skeleton className="h-6 w-16 mt-1" />
+            : <p className="text-xl font-bold tabular-nums">{value.toLocaleString("pt-BR")}</p>
+          }
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function useDebounce<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState<T>(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(t);
+  }, [value, delay]);
+  return debounced;
+}
 
 export default function LogsPage() {
-  const { data: logs = [], isError, error } = useQuery<LogEntry[]>({
-    queryKey: ["logs_auditoria"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("logs_auditoria")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(1000);
-      if (error) throw new Error(error.message);
-      return (data ?? []).map((r) => ({
-        id: r.id,
-        timestamp: r.created_at,
-        usuario_id: r.usuario_id ?? "system",
-        usuario_nome: r.usuario_nome,
-        categoria: r.categoria as LogCategoria,
-        acao: r.acao,
-        entidade_id: r.entidade_id,
-        descricao: r.descricao,
-        detalhes: r.detalhes as Record<string, unknown> | null,
-      }));
-    },
-    refetchInterval: 30_000,
-  });
-  const [searchTerm, setSearchTerm] = useState("");
+  const queryClient = useQueryClient();
+
+  const [searchInput, setSearchInput] = useState("");
   const [categoriaFilter, setCategoriaFilter] = useState<string>("all");
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
 
-  const hasFilters = searchTerm || categoriaFilter !== "all" || dateRange?.from;
+  // Debounce 300ms — query só dispara após parar de digitar
+  const debouncedSearch = useDebounce(searchInput, 300);
 
-  const filtered = useMemo(() => {
-    return logs.filter((log) => {
-      if (searchTerm) {
-        const q = searchTerm.toLowerCase();
-        if (
-          !log.descricao.toLowerCase().includes(q) &&
-          !log.entidade_id.toLowerCase().includes(q) &&
-          !log.usuario_nome.toLowerCase().includes(q) &&
-          !log.acao.toLowerCase().includes(q)
-        ) return false;
-      }
-      if (categoriaFilter !== "all" && log.categoria !== categoriaFilter) return false;
-      if (dateRange?.from) {
-        const ts = new Date(log.timestamp);
-        if (ts < dateRange.from) return false;
-        if (dateRange.to && ts > new Date(dateRange.to.getTime() + 86400000)) return false;
-      }
-      return true;
-    });
-  }, [logs, searchTerm, categoriaFilter, dateRange]);
+  const filter: LogsFilter = useMemo(() => ({
+    search: debouncedSearch || undefined,
+    categoria: (categoriaFilter !== "all" ? categoriaFilter as LogCategoria : "all"),
+    from: dateRange?.from,
+    to: dateRange?.to,
+  }), [debouncedSearch, categoriaFilter, dateRange]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
+  const {
+    data,
+    isError,
+    error,
+    isFetchingNextPage,
+    fetchNextPage,
+    hasNextPage,
+    isFetching,
+  } = useLogsQuery(filter);
 
-  const clearFilters = () => {
-    setSearchTerm("");
+  const { data: metrics, isLoading: metricsLoading } = useLogsMetrics();
+
+  const allLogs: LogEntry[] = useMemo(
+    () => data?.pages.flatMap((p) => p.data) ?? [],
+    [data],
+  );
+
+  // Realtime: novo log aparece instantaneamente sem polling
+  useEffect(() => {
+    const channel = supabase
+      .channel("logs_auditoria_realtime")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "logs_auditoria" },
+        () => {
+          void queryClient.invalidateQueries({ queryKey: ["logs_auditoria"] });
+          void queryClient.invalidateQueries({ queryKey: ["logs_auditoria_metrics"] });
+        },
+      )
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [queryClient]);
+
+  // Infinite scroll via IntersectionObserver
+  useEffect(() => {
+    const sentinel = loadMoreRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
+          void fetchNextPage();
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  const hasFilters = searchInput || categoriaFilter !== "all" || dateRange?.from;
+
+  const clearFilters = useCallback(() => {
+    setSearchInput("");
     setCategoriaFilter("all");
     setDateRange(undefined);
-    setPage(1);
-  };
+  }, []);
 
   const renderDiff = (detalhes: Record<string, unknown> | null) => {
     if (!detalhes) return <span className="text-muted-foreground text-xs">Sem detalhes</span>;
@@ -133,8 +176,15 @@ export default function LogsPage() {
     <PageContainer
       title="Logs de Auditoria"
       subtitle="Rastreabilidade completa de ações no sistema"
-      actions={<ExportDropdown onExportPDF={() => exportLogsPDF(filtered)} onExportExcel={() => exportLogsCSV(filtered)} />}
+      actions={<ExportDropdown onExportPDF={() => exportLogsPDF(allLogs)} onExportExcel={() => exportLogsCSV(allLogs)} />}
     >
+      {/* Metric Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <MetricCard label="Total de Registros" value={metrics?.total ?? 0} icon={Activity} loading={metricsLoading} />
+        <MetricCard label="Logs Hoje" value={metrics?.hoje ?? 0} icon={CalendarDays} loading={metricsLoading} />
+        <MetricCard label="Usuários Ativos (7d)" value={metrics?.usuariosAtivos7d ?? 0} icon={UserCheck} loading={metricsLoading} />
+      </div>
+
       {isError && (
         <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           Falha ao carregar logs de auditoria: {error instanceof Error ? error.message : "erro desconhecido"}
@@ -146,14 +196,14 @@ export default function LogsPage() {
         <div className="relative flex-1 min-w-0 w-full sm:min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Buscar por descrição, ID, usuário..."
-            value={searchTerm}
-            onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
+            placeholder="Buscar por descrição, usuário, ação..."
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             className="pl-9"
           />
         </div>
         <div className="flex gap-2 w-full sm:w-auto flex-wrap">
-          <Select value={categoriaFilter} onValueChange={(v) => { setCategoriaFilter(v); setPage(1); }}>
+          <Select value={categoriaFilter} onValueChange={setCategoriaFilter}>
             <SelectTrigger className="w-full sm:w-[180px]">
               <Filter className="h-4 w-4 mr-2 text-muted-foreground" />
               <SelectValue placeholder="Categoria" />
@@ -165,7 +215,7 @@ export default function LogsPage() {
               ))}
             </SelectContent>
           </Select>
-          <DatePickerWithRange value={dateRange} onChange={(d) => { setDateRange(d); setPage(1); }} />
+          <DatePickerWithRange value={dateRange} onChange={setDateRange} />
         </div>
         {hasFilters && (
           <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1 text-muted-foreground">
@@ -176,12 +226,12 @@ export default function LogsPage() {
 
       {/* Mobile Cards */}
       <div className="md:hidden space-y-3">
-        {paginated.length === 0 ? (
+        {allLogs.length === 0 && !isFetching ? (
           <div className="text-center py-12 text-muted-foreground rounded-xl border bg-card">
             Nenhum log encontrado.
           </div>
         ) : (
-          paginated.map((log) => {
+          allLogs.map((log) => {
             const cfg = CATEGORIA_CONFIG[log.categoria];
             const Icon = cfg.icon;
             const isOpen = expandedId === log.id;
@@ -236,14 +286,14 @@ export default function LogsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {paginated.length === 0 ? (
+            {allLogs.length === 0 && !isFetching ? (
               <TableRow>
                 <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
                   Nenhum log encontrado.
                 </TableCell>
               </TableRow>
             ) : (
-              paginated.map((log) => {
+              allLogs.map((log) => {
                 const cfg = CATEGORIA_CONFIG[log.categoria];
                 const Icon = cfg.icon;
                 const isOpen = expandedId === log.id;
@@ -289,37 +339,34 @@ export default function LogsPage() {
                 );
               })
             )}
+            {isFetching && allLogs.length === 0 && Array.from({ length: 8 }).map((_, i) => (
+              <TableRow key={`skeleton-${i}`}>
+                <TableCell><Skeleton className="h-4 w-4 mx-auto" /></TableCell>
+                <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                <TableCell><Skeleton className="h-5 w-20 rounded-full" /></TableCell>
+                <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                <TableCell><Skeleton className="h-4 w-36" /></TableCell>
+                <TableCell><Skeleton className="h-4 w-48" /></TableCell>
+              </TableRow>
+            ))}
           </TableBody>
         </Table>
       </div>
 
-      {/* Pagination */}
-      <div className="rounded-xl border bg-card">
-        <div className="flex flex-col sm:flex-row items-center justify-between px-4 py-3 gap-3">
+      {/* Load more sentinel */}
+      <div ref={loadMoreRef} className="flex justify-center py-4">
+        {isFetchingNextPage && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span>Exibindo</span>
-            <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(1); }}>
-              <SelectTrigger className="w-[70px] h-8">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PAGE_SIZE_OPTIONS.map((s) => (
-                  <SelectItem key={s} value={String(s)}>{s}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <span>de {filtered.length}</span>
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            Carregando mais...
           </div>
-          <div className="flex items-center gap-1">
-            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
-              Anterior
-            </Button>
-            <span className="text-sm px-2 text-muted-foreground">{page}/{totalPages}</span>
-            <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
-              Próximo
-            </Button>
-          </div>
-        </div>
+        )}
+        {!hasNextPage && allLogs.length > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {allLogs.length.toLocaleString("pt-BR")} registro{allLogs.length !== 1 ? "s" : ""} exibido{allLogs.length !== 1 ? "s" : ""}
+          </p>
+        )}
       </div>
     </PageContainer>
   );

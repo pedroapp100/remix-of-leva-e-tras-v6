@@ -120,6 +120,9 @@ export interface Cliente {
   numero_de_entregas_para_faturamento?: number | null;
   dia_da_semana_faturamento?: DiaSemana | null;
   dia_do_mes_faturamento?: number | null;
+  prazo_vencimento_dias?: number;
+  logo_url?: string | null;
+  exibir_logo_landing?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -197,12 +200,15 @@ export interface Solicitacao {
   codigo: string;
   cliente_id: string;
   entregador_id?: string | null;
+  entregador_nome?: string | null;
+  cliente_nome?: string | null;
   status: StatusSolicitacao;
   tipo_operacao: TipoOperacao;
   ponto_coleta: string;
   data_solicitacao: string;
   data_inicio?: string | null;
   data_conclusao?: string | null;
+  admin_conciliada_at?: string | null;
   valor_total_taxas?: number | null;
   valor_total_repasse?: number | null;
   justificativa?: string | null;

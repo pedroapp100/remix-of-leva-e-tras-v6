@@ -15,15 +15,13 @@ import type { StatusSolicitacao, Solicitacao } from "@/types/database";
 import { MapPin, Calendar, Eye, X } from "lucide-react";
 import { ViewSolicitacaoDialog } from "@/pages/admin/solicitacoes/ViewSolicitacaoDialog";
 import { useSolicitacoesByCliente } from "@/hooks/useSolicitacoes";
-import { useEntregadores } from "@/hooks/useEntregadores";
 import { TipoOperacaoBadge } from "@/components/shared/TipoOperacaoBadge";
 import { useClienteId } from "@/hooks/useClienteId";
 
 export default function MinhasSolicitacoesPage() {
   const { clienteId: CLIENTE_ID } = useClienteId();
   const { data: solicitacoes = [] } = useSolicitacoesByCliente(CLIENTE_ID ?? "");
-  const { data: entregadores = [] } = useEntregadores();
-  const getEntregadorNome = (id: string | null | undefined) => !id ? "—" : (entregadores.find((e) => e.id === id)?.nome ?? id);
+
   const STATUS_TABS = [
     { value: "todas", label: "Todas" },
     { value: "pendente", label: "Pendentes" },
@@ -66,7 +64,7 @@ export default function MinhasSolicitacoesPage() {
     { key: "ponto_coleta", header: "Coleta", cell: (s) => <span className="text-sm text-muted-foreground truncate max-w-[200px] block">{s.ponto_coleta}</span> },
     { key: "data_solicitacao", header: "Data", sortable: true, cell: (s) => <span className="text-sm">{formatDateBR(s.data_solicitacao)}</span> },
     { key: "tipo_operacao", header: "Tipo", cell: (s) => <TipoOperacaoBadge tipoOperacao={s.tipo_operacao} /> },
-    { key: "entregador_id", header: "Entregador", cell: (s) => <span className="text-sm text-muted-foreground">{getEntregadorNome(s.entregador_id)}</span> },
+    { key: "entregador_id", header: "Entregador", cell: (s) => <span className="text-sm text-muted-foreground">{s.entregador_nome ?? "—"}</span> },
     { key: "valor_total_taxas", header: "Valor", sortable: true, cell: (s) => s.valor_total_taxas != null ? <span className="font-semibold tabular-nums">{formatCurrency(s.valor_total_taxas)}</span> : <span className="text-muted-foreground">—</span> },
     { key: "status", header: "Status", cell: (s) => <StatusBadge status={s.status} /> },
     {
@@ -110,7 +108,7 @@ export default function MinhasSolicitacoesPage() {
             <span className="text-base font-bold tabular-nums text-foreground">{formatCurrency(s.valor_total_taxas)}</span>
           )}
           {s.entregador_id && (
-            <p className="text-xs text-muted-foreground mt-1">{getEntregadorNome(s.entregador_id)}</p>
+            <p className="text-xs text-muted-foreground mt-1">{s.entregador_nome ?? "—"}</p>
           )}
         </div>
       </div>

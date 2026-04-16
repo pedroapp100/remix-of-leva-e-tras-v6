@@ -11,6 +11,7 @@ const mockConcluirFaturaMutateAsync = vi.fn();
 vi.mock("@/hooks/useSolicitacoes", () => ({
   useSolicitacoes: vi.fn(() => ({ data: [] })),
   useUpdateSolicitacao: vi.fn(() => ({ mutateAsync: mockMutateAsync })),
+  useUpdateRotasBulk: vi.fn(() => ({ mutateAsync: vi.fn(() => Promise.resolve()) })),
 }));
 
 vi.mock("@/hooks/useClientes", () => ({

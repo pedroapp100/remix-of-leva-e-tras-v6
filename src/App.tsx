@@ -1,5 +1,5 @@
-import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
-import { QueryClient, QueryClientProvider, type Query } from "@tanstack/react-query";
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
+import { QueryClient, QueryCache, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes, Navigate, useLocation } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
@@ -40,6 +40,7 @@ const FinanceiroPage = lazy(() => import("./pages/admin/FinanceiroPage"));
 const RelatoriosPage = lazy(() => import("./pages/admin/RelatoriosPage"));
 const LogsPage = lazy(() => import("./pages/admin/LogsPage"));
 const SettingsPage = lazy(() => import("./pages/admin/SettingsPage"));
+const NotificacoesPage = lazy(() => import("./pages/admin/NotificacoesPage"));
 
 const ClienteDashboard = lazy(() => import("./pages/cliente/ClienteDashboard"));
 const MinhasSolicitacoesPage = lazy(() => import("./pages/cliente/MinhasSolicitacoesPage"));
@@ -58,6 +59,13 @@ const EntregadorCaixaPage = lazy(() => import("./pages/entregador/EntregadorCaix
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient({
+  queryCache: new QueryCache({
+    onError: (error, query) => {
+      // Queries com meta.silent não exibem toast (ex: background checks, polling silencioso)
+      if (query.meta?.silent) return;
+      toast.error((error as Error).message || "Erro ao carregar dados");
+    },
+  }),
   defaultOptions: {
     queries: {
       retry: 2,
@@ -87,6 +95,27 @@ function PageBoundary({ children }: { children: ReactNode }) {
   );
 }
 
+/** Limpa o cache do React Query quando o usuário autenticado muda (logout ou troca de conta) */
+function CacheSentinel() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const prevUserIdRef = useRef<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    // undefined = boot inicial — não limpa o cache
+    if (prevUserIdRef.current === undefined) {
+      prevUserIdRef.current = user?.id ?? null;
+      return;
+    }
+    if (prevUserIdRef.current !== (user?.id ?? null)) {
+      queryClient.clear();
+    }
+    prevUserIdRef.current = user?.id ?? null;
+  }, [user?.id, queryClient]);
+
+  return null;
+}
+
 function RootRedirect() {
   const { user, role, isReady } = useAuth();
   if (!isReady) return <RouteFallback />;
@@ -112,6 +141,7 @@ const App = () => (
         <Sonner />
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <AuthProvider>
+              <CacheSentinel />
               <ErrorBoundary>
                 <Suspense fallback={<RouteFallback />}>
                   <RouteAnnouncer />
@@ -135,6 +165,7 @@ const App = () => (
                     <Route path="relatorios" element={<PageBoundary><RelatoriosPage /></PageBoundary>} />
                     <Route path="logs" element={<PageBoundary><LogsPage /></PageBoundary>} />
                     <Route path="configuracoes" element={<PageBoundary><SettingsPage /></PageBoundary>} />
+                    <Route path="notificacoes" element={<PageBoundary><NotificacoesPage /></PageBoundary>} />
                   </Route>
 
                   {/* Cliente */}

@@ -1,0 +1,10 @@
+﻿ALTER TABLE public.clientes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "authenticated_select_clientes" ON public.clientes;
+CREATE POLICY "authenticated_select_clientes" ON public.clientes FOR SELECT TO authenticated USING (true);
+ALTER TABLE public.entregadores ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "authenticated_select_entregadores" ON public.entregadores;
+CREATE POLICY "authenticated_select_entregadores" ON public.entregadores FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "admin_all_clientes" ON public.clientes;
+CREATE POLICY "admin_all_clientes" ON public.clientes FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
+DROP POLICY IF EXISTS "admin_all_entregadores" ON public.entregadores;
+CREATE POLICY "admin_all_entregadores" ON public.entregadores FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());

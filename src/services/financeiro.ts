@@ -36,10 +36,10 @@ export async function createDespesa(input: DespesaInsert): Promise<DespesaRow> {
   const { data, error } = await supabase
     .from("despesas")
     .insert(input)
-    .select()
-    .single();
+    .select();
   if (error) throw new Error(error.message);
-  return data as DespesaRow;
+  if (!data || data.length === 0) throw new Error("Falha ao criar despesa.");
+  return data[0] as DespesaRow;
 }
 
 export async function updateDespesa(
@@ -50,10 +50,10 @@ export async function updateDespesa(
     .from("despesas")
     .update(patch)
     .eq("id", id)
-    .select()
-    .single();
+    .select();
   if (error) throw new Error(error.message);
-  return data as DespesaRow;
+  if (!data || data.length === 0) throw new Error("Despesa não encontrada ou sem permissão para atualizar.");
+  return data[0] as DespesaRow;
 }
 
 export async function deleteDespesa(id: string): Promise<void> {
@@ -79,10 +79,10 @@ export async function createReceita(input: ReceitaInsert): Promise<ReceitaRow> {
   const { data, error } = await supabase
     .from("receitas")
     .insert(input)
-    .select()
-    .single();
+    .select();
   if (error) throw new Error(error.message);
-  return data as ReceitaRow;
+  if (!data || data.length === 0) throw new Error("Falha ao criar receita.");
+  return data[0] as ReceitaRow;
 }
 
 export async function updateReceita(
@@ -93,10 +93,10 @@ export async function updateReceita(
     .from("receitas")
     .update(patch)
     .eq("id", id)
-    .select()
-    .single();
+    .select();
   if (error) throw new Error(error.message);
-  return data as ReceitaRow;
+  if (!data || data.length === 0) throw new Error("Receita não encontrada ou sem permissão para atualizar.");
+  return data[0] as ReceitaRow;
 }
 
 export async function deleteReceita(id: string): Promise<void> {
@@ -134,10 +134,10 @@ export async function createRecarga(input: RecargaInsert): Promise<RecargaRow> {
   const { data, error } = await supabase
     .from("recargas_pre_pago")
     .insert(input)
-    .select()
-    .single();
+    .select();
   if (error) throw new Error(error.message);
-  return data as RecargaRow;
+  if (!data || data.length === 0) throw new Error("Falha ao criar recarga.");
+  return data[0] as RecargaRow;
 }
 
 // ── Despesas Recorrentes ──────────────────────────────────────────────────────
@@ -157,10 +157,10 @@ export async function createDespesaRecorrente(
   const { data, error } = await supabase
     .from("despesas_recorrentes")
     .insert(input)
-    .select()
-    .single();
+    .select();
   if (error) throw new Error(error.message);
-  return data as DespesaRecorrenteRow;
+  if (!data || data.length === 0) throw new Error("Falha ao criar despesa recorrente.");
+  return data[0] as DespesaRecorrenteRow;
 }
 
 export async function updateDespesaRecorrente(
@@ -171,10 +171,10 @@ export async function updateDespesaRecorrente(
     .from("despesas_recorrentes")
     .update(patch)
     .eq("id", id)
-    .select()
-    .single();
+    .select();
   if (error) throw new Error(error.message);
-  return data as DespesaRecorrenteRow;
+  if (!data || data.length === 0) throw new Error("Despesa recorrente não encontrada ou sem permissão para atualizar.");
+  return data[0] as DespesaRecorrenteRow;
 }
 
 export async function deleteDespesaRecorrente(id: string): Promise<void> {

@@ -42,34 +42,68 @@ interface ProfileResult {
   reason: "ok" | "db_error" | "inactive" | "invalid_role" | "not_found";
 }
 
-/** Mapeia um profile do banco para o AuthUser usado pela aplicação */
-async function profileToAuthUser(userId: string, email: string): Promise<ProfileResult> {
-  const [profileResult, cargosResult] = await Promise.all([
-    supabase.from("profiles").select("id, nome, role, cargo_id, avatar, ativo").eq("id", userId).single(),
-    supabase.from("cargos").select("id, name, description, permissions"),
-  ]);
-
-  const { data: profile, error } = profileResult;
-  if (error) return { user: null, reason: "db_error" };
-  if (!profile) return { user: null, reason: "not_found" };
-  if (!profile.ativo) return { user: null, reason: "inactive" };
-  if (!isRole(profile.role)) return { user: null, reason: "invalid_role" };
-
-  const cargos = cargosResult.data ?? [];
-
-  return {
-    user: {
-      id: profile.id,
-      email,
-      nome: profile.nome,
-      role: profile.role,
-      cargo_id: profile.cargo_id ?? undefined,
-      avatarUrl: profile.avatar ?? undefined,
-      permissions: getPermissionsForRole(profile.role, profile.cargo_id ?? undefined, cargos),
-    },
-    reason: "ok",
+/**
+ * Carrega profile usando fetch direto (sem SDK) — para o bootstrap inicial.
+ * Evita completamente o auth layer do SDK que pode travar em token refresh.
+ * Retorna null se o token está expirado (401) — onAuthStateChange corrigirá depois.
+ */
+async function profileToAuthUserDirect(userId: string, email: string, accessToken: string): Promise<ProfileResult> {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+  const headers = {
+    "Authorization": `Bearer ${accessToken}`,
+    "apikey": supabaseAnonKey,
+    "Content-Type": "application/json",
+    "Accept": "application/json",
   };
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+  try {
+    const [profileRes, cargosRes] = await Promise.all([
+      fetch(
+        `${supabaseUrl}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=id,nome,role,cargo_id,avatar,ativo`,
+        { headers, signal: controller.signal }
+      ),
+      fetch(`${supabaseUrl}/rest/v1/cargos?select=id,name,description,permissions`, {
+        headers, signal: controller.signal,
+      }),
+    ]);
+
+    if (profileRes.status === 401 || cargosRes.status === 401) {
+      // Token expirado — SDK vai fazer refresh via onAuthStateChange
+      return { user: null, reason: "db_error" };
+    }
+
+    if (!profileRes.ok) return { user: null, reason: "db_error" };
+
+    const profiles = await profileRes.json() as Array<{ id: string; nome: string; role: string; cargo_id: string | null; avatar: string | null; ativo: boolean }>;
+    const profile = profiles[0];
+    if (!profile) return { user: null, reason: "not_found" };
+    if (!profile.ativo) return { user: null, reason: "inactive" };
+    if (!isRole(profile.role)) return { user: null, reason: "invalid_role" };
+
+    const cargos = cargosRes.ok ? (await cargosRes.json() as Array<{ id: string; name: string; description: string; permissions: string[] }>) : [];
+
+    return {
+      user: {
+        id: profile.id,
+        email,
+        nome: profile.nome,
+        role: profile.role,
+        cargo_id: profile.cargo_id ?? undefined,
+        avatarUrl: profile.avatar ?? undefined,
+        permissions: getPermissionsForRole(profile.role, profile.cargo_id ?? undefined, cargos),
+      },
+      reason: "ok",
+    };
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
+
+
 
 // ── Context type ──
 interface AuthContextType {
@@ -118,13 +152,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // ── Inicialização: verificar sessão existente e subscrever mudanças ──
+  // ── Inicialização: restaurar sessão SEM depender de getSession() do SDK ──
+  //
+  // FIX #13 — SOLUÇÃO DEFINITIVA para getSession() hang recorrente.
+  //
+  // PROBLEMA RAIZ: O SDK Supabase v2 usa um lock interno (_acquireInitializeLock)
+  // durante getSession(). Se o token refresh trava (rede lenta, rate limit, token
+  // corrupto), a Promise de getSession() fica pendurada indefinidamente — mesmo com
+  // fetchWithTimeout e Promise.race. Timeouts, reloads e cleanup de localStorage
+  // nunca resolveram 100% porque o lock é interno ao SDK.
+  //
+  // SOLUÇÃO: NÃO chamar getSession() na inicialização. Em vez disso:
+  //   1. Ler a sessão do localStorage diretamente (0ms, zero risco de hang)
+  //   2. Carregar o profile via query normal ao Supabase (usa anon key + token)
+  //   3. Marcar isReady=true assim que o profile carrega (~200ms)
+  //   4. Deixar o SDK cuidar do token em background via onAuthStateChange
+  //
+  // Se a sessão estiver expirada/inválida, o SDK eventualmente emite SIGNED_OUT
+  // e o usuário é deslogado normalmente — sem hang, sem reload, sem erro visível.
   useEffect(() => {
     let mounted = true;
     let initialized = false;
 
     const AUTH_STORAGE_KEY = "lt-auth-session";
-    const RELOAD_GUARD_KEY = "lt-auth-timeout-reloaded-once";
     const LEGACY_STORAGE_KEY = (() => {
       try {
         const host = new URL(import.meta.env.VITE_SUPABASE_URL as string).host;
@@ -135,12 +185,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     })();
 
-    /**
-     * Marca o sistema como pronto (isReady=true).
-     * Chamado exatamente UMA VEZ — primeira vez que qualquer uma dessas coisas completa:
-     * 1. getSession() retorna (sucesso ou erro)
-     * 2. Safety timer de 15s expira (fallback se tudo falhar)
-     */
     const completeInitialization = () => {
       if (!initialized && mounted) {
         initialized = true;
@@ -148,228 +192,119 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    // === TIMEOUT DE SEGURANÇA ===
-    // Último recurso. O timeout real está no fetch layer (10s para auth).
-    // Este timer só dispara se algo totalmente inesperado acontecer.
+    const clearStoredSession = () => {
+      try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch { /**/ }
+      try { if (LEGACY_STORAGE_KEY) localStorage.removeItem(LEGACY_STORAGE_KEY); } catch { /**/ }
+    };
+
+    // Safety timeout — último recurso se tudo falhar (profile query + onAuthStateChange)
     const safetyTimer = setTimeout(() => {
       if (!initialized) {
-        console.warn("[Auth] Safety timeout (12s) — fallback absoluto.");
-        try {
-          localStorage.removeItem(AUTH_STORAGE_KEY);
-          if (LEGACY_STORAGE_KEY) localStorage.removeItem(LEGACY_STORAGE_KEY);
-        } catch { /**/ }
+        console.warn("[Auth] Safety timeout (6s) — forçando inicialização.");
         completeInitialization();
       }
-    }, 12000);
+    }, 6000);
 
-    // === PRÉ-CHECK: LIMPAR SESSÃO EXPIRADA ANTES DE CHAMAR getSession ===
-    // O SDK v2 detecta access token expirado e tenta refresh de rede.
-    // Se a rede está lenta/Supabase pausado, esse refresh trava até 8s (timeout).
-    // Limpeza antecipada evita toda essa espera: sem token em disco = sem refresh.
-    //
-    // ⛔ FIX #12 — CHAVE CORRETA: O cliente Supabase em supabase.ts usa storageKey: "lt-auth-session".
-    // Antes estava derivando a chave como `sb-${projectRef}-auth-token` (chave padrão do Supabase),
-    // mas como configuramos uma chave customizada, o token NUNCA era encontrado aqui,
-    // fazendo esta proteção nunca funcionar — toda sessão expirada causava o timeout de 8s.
-    const clearExpiredLocalSession = (): boolean => {
+    // === FAST INIT: Ler sessão do localStorage diretamente ===
+    // Zero dependência no SDK. Sem lock, sem rede, sem hang.
+    const parseStoredSession = (): { userId: string; email: string; accessToken: string } | null => {
       try {
-        // Chave customizada definida em src/lib/supabase.ts → storageKey: "lt-auth-session"
         const raw = localStorage.getItem(AUTH_STORAGE_KEY);
-        if (!raw) return false;
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
 
-        const parsed = JSON.parse(raw) as {
-          expires_at?: number;
-          currentSession?: { expires_at?: number; access_token?: string | null; refresh_token?: string | null };
-          access_token?: string | null;
-          refresh_token?: string | null;
-        };
+        const userId = parsed?.user?.id;
+        const email = parsed?.user?.email;
+        const accessToken = parsed?.access_token;
 
-        const expiresAt = parsed?.expires_at ?? parsed?.currentSession?.expires_at;
-        const accessToken = parsed?.access_token ?? parsed?.currentSession?.access_token;
-        const refreshToken = parsed?.refresh_token ?? parsed?.currentSession?.refresh_token;
-
-        // Alguns ambientes/versões podem serializar o estado sem todos os campos esperados.
-        // Para evitar falso positivo de "sessão corrompida" (e logout indevido), só
-        // limpamos automaticamente quando há evidência forte de expiração (expiresAt).
-        if (!accessToken || !refreshToken) {
-          return false;
+        if (!userId || typeof userId !== "string" || !accessToken || typeof accessToken !== "string") {
+          clearStoredSession();
+          return null;
         }
 
-        if (!expiresAt) return false;
-        if (expiresAt * 1000 < Date.now()) {
-          localStorage.removeItem(AUTH_STORAGE_KEY);
-          if (LEGACY_STORAGE_KEY) localStorage.removeItem(LEGACY_STORAGE_KEY);
-          console.log("[Auth] Token local expirado descartado — login necessário.");
-          return true;
-        }
+        return { userId, email: email ?? "", accessToken };
       } catch {
-        try {
-          localStorage.removeItem(AUTH_STORAGE_KEY);
-          if (LEGACY_STORAGE_KEY) localStorage.removeItem(LEGACY_STORAGE_KEY);
-        } catch { /**/ }
-        return true;
+        clearStoredSession();
+        return null;
       }
-      return false;
     };
 
-    // Em localhost (dev), NÃO devemos limpar sessão válida a cada mount/reload.
-    // Isso causava logout aparente em navegação hard (page.goto/refresh).
-    // Mantemos a limpeza apenas para sessão expirada/corrompida via clearExpiredLocalSession().
-    const isLocalDev =
-      import.meta.env.MODE === "development" &&
-      (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+    // ── PASSO 1: Restaurar estado via fetch direto (100% bypass do SDK) ──
+    // profileToAuthUserDirect usa fetch nativo com access_token do localStorage —
+    // não passa pelo SDK, nunca trava em token refresh, nunca causa hang.
+    const storedSession = parseStoredSession();
 
-    if (isLocalDev) {
-      console.log("[Auth] localhost dev: preservando sessão local válida no bootstrap.");
+    if (storedSession) {
+      console.log("[Auth] Sessão local encontrada, carregando profile via fetch direto...");
+      profileToAuthUserDirect(storedSession.userId, storedSession.email, storedSession.accessToken)
+        .then((result) => {
+          if (!mounted) return;
+          if (result.user) {
+            setUser(result.user);
+            console.log("[Auth] ✓ Sessão restaurada:", result.user.nome);
+          } else if (result.reason === "inactive" || result.reason === "invalid_role" || result.reason === "not_found") {
+            console.warn("[Auth] Profile inválido/inativo, limpando sessão.");
+            setUser(null);
+            clearStoredSession();
+          }
+          // reason=db_error (ex: 401 token expirado) — não limpar localStorage;
+          // o SDK fará refresh via TOKEN_REFRESHED e atualizará o usuário.
+          completeInitialization();
+        })
+        .catch((err) => {
+          if (!mounted) return;
+          console.error("[Auth] Erro ao carregar profile:", err);
+          completeInitialization();
+        });
+    } else {
+      console.log("[Auth] Nenhuma sessão local encontrada.");
+      completeInitialization();
     }
 
-    // === BUSCAR SESSÃO EXISTENTE ===
-    // DEFESA EM PROFUNDIDADE — duas camadas de proteção:
-    //   1. fetchWithTimeout (10s) em supabase.ts: aborta a chamada de rede via AbortController
-    //   2. Promise.race (8s) aqui: protege contra hang interno do SDK
-    //
-    // Por que as duas camadas são necessárias:
-    //   O SDK Supabase v2 pode capturar o AbortError internamente (dentro de _acquireInitializeLock
-    //   ou _refreshAccessToken) e não rejeitar/resolver a promise de getSession(), deixando-a pendurada
-    //   indefinidamente. O fetch layer aborta a rede mas não garante que a promise do SDK resolva.
-    //   A Promise.race captura exatamente esse cenário — SDK hang após fetch abortado.
-    //
-    // Fix #9 estava errado ao remover a Promise.race. Fix #11 restaura ambas as camadas.
-    console.log("[Auth] Verificando sessão...");
-
-    const resolveProfileWithRetry = async (userId: string, email: string): Promise<ProfileResult> => {
-      let result = await profileToAuthUser(userId, email);
-      if (!result.user && result.reason === "db_error") {
-        // Pequeno retry para falhas transitórias de rede/DB durante bootstrap/auth events.
-        await new Promise<void>((resolve) => setTimeout(resolve, 300));
-        result = await profileToAuthUser(userId, email);
-      }
-      return result;
-    };
-
-    const hadExpiredLocalSession = clearExpiredLocalSession();
-    if (hadExpiredLocalSession) {
-      // Importante: não finalizar inicialização aqui.
-      // Sempre executamos getSessionWithTimeout abaixo para sincronizar
-      // estado real do SDK e evitar janela isReady=true com user=null.
-      // Não chamamos signOut local aqui para evitar evento SIGNED_OUT tardio
-      // após um novo login válido (race observada em E2E).
-    }
-
-    const getSessionWithTimeout = Promise.race([
-      supabase.auth.getSession(),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("getSession timeout — sessão possivelmente corrompida/SDK hang")), 8000)
-      ),
-    ]);
-    getSessionWithTimeout
-      .then(async ({ data: { session } }) => {
-        if (!mounted) return;
-
-        try {
-          sessionStorage.removeItem(RELOAD_GUARD_KEY);
-        } catch {
-          /**/
-        }
-
-        if (session?.user) {
-          // Sessão existe — carregar dados do profile
-          console.log("[Auth] Sessão encontrada, carregando profile...");
-          try {
-            const { user: authUser, reason } = await resolveProfileWithRetry(session.user.id, session.user.email ?? "");
-            if (!mounted) return;
-
-            if (authUser) {
-              setUser(authUser);
-              console.log("[Auth] ✓ User autenticado:", authUser.nome);
-            } else if (reason === "inactive" || reason === "invalid_role" || reason === "not_found") {
-              setUser(null);
-            } else {
-              console.warn("[Auth] Falha transitória ao carregar profile no bootstrap; mantendo estado atual.");
-            }
-          } catch (err) {
-            console.error("[Auth] Erro ao carregar profile:", err);
-          }
-        } else {
-          console.log("[Auth] Nenhuma sessão existente");
-        }
-
-        completeInitialization();
-      })
-      .catch(async (err) => {
-        if (!mounted) return;
-        console.error("[Auth] Erro ao buscar sessão:", err?.message ?? err);
-
-        const isGetSessionTimeout =
-          err instanceof Error && err.message.toLowerCase().includes("getsession timeout");
-
-        // Em timeout de getSession, prioriza 1 recarga controlada ANTES de limpar sessão local.
-        // Isso evita logout indevido em falso-positivo de timeout (ex.: latência momentânea).
-        // Só limpamos a sessão se o timeout repetir após o reload.
-        if (isGetSessionTimeout && import.meta.env.MODE !== "test") {
-          try {
-            const alreadyReloaded = sessionStorage.getItem(RELOAD_GUARD_KEY) === "1";
-            if (!alreadyReloaded) {
-              sessionStorage.setItem(RELOAD_GUARD_KEY, "1");
-              window.location.reload();
-              return;
-            }
-            sessionStorage.removeItem(RELOAD_GUARD_KEY);
-          } catch {
-            /**/
-          }
-        } else {
-          try {
-            sessionStorage.removeItem(RELOAD_GUARD_KEY);
-          } catch {
-            /**/
-          }
-        }
-
-        // Limpa sessão corrompida/expirada do localStorage
-        try {
-          localStorage.removeItem(AUTH_STORAGE_KEY);
-          if (LEGACY_STORAGE_KEY) localStorage.removeItem(LEGACY_STORAGE_KEY);
-        } catch { /**/ }
-
-        // Evita signOut local assíncrono aqui para não emitir SIGNED_OUT tardio
-        // e derrubar sessão válida que acabou de ser estabelecida.
-
-        completeInitialization();
-      });
-
-    // === SUBSCREVER MUDANÇAS DE AUTENTICAÇÃO ===
+    // ── PASSO 2: Subscrever eventos do SDK (non-blocking) ──
+    // O SDK processa a sessão em background. Eventos vão corrigir qualquer
+    // divergência entre nosso estado (baseado em localStorage) e o estado real.
+    // INITIAL_SESSION: SDK terminou init interno
+    // TOKEN_REFRESHED: novo access_token obtido
+    // SIGNED_OUT: sessão inválida/revogada
+    // SIGNED_IN: novo login
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
 
       try {
         if (event === "INITIAL_SESSION") {
-          // Already handled by getSession above
+          // SDK terminou sua inicialização interna.
+          if (session?.user) {
+            // Sessão confirmada pelo SDK — atualizar profile via fetch direto
+            const { user: authUser } = await profileToAuthUserDirect(
+              session.user.id, session.user.email ?? "", session.access_token
+            );
+            if (mounted && authUser) {
+              setUser(authUser);
+            }
+          } else if (!session && storedSession) {
+            // SDK diz que não há sessão, mas tínhamos dados locais — sessão expirou
+            console.log("[Auth] SDK confirmou: sessão expirada.");
+            setUser(null);
+            clearStoredSession();
+          }
+          completeInitialization();
           return;
         }
 
         if (event === "SIGNED_OUT") {
-          let hasLocalSession = false;
-          try {
-            hasLocalSession = Boolean(localStorage.getItem(AUTH_STORAGE_KEY));
-          } catch {
-            /**/
-          }
-
-          if (hasLocalSession) {
-            console.warn("[Auth] SIGNED_OUT transitório ignorado (sessão local ainda presente).");
-            completeInitialization();
-            return;
-          }
-
           setUser(null);
           completeInitialization();
           return;
         }
 
-        // Em alguns cenários transitórios o SDK pode emitir evento com session
-        // nula antes da sincronização final. Evitamos logout agressivo aqui;
-        // aguardamos SIGNED_OUT explícito para encerrar sessão local.
+        if (event === "PASSWORD_RECOVERY") {
+          // Sessão temporária de recovery — não carrega profile, apenas desbloqueia a app
+          console.log("[Auth] PASSWORD_RECOVERY: sessão de recuperação ativa.");
+          completeInitialization();
+          return;
+        }
+
         if (!session) {
           completeInitialization();
           return;
@@ -377,15 +312,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "USER_UPDATED") {
           if (session.user) {
-            const { user: authUser, reason } = await resolveProfileWithRetry(session.user.id, session.user.email ?? "");
+            const { user: authUser, reason } = await profileToAuthUserDirect(
+              session.user.id, session.user.email ?? "", session.access_token
+            );
             if (!mounted) return;
 
             if (authUser) {
               setUser(authUser);
             } else if (reason === "inactive" || reason === "invalid_role" || reason === "not_found") {
               setUser(null);
-            } else {
-              console.warn("[Auth] Falha transitória em onAuthStateChange; mantendo usuário atual.");
             }
           }
           completeInitialization();
@@ -396,7 +331,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    // === LIMPAR RECURSOS AO DESMONTAR ===
     return () => {
       mounted = false;
       clearTimeout(safetyTimer);
@@ -448,8 +382,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return { success: false, error: ERROR_MESSAGES.invalid_credentials };
         }
 
-        // Buscar profile do banco
-        const { user: authUser, reason } = await profileToAuthUser(data.user.id, data.user.email ?? email);
+        // Buscar profile via fetch direto (usa access_token do login, nunca chama getSession)
+        const accessToken = data.session?.access_token ?? "";
+        const { user: authUser, reason } = await profileToAuthUserDirect(data.user.id, data.user.email ?? email, accessToken);
 
         if (!authUser) {
           if (reason === "db_error") {
@@ -529,10 +464,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { error } = await supabase.auth.updateUser({ password: newPassword });
 
+    if (!error) {
+      // Encerra sessão temporária de recovery — usuário deve fazer login normal
+      await supabase.auth.signOut({ scope: "local" });
+    }
+
     setLoading(false);
 
     if (error) {
-      return { success: false, error: ERROR_MESSAGES.unknown };
+      return { success: false, error: "Não foi possível atualizar a senha. O link pode ter expirado." };
     }
 
     return { success: true };

@@ -217,14 +217,14 @@ export default function EntregasPage() {
     {
       key: "taxa_resolvida",
       header: "Taxa",
-      cell: (r) => <span className="tabular-nums font-medium">{fmt(r.rota.taxa_resolvida)}</span>,
+      cell: (r) => <span className="tabular-nums font-medium text-status-completed">{fmt(r.rota.taxa_resolvida)}</span>,
     },
     {
       key: "valor_a_receber",
-      header: "Valor Receber",
+      header: "Valor de Repasse",
       cell: (r) =>
         r.rota.receber_do_cliente ? (
-          <span className="tabular-nums font-medium text-status-completed">{fmt(r.rota.valor_a_receber)}</span>
+          <span className="tabular-nums font-medium text-destructive">{fmt(r.rota.valor_a_receber)}</span>
         ) : (
           <span className="text-muted-foreground text-sm">—</span>
         ),
@@ -264,7 +264,7 @@ export default function EntregasPage() {
     },
   ];
 
-  const exportHeaders = ["Solicitação", "Cliente", "Destino", "Destinatário", "Entregador", "Tipo", "Taxa", "Valor Receber", "Status", "Data"];
+  const exportHeaders = ["Solicitação", "Cliente", "Destino", "Destinatário", "Entregador", "Tipo", "Taxa", "Valor de Repasse", "Status", "Data"];
   const buildExportRows = () =>
     filtered.map((e) => [
       e.codigo,
@@ -385,9 +385,9 @@ export default function EntregasPage() {
                 <div className="flex items-center justify-between text-sm text-muted-foreground">
                   <span>{getEntregadorNome(r.entregador_id)}</span>
                   <div className="flex items-center gap-2">
-                    <span className="tabular-nums font-medium text-foreground">{fmt(r.rota.taxa_resolvida)}</span>
+                    <span className="tabular-nums font-medium text-status-completed">{fmt(r.rota.taxa_resolvida)}</span>
                     {r.rota.receber_do_cliente && (
-                      <span className="tabular-nums text-status-completed">{fmt(r.rota.valor_a_receber)}</span>
+                      <span className="tabular-nums text-destructive">{fmt(r.rota.valor_a_receber)}</span>
                     )}
                   </div>
                 </div>

@@ -1,12 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { motion } from "framer-motion";
-import { Lock, CheckCircle2 } from "lucide-react";
+import { Lock, CheckCircle2, AlertCircle } from "lucide-react";
 import { MotoIcon } from "@/components/shared/MotoIcon";
 
 const passwordSchema = z
@@ -30,7 +31,15 @@ export default function ResetPasswordPage() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitError, setSubmitError] = useState("");
   const [done, setDone] = useState(false);
+  const [sessionValid, setSessionValid] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSessionValid(!!data.session);
+    });
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,12 +55,49 @@ export default function ResetPasswordPage() {
       return;
     }
 
-    const { success } = await resetPassword(password);
+    const { success, error } = await resetPassword(password);
     if (success) {
       setDone(true);
       setTimeout(() => navigate("/login", { replace: true }), 2000);
+    } else {
+      setSubmitError(error ?? "Ocorreu um erro ao atualizar a senha.");
     }
   };
+
+  // Loading — aguardando verificação de sessão
+  if (sessionValid === null) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  // Sem sessão válida — link expirado ou inválido
+  if (sessionValid === false) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center space-y-4"
+        >
+          <AlertCircle className="h-12 w-12 text-destructive mx-auto" />
+          <h2 className="text-xl font-semibold">Link inválido ou expirado</h2>
+          <p className="text-sm text-muted-foreground">
+            Este link de recuperação não é mais válido.<br />
+            Solicite um novo link para continuar.
+          </p>
+          <a
+            href="/login/reset"
+            className="inline-block text-sm underline text-primary hover:text-primary/80"
+          >
+            Solicitar novo link
+          </a>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4 sm:p-6">
@@ -114,6 +160,13 @@ export default function ResetPasswordPage() {
               </div>
               {errors.confirm && <p className="text-xs text-destructive">{errors.confirm}</p>}
             </div>
+
+            {submitError && (
+              <div className="flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                {submitError}
+              </div>
+            )}
 
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? (

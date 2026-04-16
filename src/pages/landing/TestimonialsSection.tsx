@@ -24,7 +24,8 @@ const testimonials = [
 
 export function TestimonialsSection() {
   return (
-    <section id="depoimentos" className="relative container mx-auto px-4 sm:px-6 py-16 sm:py-24">
+    <section id="depoimentos" className="relative z-10 w-full bg-slate-100 py-16 sm:py-24">
+      <div className="relative container mx-auto px-4 sm:px-6">
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         whileInView={{ opacity: 1, y: 0 }}
@@ -32,15 +33,15 @@ export function TestimonialsSection() {
         transition={{ duration: 0.5 }}
         className="text-center mb-14"
       >
-        <div className="inline-flex items-center gap-2 rounded-full border border-border/30 bg-muted/30 backdrop-blur-md px-4 py-1.5 mb-6">
-          <span className="text-[10px] font-semibold tracking-[0.15em] uppercase text-muted-foreground">
+        <div className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-slate-100 px-4 py-1.5 mb-6">
+          <span className="text-[10px] font-semibold tracking-[0.15em] uppercase text-slate-500">
             Depoimentos
           </span>
         </div>
-        <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
+        <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">
           O que nossos clientes dizem
         </h2>
-        <p className="mt-4 text-sm sm:text-base text-muted-foreground max-w-md mx-auto leading-relaxed">
+        <p className="mt-4 text-sm sm:text-base text-slate-500 max-w-md mx-auto leading-relaxed">
           Mais de 130 lojistas confiam na Leva e Traz para suas entregas diárias.
         </p>
       </motion.div>
@@ -53,10 +54,10 @@ export function TestimonialsSection() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ delay: i * 0.1, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-            className="group relative rounded-2xl border border-border/15 bg-card/20 backdrop-blur-md p-7 overflow-hidden transition-all duration-500 hover:border-primary/20 hover:bg-card/40 hover:shadow-xl hover:shadow-primary/5"
+            className="group relative rounded-2xl border border-slate-200 bg-white p-7 overflow-hidden transition-all duration-500 hover:border-primary/20 hover:shadow-xl hover:shadow-primary/5 shadow-sm"
           >
             {/* Quote icon */}
-            <Quote className="absolute top-5 right-5 h-8 w-8 text-primary/10 group-hover:text-primary/20 transition-colors duration-500" />
+            <Quote className="absolute top-5 right-5 h-8 w-8 text-slate-200 group-hover:text-slate-300 transition-colors duration-500" />
 
             {/* Stars */}
             <div className="flex gap-0.5 mb-4">
@@ -65,21 +66,22 @@ export function TestimonialsSection() {
               ))}
             </div>
 
-            <p className="text-sm text-muted-foreground leading-relaxed mb-6 relative z-10">
+            <p className="text-sm text-slate-600 leading-relaxed mb-6 relative z-10">
               "{t.text}"
             </p>
 
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary/40 to-primary/15 flex items-center justify-center text-xs font-bold text-primary-foreground border border-primary/20">
+              <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary/40 to-primary/15 flex items-center justify-center text-xs font-bold text-white border border-primary/20">
                 {t.name.split(" ").map(n => n[0]).join("")}
               </div>
               <div>
-                <p className="text-sm font-semibold">{t.name}</p>
-                <p className="text-xs text-muted-foreground">{t.role}</p>
+                <p className="text-sm font-semibold text-slate-900">{t.name}</p>
+                <p className="text-xs text-slate-500">{t.role}</p>
               </div>
             </div>
           </motion.div>
         ))}
+      </div>
       </div>
     </section>
   );

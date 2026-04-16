@@ -65,10 +65,10 @@ export async function createFatura(input: FaturaInsert): Promise<FaturaRow> {
   const { data, error } = await supabase
     .from("faturas")
     .insert(input)
-    .select()
-    .single();
+    .select();
   if (error) throw new Error(error.message);
-  return data as FaturaRow;
+  if (!data || data.length === 0) throw new Error("Falha ao criar fatura.");
+  return data[0] as FaturaRow;
 }
 
 export async function updateFatura(
@@ -79,10 +79,10 @@ export async function updateFatura(
     .from("faturas")
     .update(patch)
     .eq("id", id)
-    .select()
-    .single();
+    .select();
   if (error) throw new Error(error.message);
-  return data as FaturaRow;
+  if (!data || data.length === 0) throw new Error("Fatura não encontrada ou sem permissão para atualizar.");
+  return data[0] as FaturaRow;
 }
 
 // ── Lançamentos (imutável — sem Update) ───────────────────────────────────────
@@ -117,10 +117,10 @@ export async function createLancamento(
   const { data, error } = await supabase
     .from("lancamentos_financeiros")
     .insert(input)
-    .select()
-    .single();
+    .select();
   if (error) throw new Error(error.message);
-  return data as LancamentoRow;
+  if (!data || data.length === 0) throw new Error("Falha ao criar lançamento.");
+  return data[0] as LancamentoRow;
 }
 
 // ── Ajustes ───────────────────────────────────────────────────────────────────
@@ -141,10 +141,10 @@ export async function createAjuste(input: AjusteInsert): Promise<AjusteRow> {
   const { data, error } = await supabase
     .from("ajustes_financeiros")
     .insert(input)
-    .select()
-    .single();
+    .select();
   if (error) throw new Error(error.message);
-  return data as AjusteRow;
+  if (!data || data.length === 0) throw new Error("Falha ao criar ajuste.");
+  return data[0] as AjusteRow;
 }
 
 // ── Histórico de Fatura ───────────────────────────────────────────────────────
@@ -167,10 +167,10 @@ export async function createHistoricoFatura(
   const { data, error } = await supabase
     .from("historico_faturas")
     .insert(input)
-    .select()
-    .single();
+    .select();
   if (error) throw new Error(error.message);
-  return data as HistoricoFaturaRow;
+  if (!data || data.length === 0) throw new Error("Falha ao criar histórico de fatura.");
+  return data[0] as HistoricoFaturaRow;
 }
 
 // ── RPC: Atomic fatura + lançamentos + histórico ─────────────────────────────

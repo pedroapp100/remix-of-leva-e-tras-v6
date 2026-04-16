@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { PageContainer, MetricCard, DataTable, SearchInput, StatusBadge, PermissionGuard } from "@/components/shared";
@@ -16,12 +17,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, ClipboardList, Clock, CheckCircle, Truck, Eye, UserPlus, Play, X, Trash2, Pencil, CheckCheck, Calculator, ClipboardCheck, History, ArrowLeftRight } from "lucide-react";
+import { Plus, ClipboardList, Clock, CheckCircle, CheckCircle2, Truck, Eye, UserPlus, Play, X, Trash2, Pencil, CheckCheck, Calculator, ClipboardCheck, History, ArrowLeftRight } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { SimuladorOperacoes } from "@/components/shared/SimuladorOperacoes";
 import { toast } from "sonner";
-import { useNotifications } from "@/contexts/NotificationContext";
 import { supabase } from "@/lib/supabase";
+import { sendNotificationToUser, sendNotificationToRole } from "@/services/notifications";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { lazy, Suspense } from "react";
 const LaunchSolicitacaoDialog = lazy(() => import("./solicitacoes/LaunchSolicitacaoDialog").then(m => ({ default: m.LaunchSolicitacaoDialog })));
@@ -47,11 +48,11 @@ export default function SolicitacoesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { data: solicitacoes = [] } = useSolicitacoes();
   const updateSolMut = useUpdateSolicitacao();
+  const queryClient = useQueryClient();
   const createSolMut = useCreateSolicitacaoWithRotas();
   const { data: clientes = [] } = useClientes();
   const { data: entregadores = [] } = useEntregadores();
   const concluirComCaixa = useConcluirComCaixa();
-  const { addNotification } = useNotifications();
 
   const getClienteNome = (id: string) => clientes.find((c) => c.id === id)?.nome ?? id;
   const getEntregadorNome = (id: string | null | undefined) => !id ? "—" : (entregadores.find((e) => e.id === id)?.nome ?? id);
@@ -72,10 +73,10 @@ export default function SolicitacoesPage() {
 
   // Server-side pagination state
   const [page, setPage] = useState(0);
-  const PAGE_SIZE = 25;
+  const [pageSize, setPageSize] = useState(25);
 
   // Reset to page 0 whenever filters change
-  useEffect(() => { setPage(0); }, [search, activeTab, dateRange]);
+  useEffect(() => { setPage(0); }, [search, activeTab, dateRange, pageSize]);
 
   // Compute matched cliente IDs for name search (client-side lookup from cached list)
   const matchedClienteIds = useMemo(() => {
@@ -98,7 +99,7 @@ export default function SolicitacoesPage() {
   // Server-side paginated table data
   const { data: pagedResult, isFetching: isTableFetching } = useSolicitacoesPageable({
     page,
-    pageSize: PAGE_SIZE,
+    pageSize,
     status: activeTab,
     search: search.trim() || undefined,
     clienteIds: matchedClienteIds.length > 0 ? matchedClienteIds : undefined,
@@ -128,7 +129,8 @@ export default function SolicitacoesPage() {
   const [justifyTarget, setJustifyTarget] = useState<{ sol: Solicitacao; action: "cancelar" | "rejeitar" } | null>(null);
   const [simuladorOpen, setSimuladorOpen] = useState(false);
   const [adminConciliacaoTarget, setAdminConciliacaoTarget] = useState<Solicitacao | null>(null);
-  const [adminConciliadasIds, setAdminConciliadasIds] = useState<Set<string>>(new Set());
+  // Session-local set for instant icon feedback before server refetch completes
+  const [sessionConciliadas, setSessionConciliadas] = useState<Set<string>>(new Set());
 
   // useSolicitacoes (90-day windowed cache) is used only for metrics, tab counts, and code generation.
   // The table itself is powered by useSolicitacoesPageable (server-side paginated).
@@ -223,12 +225,15 @@ export default function SolicitacoesPage() {
       toast.success(`Solicitação ${codigo} criada!`);
 
       if (data.entregadorId) {
-        addNotification({
-          title: "Nova corrida atribuída",
-          message: `Solicitação ${codigo} foi atribuída a ${getEntregadorNome(data.entregadorId)}.`,
-          type: "info",
-          link: "/entregador/solicitacoes",
-        });
+        const entregador = entregadores.find((e) => e.id === data.entregadorId);
+        if (entregador?.profile_id) {
+          void sendNotificationToUser(entregador.profile_id, {
+            title: "Nova corrida atribuída",
+            message: `Solicitação ${codigo} está aguardando você.`,
+            type: "info",
+            link: "/entregador/solicitacoes",
+          });
+        }
       }
 
       return true;
@@ -243,17 +248,31 @@ export default function SolicitacoesPage() {
     const sol = solicitacoes.find((s) => s.id === solId);
     updateSolMut.mutate({ id: solId, patch: { entregador_id: entregadorId, status: "aceita" } });
     toast.success("Entregador atribuído!");
-    addNotification({
-      title: "Nova corrida atribuída",
-      message: `Solicitação ${sol?.codigo ?? solId} foi atribuída a ${getEntregadorNome(entregadorId)}.`,
-      type: "info",
-      link: "/entregador/solicitacoes",
-    });
+    const entregador = entregadores.find((e) => e.id === entregadorId);
+    if (entregador?.profile_id) {
+      void sendNotificationToUser(entregador.profile_id, {
+        title: "Nova corrida atribuída",
+        message: `Solicitação ${sol?.codigo ?? solId} está aguardando você.`,
+        type: "info",
+        link: "/entregador/solicitacoes",
+      });
+    }
   };
 
   const handleStartDelivery = (sol: Solicitacao) => {
     updateSolMut.mutate({ id: sol.id, patch: { status: "em_andamento", data_inicio: new Date().toISOString() } });
     toast.success("Entrega iniciada!");
+    if (sol.entregador_id) {
+      const entregador = entregadores.find((e) => e.id === sol.entregador_id);
+      if (entregador?.profile_id) {
+        void sendNotificationToUser(entregador.profile_id, {
+          title: "Entrega iniciada",
+          message: `A solicitação ${sol.codigo} foi marcada como iniciada pelo admin.`,
+          type: "info",
+          link: "/entregador/solicitacoes",
+        });
+      }
+    }
   };
 
   const handleConcluir = async (sol: Solicitacao) => {
@@ -263,6 +282,17 @@ export default function SolicitacoesPage() {
       return;
     }
     toast.success("Solicitação concluída!");
+    if (sol.entregador_id) {
+      const entregador = entregadores.find((e) => e.id === sol.entregador_id);
+      if (entregador?.profile_id) {
+        void sendNotificationToUser(entregador.profile_id, {
+          title: "Corrida concluída",
+          message: `A solicitação ${sol.codigo} foi concluída com sucesso.`,
+          type: "success",
+          link: "/entregador/solicitacoes",
+        });
+      }
+    }
   };
 
   const handleJustify = (justificativa: string) => {
@@ -271,6 +301,17 @@ export default function SolicitacoesPage() {
     const newStatus = action === "cancelar" ? "cancelada" : "rejeitada";
     updateSolMut.mutate({ id: sol.id, patch: { status: newStatus, justificativa } });
     toast.success(`Solicitação ${newStatus}!`);
+    if (sol.entregador_id) {
+      const entregador = entregadores.find((e) => e.id === sol.entregador_id);
+      if (entregador?.profile_id) {
+        void sendNotificationToUser(entregador.profile_id, {
+          title: newStatus === "cancelada" ? "Corrida cancelada" : "Corrida rejeitada",
+          message: `Solicitação ${sol.codigo} foi ${newStatus}.`,
+          type: "warning",
+          link: "/entregador/solicitacoes",
+        });
+      }
+    }
     setJustifyTarget(null);
   };
 
@@ -286,22 +327,26 @@ export default function SolicitacoesPage() {
       data_inicio: sol.status === "em_andamento" ? null : sol.data_inicio,
     } });
     toast.success(`Solicitação transferida para ${newName}!`);
-    addNotification({
-      title: "Corrida transferida",
-      message: `Solicitação ${sol.codigo} foi transferida de ${previousName} para ${newName}.`,
-      type: "info",
-      link: "/entregador/solicitacoes",
-    });
+    const novoEntregador = entregadores.find((e) => e.id === newEntregadorId);
+    if (novoEntregador?.profile_id) {
+      void sendNotificationToUser(novoEntregador.profile_id, {
+        title: "Corrida transferida para você",
+        message: `Solicitação ${sol.codigo} foi transferida de ${previousName} para você.`,
+        type: "info",
+        link: "/entregador/solicitacoes",
+      });
+    }
     setTransferTarget(null);
     setTransferMotivo("");
   };
 
-  const ActionButton = ({ tooltip, icon: Icon, onClick, variant = "default" }: { tooltip: string; icon: React.ElementType; onClick: (e: React.MouseEvent) => void; variant?: "default" | "destructive" | "success" | "info" }) => {
+  const ActionButton = ({ tooltip, icon: Icon, onClick, variant = "default", disabled = false }: { tooltip: string; icon: React.ElementType; onClick: (e: React.MouseEvent) => void; variant?: "default" | "destructive" | "success" | "info" | "warning"; disabled?: boolean }) => {
     const variantStyles: Record<string, string> = {
       default: "text-foreground hover:bg-accent",
       destructive: "text-destructive hover:bg-destructive/15",
       success: "text-status-completed hover:bg-status-completed/15",
       info: "text-primary hover:bg-primary/10",
+      warning: "text-amber-500 hover:bg-amber-500/15",
     };
     return (
       <Tooltip>
@@ -309,7 +354,8 @@ export default function SolicitacoesPage() {
           <Button
             variant="ghost"
             size="icon"
-            className={cn("h-8 w-8 rounded-full transition-colors", variantStyles[variant])}
+            disabled={disabled}
+            className={cn("h-8 w-8 rounded-full transition-colors", variantStyles[variant], disabled && "opacity-40 cursor-not-allowed pointer-events-none")}
             onClick={(e) => { e.stopPropagation(); onClick(e); }}
           >
             <Icon className="h-4 w-4" />
@@ -348,12 +394,18 @@ export default function SolicitacoesPage() {
         )}
         {sol.status === "concluida" && (
           <PermissionGuard permission="solicitacoes.edit">
-            <ActionButton
-              tooltip={adminConciliadasIds.has(sol.id) ? "Conciliação ADM (já realizada)" : "Conciliação ADM"}
-              icon={ClipboardCheck}
-              onClick={() => setAdminConciliacaoTarget(sol)}
-              variant={adminConciliadasIds.has(sol.id) ? "info" : "success"}
-            />
+            {(() => {
+              const isConciliada = sol.admin_conciliada_at != null || sessionConciliadas.has(sol.id);
+              return (
+                <ActionButton
+                  tooltip={isConciliada ? "Conciliação ADM (já realizada)" : "Conciliação ADM"}
+                  icon={isConciliada ? CheckCircle2 : ClipboardCheck}
+                  onClick={() => setAdminConciliacaoTarget(sol)}
+                  variant={isConciliada ? "success" : "warning"}
+                  disabled={isConciliada}
+                />
+              );
+            })()}
             <ActionButton tooltip="Editar conciliação" icon={Pencil} onClick={() => setConciliacaoTarget(sol)} variant="info" />
           </PermissionGuard>
         )}
@@ -392,7 +444,10 @@ export default function SolicitacoesPage() {
     },
     {
       key: "valor_total_taxas", header: "Taxas",
-      cell: (r) => <span className="tabular-nums font-medium">{fmt(r.valor_total_taxas)}</span>,
+      cell: (r) => {
+        const total = getRotasBySolicitacao(r.id).reduce((s, rota) => s + (rota.taxa_resolvida ?? 0), 0);
+        return <span className="tabular-nums font-medium">{total > 0 ? fmt(total) : "—"}</span>;
+      },
     },
     {
       key: "status", header: "Status",
@@ -492,6 +547,8 @@ export default function SolicitacoesPage() {
               pageCount: pagedResult?.pageCount ?? 1,
               total: pagedResult?.total ?? 0,
               onPageChange: setPage,
+              pageSize,
+              onPageSizeChange: setPageSize,
             }}
             renderMobileCard={(r) => (
               <div className="rounded-lg border border-border bg-card p-4 space-y-3">
@@ -554,7 +611,8 @@ export default function SolicitacoesPage() {
             solicitacao={adminConciliacaoTarget}
             onConfirm={() => {
               if (adminConciliacaoTarget) {
-                setAdminConciliadasIds((prev) => new Set(prev).add(adminConciliacaoTarget.id));
+                // Instant local feedback: icon flips now, DB value confirmed on next refetch
+                setSessionConciliadas((prev) => new Set(prev).add(adminConciliacaoTarget.id));
               }
               setAdminConciliacaoTarget(null);
             }}

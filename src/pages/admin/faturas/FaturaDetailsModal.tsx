@@ -71,7 +71,9 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate 
   if (!fatura) return null;
 
   const saldo = fatura.saldo_liquido ?? 0;
-  const saldoColor = saldo > 0 ? "text-emerald-500" : saldo < 0 ? "text-destructive" : "text-muted-foreground";
+  // saldo < 0 → loja deve pagar à empresa (empresa RECEBE) → verde
+  // saldo > 0 → empresa deve repassar à loja (empresa PAGA) → vermelho
+  const saldoColor = saldo < 0 ? "text-emerald-500" : saldo > 0 ? "text-destructive" : "text-muted-foreground";
   const saldoLabel = saldo > 0 ? "Operação deve repassar à loja" : saldo < 0 ? "Loja deve pagar à operação" : "Quitado";
 
   const handleRepasse = async (valor: number, observacao: string) => {

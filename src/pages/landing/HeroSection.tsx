@@ -1,8 +1,54 @@
 import { useNavigate } from "react-router-dom";
+import { useEffect, useState, memo } from "react";
 import { ArrowRight, Zap, Store, Shield } from "lucide-react";
 import heroDelivery from "@/assets/hero-delivery.jpg";
 import { Button } from "@/components/ui/button";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
+import { supabase } from "@/lib/supabase";
+
+const KenBurnsHero = memo(function KenBurnsHero() {
+  const prefersReduced = useReducedMotion();
+  return (
+    <motion.img
+      src={heroDelivery}
+      alt="Entregador Leva e Traz em ação"
+      className="w-full h-full object-cover object-center"
+      width={1920}
+      height={1080}
+      style={{ willChange: "transform" }}
+      animate={
+        prefersReduced
+          ? { scale: [1, 1.05], x: [0, -15] }
+          : { scale: [1, 1.25], x: [0, -80], y: [0, -20] }
+      }
+      transition={
+        prefersReduced
+          ? { duration: 18, ease: "linear", repeat: Infinity, repeatType: "reverse" }
+          : { duration: 8, ease: "easeInOut", repeat: Infinity, repeatType: "reverse" }
+      }
+    />
+  );
+});
+
+interface LandingLogo {
+  nome: string;
+  logo_url: string | null;
+}
+
+function useLandingLogos() {
+  const [logos, setLogos] = useState<LandingLogo[]>([]);
+  useEffect(() => {
+    supabase
+      .from("clientes")
+      .select("nome, logo_url")
+      .eq("exibir_logo_landing", true)
+      .limit(10)
+      .then(({ data }) => {
+        if (data && data.length > 0) setLogos(data as LandingLogo[]);
+      });
+  }, []);
+  return logos;
+}
 
 const fadeUp = {
   hidden: { opacity: 0, y: 30 },
@@ -15,18 +61,17 @@ const fadeUp = {
 
 export function HeroSection() {
   const navigate = useNavigate();
+  const landingLogos = useLandingLogos();
+
+  // Show up to 5 real logos; fallback to placeholder initials if none loaded yet
+  const FALLBACK = ["R", "C", "M", "S", "A"];
+  const displayItems = landingLogos.length > 0 ? landingLogos.slice(0, 5) : null;
 
   return (
     <section className="relative min-h-[88vh] sm:min-h-[92vh] flex items-center overflow-hidden">
       {/* Background image with cinematic overlay */}
-      <div className="absolute inset-0">
-        <img
-          src={heroDelivery}
-          alt="Entregador Leva e Traz em ação"
-          className="w-full h-full object-cover object-center"
-          width={1920}
-          height={1080}
-        />
+      <div className="absolute inset-0 overflow-hidden">
+        <KenBurnsHero />
         {/* Deep cinematic gradient from left */}
         <div className="absolute inset-0 bg-gradient-to-r from-background via-background/90 to-background/10" />
         <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-background/50" />
@@ -37,7 +82,7 @@ export function HeroSection() {
         <motion.div initial="hidden" animate="visible" className="max-w-2xl">
           {/* Pill badge */}
           <motion.div variants={fadeUp} custom={0}>
-            <div className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/8 backdrop-blur-md px-4 py-1.5 mb-8">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 backdrop-blur-xl px-4 py-1.5 mb-8 shadow-md shadow-black/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.15)]">
               <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
               <span className="text-[11px] font-semibold tracking-[0.12em] uppercase text-primary">
                 Entregas B2B para o varejo
@@ -85,7 +130,7 @@ export function HeroSection() {
             <Button
               size="lg"
               variant="outline"
-              className="rounded-xl font-semibold text-sm border-border/40 bg-card/20 backdrop-blur-md hover:bg-card/40 px-7 h-12"
+              className="rounded-xl font-semibold text-sm border-white/20 bg-white/10 backdrop-blur-xl hover:bg-white/15 hover:border-white/30 px-7 h-12 shadow-md shadow-black/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.15)]"
               onClick={() => {
                 const el = document.getElementById("como-funciona");
                 el?.scrollIntoView({ behavior: "smooth" });
@@ -98,15 +143,35 @@ export function HeroSection() {
           {/* Trust indicators */}
           <motion.div variants={fadeUp} custom={4} className="mt-12 flex flex-col sm:flex-row items-start sm:items-center gap-6">
             <div className="flex items-center gap-3">
-              <div className="flex -space-x-2.5">
-                {["R", "C", "M", "S", "A"].map((letter, i) => (
-                  <div
-                    key={i}
-                    className="h-9 w-9 rounded-full bg-gradient-to-br from-primary/50 to-primary/20 border-2 border-background flex items-center justify-center text-[10px] font-bold text-primary-foreground shadow-sm"
-                  >
-                    {letter}
-                  </div>
-                ))}
+              <div className="flex -space-x-4">
+                {displayItems
+                  ? displayItems.map((client, i) => (
+                      <div
+                        key={i}
+                        className="h-20 w-20 rounded-2xl border-2 border-background bg-card overflow-hidden shadow-md shrink-0"
+                        title={client.nome}
+                      >
+                        {client.logo_url ? (
+                          <img
+                            src={client.logo_url}
+                            alt={client.nome}
+                            className="h-full w-full object-contain p-1.5"
+                          />
+                        ) : (
+                          <div className="h-full w-full bg-gradient-to-br from-primary/50 to-primary/20 flex items-center justify-center text-lg font-bold text-primary-foreground">
+                            {client.nome.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  : FALLBACK.map((letter, i) => (
+                      <div
+                        key={i}
+                        className="h-20 w-20 rounded-2xl bg-gradient-to-br from-primary/50 to-primary/20 border-2 border-background flex items-center justify-center text-lg font-bold text-primary-foreground shadow-md"
+                      >
+                        {letter}
+                      </div>
+                    ))}
               </div>
               <p className="text-sm text-muted-foreground">
                 <span className="font-bold text-foreground">+130</span> lojas confiam

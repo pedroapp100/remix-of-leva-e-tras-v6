@@ -129,7 +129,7 @@ export async function fetchSolicitacoesByCliente(
 ): Promise<SolicitacaoRow[]> {
   const { data, error } = await supabase
     .from("solicitacoes")
-    .select("*")
+    .select("*, entregadores!solicitacoes_entregador_id_fkey(nome)")
     .eq("cliente_id", clienteId)
     .order("data_solicitacao", { ascending: false });
   if (error) throw new Error(error.message);
@@ -141,7 +141,7 @@ export async function fetchSolicitacoesByEntregador(
 ): Promise<SolicitacaoRow[]> {
   const { data, error } = await supabase
     .from("solicitacoes")
-    .select("*")
+    .select("*, clientes!solicitacoes_cliente_id_fkey(nome)")
     .eq("entregador_id", entregadorId)
     .order("data_solicitacao", { ascending: false });
   if (error) throw new Error(error.message);
@@ -164,10 +164,10 @@ export async function createSolicitacao(
   const { data, error } = await supabase
     .from("solicitacoes")
     .insert(input)
-    .select()
-    .single();
+    .select();
   if (error) throw new Error(error.message);
-  return data as SolicitacaoRow;
+  if (!data || data.length === 0) throw new Error("Falha ao criar solicitação.");
+  return data[0] as SolicitacaoRow;
 }
 
 export async function updateSolicitacao(
@@ -178,10 +178,10 @@ export async function updateSolicitacao(
     .from("solicitacoes")
     .update(patch)
     .eq("id", id)
-    .select()
-    .single();
+    .select();
   if (error) throw new Error(error.message);
-  return data as SolicitacaoRow;
+  if (!data || data.length === 0) throw new Error("Solicitação não encontrada ou sem permissão para atualizar.");
+  return data[0] as SolicitacaoRow;
 }
 
 // ── Rotas ─────────────────────────────────────────────────────────────────────
@@ -232,10 +232,10 @@ export async function createRota(input: RotaInsert): Promise<RotaRow> {
   const { data, error } = await supabase
     .from("rotas")
     .insert(input)
-    .select()
-    .single();
+    .select();
   if (error) throw new Error(error.message);
-  return data as RotaRow;
+  if (!data || data.length === 0) throw new Error("Falha ao criar rota.");
+  return data[0] as RotaRow;
 }
 
 export async function createRotas(inputs: RotaInsert[]): Promise<RotaRow[]> {
@@ -256,10 +256,22 @@ export async function updateRota(
     .from("rotas")
     .update(patch)
     .eq("id", id)
-    .select()
-    .single();
+    .select();
   if (error) throw new Error(error.message);
-  return data as RotaRow;
+  if (!data || data.length === 0) throw new Error("Rota não encontrada ou sem permissão para atualizar.");
+  return data[0] as RotaRow;
+}
+
+export async function bulkUpdateRotasStatus(
+  solicitacaoId: string,
+  status: "concluida" | "cancelada"
+): Promise<void> {
+  const { error } = await supabase
+    .from("rotas")
+    .update({ status })
+    .eq("solicitacao_id", solicitacaoId)
+    .eq("status", "ativa");
+  if (error) throw new Error(error.message);
 }
 
 // ── Pagamentos ────────────────────────────────────────────────────────────────

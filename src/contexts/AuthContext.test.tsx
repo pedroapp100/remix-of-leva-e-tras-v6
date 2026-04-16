@@ -12,6 +12,33 @@ const mockUpdateUser = vi.fn();
 let profileResponse: { data: unknown; error: unknown } = { data: null, error: null };
 let cargosResponse: { data: unknown[] } = { data: [] };
 
+// Fix #13: AuthContext uses native fetch() via profileToAuthUserDirect() instead of supabase.from()
+// We must mock globalThis.fetch to intercept /rest/v1/profiles and /rest/v1/cargos calls.
+const mockFetch = vi.fn();
+vi.stubGlobal("fetch", mockFetch);
+
+/** Sets a properly-structured lt-auth-session in localStorage so parseStoredSession() succeeds. */
+const setValidLocalSession = (
+  userId = "u1",
+  email = "admin@test.com",
+  token = "test-token"
+) => {
+  localStorage.setItem(
+    "lt-auth-session",
+    JSON.stringify({
+      user: { id: userId, email },
+      access_token: token,
+      refresh_token: "refresh-token",
+      expires_at: Math.floor(Date.now() / 1000) + 3600,
+    })
+  );
+};
+
+/** Flushes enough microtask ticks for profileToAuthUserDirect Promise chains to complete. */
+const flushAll = async () => {
+  for (let i = 0; i < 10; i++) await Promise.resolve();
+};
+
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     auth: {
@@ -70,6 +97,7 @@ function TestConsumer() {
 describe("AuthContext", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     vi.useFakeTimers({ shouldAdvanceTime: true });
     profileResponse = { data: null, error: null };
     cargosResponse = { data: [] };
@@ -80,6 +108,39 @@ describe("AuthContext", () => {
       data: { subscription: { unsubscribe: vi.fn() } },
     });
     mockSignOut.mockResolvedValue({ error: null });
+
+    // Fix #13: configure fetch mock for profileToAuthUserDirect REST API calls.
+    // VITE_SUPABASE_URL is undefined in test env → URLs become "undefined/rest/v1/..."
+    mockFetch.mockImplementation((url: string) => {
+      const urlStr = String(url);
+      if (urlStr.includes("/rest/v1/profiles")) {
+        if (profileResponse.error) {
+          return Promise.resolve({
+            ok: false,
+            status: 500,
+            json: () => Promise.resolve({}),
+          } as unknown as Response);
+        }
+        const rows = profileResponse.data ? [profileResponse.data] : [];
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve(rows),
+        } as unknown as Response);
+      }
+      if (urlStr.includes("/rest/v1/cargos")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve(cargosResponse.data),
+        } as unknown as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve([]),
+      } as unknown as Response);
+    });
   });
 
   afterEach(() => {
@@ -128,28 +189,15 @@ describe("AuthContext", () => {
       await Promise.resolve();
     });
 
-    expect(mockGetSession).toHaveBeenCalledTimes(1);
     expect(mockSignOut).not.toHaveBeenCalledWith({ scope: "local" });
     expect(getByTestId!("ready").textContent).toBe("true");
     expect(getByTestId!("user").textContent).toBe("null");
   });
 
-  it("[regressão] sessão local incompleta não força logout se getSession for válido", async () => {
-    localStorage.setItem("lt-auth-session", JSON.stringify({
-      expires_at: Math.floor(Date.now() / 1000) + 3600,
-      currentSession: {
-        expires_at: Math.floor(Date.now() / 1000) + 3600,
-      },
-    }));
-
-    mockGetSession.mockResolvedValue({
-      data: {
-        session: {
-          user: { id: "u1", email: "admin@test.com" },
-        },
-      },
-    });
-
+  it("[regressão Fix#13] sessão local válida é restaurada via fetch direto (getSession não é chamado)", async () => {
+    // Fix #13: init reads localStorage directly + calls profileToAuthUserDirect() via native fetch.
+    // getSession() is never invoked during initialization.
+    setValidLocalSession();
     profileResponse = {
       data: { id: "u1", nome: "Admin", role: "admin", cargo_id: null, avatar: null, ativo: true },
       error: null,
@@ -165,24 +213,16 @@ describe("AuthContext", () => {
     });
 
     await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
+      await flushAll();
     });
 
-    expect(mockGetSession).toHaveBeenCalledTimes(1);
+    expect(mockGetSession).not.toHaveBeenCalled();
     expect(getByTestId!("ready").textContent).toBe("true");
     expect(getByTestId!("user").textContent).toBe("Admin");
   });
 
   it("should become ready with a valid session", async () => {
-    mockGetSession.mockResolvedValue({
-      data: {
-        session: {
-          user: { id: "u1", email: "admin@test.com" },
-        },
-      },
-    });
-
+    setValidLocalSession();
     profileResponse = {
       data: { id: "u1", nome: "Admin", role: "admin", cargo_id: null, avatar: null, ativo: true },
       error: null,
@@ -198,8 +238,7 @@ describe("AuthContext", () => {
     });
 
     await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
+      await flushAll();
     });
 
     expect(getByTestId!("ready").textContent).toBe("true");
@@ -215,14 +254,7 @@ describe("AuthContext", () => {
       };
     });
 
-    mockGetSession.mockResolvedValue({
-      data: {
-        session: {
-          user: { id: "u1", email: "admin@test.com" },
-        },
-      },
-    });
-
+    setValidLocalSession();
     profileResponse = {
       data: { id: "u1", nome: "Admin", role: "admin", cargo_id: null, avatar: null, ativo: true },
       error: null,
@@ -238,8 +270,7 @@ describe("AuthContext", () => {
     });
 
     await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
+      await flushAll();
     });
 
     expect(getByTestId!("user").textContent).toBe("Admin");
@@ -247,13 +278,15 @@ describe("AuthContext", () => {
 
     await act(async () => {
       await authStateCallback!("TOKEN_REFRESHED", null);
-      await Promise.resolve();
+      await flushAll();
     });
 
     expect(getByTestId!("user").textContent).toBe("Admin");
   });
 
-  it("[regressão] SIGNED_OUT transitório com sessão local presente não deve derrubar usuário", async () => {
+  it("[regressão Fix#13] SIGNED_OUT desloga usuário imediatamente (comportamento atual)", async () => {
+    // Fix #13: SIGNED_OUT always clears the user. The SDK only fires SIGNED_OUT
+    // when the session is truly expired — transient protection is no longer needed.
     let authStateCallback: ((event: string, session: unknown) => Promise<void>) | undefined;
     mockOnAuthStateChange.mockImplementation((cb: (event: string, session: unknown) => Promise<void>) => {
       authStateCallback = cb;
@@ -262,24 +295,11 @@ describe("AuthContext", () => {
       };
     });
 
-    mockGetSession.mockResolvedValue({
-      data: {
-        session: {
-          user: { id: "u1", email: "admin@test.com" },
-        },
-      },
-    });
-
+    setValidLocalSession();
     profileResponse = {
       data: { id: "u1", nome: "Admin", role: "admin", cargo_id: null, avatar: null, ativo: true },
       error: null,
     };
-
-    localStorage.setItem("lt-auth-session", JSON.stringify({
-      expires_at: Math.floor(Date.now() / 1000) + 3600,
-      access_token: "access",
-      refresh_token: "refresh",
-    }));
 
     let getByTestId: (id: string) => HTMLElement;
 
@@ -291,8 +311,7 @@ describe("AuthContext", () => {
     });
 
     await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
+      await flushAll();
     });
 
     expect(getByTestId!("user").textContent).toBe("Admin");
@@ -300,10 +319,11 @@ describe("AuthContext", () => {
 
     await act(async () => {
       await authStateCallback!("SIGNED_OUT", null);
-      await Promise.resolve();
+      await flushAll();
     });
 
-    expect(getByTestId!("user").textContent).toBe("Admin");
+    // SIGNED_OUT always clears user in Fix #13
+    expect(getByTestId!("user").textContent).toBe("null");
   });
 
   it("[regressão] erro transitório de profile em TOKEN_REFRESHED não limpa usuário atual", async () => {
@@ -315,14 +335,7 @@ describe("AuthContext", () => {
       };
     });
 
-    mockGetSession.mockResolvedValue({
-      data: {
-        session: {
-          user: { id: "u1", email: "admin@test.com" },
-        },
-      },
-    });
-
+    setValidLocalSession();
     profileResponse = {
       data: { id: "u1", nome: "Admin", role: "admin", cargo_id: null, avatar: null, ativo: true },
       error: null,
@@ -338,14 +351,13 @@ describe("AuthContext", () => {
     });
 
     await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
+      await flushAll();
     });
 
     expect(getByTestId!("user").textContent).toBe("Admin");
     expect(authStateCallback).toBeDefined();
 
-    // Simula falha de DB no refresh
+    // Simula falha de DB no refresh — fetch returns 500, reason="db_error" → user stays
     profileResponse = {
       data: null,
       error: { message: "db temporarily unavailable" },
@@ -355,8 +367,7 @@ describe("AuthContext", () => {
       await authStateCallback!("TOKEN_REFRESHED", {
         user: { id: "u1", email: "admin@test.com" },
       });
-      await Promise.resolve();
-      await Promise.resolve();
+      await flushAll();
     });
 
     expect(getByTestId!("user").textContent).toBe("Admin");
@@ -407,8 +418,7 @@ describe("AuthContext", () => {
 
     await act(async () => {
       getByTestId!("login").click();
-      await Promise.resolve();
-      await Promise.resolve();
+      await flushAll();
     });
 
     // Should NOT sign out on db_error
@@ -463,8 +473,7 @@ describe("AuthContext", () => {
 
     await act(async () => {
       getByTestId!("login").click();
-      await Promise.resolve();
-      await Promise.resolve();
+      await flushAll();
     });
 
     // Should sign out for inactive user
@@ -582,9 +591,7 @@ describe("AuthContext", () => {
 
     await act(async () => {
       getByTestId!("login").click();
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
+      await flushAll();
     });
 
     expect(getByTestId!("loading").textContent).toBe("false");
@@ -633,19 +640,17 @@ describe("AuthContext", () => {
     expect(getByTestId!("loading").textContent).toBe("false");
   });
 
-  // ── Teste de regressão Fix #11 ────────────────────────────────────────────
-  // ESTE TESTE EXISTE PARA DETECTAR A REGRESSÃO DO FIX #9.
-  // Se alguém remover o Promise.race de 8s do AuthContext (alegando que
-  // fetchWithTimeout basta), este teste vai FALHAR imediatamente.
+  // ── Teste de regressão Fix #11 / Fix #13 ──────────────────────────────────
+  // Fix #13 eliminou getSession() da inicialização. O safety timer (6s) agora
+  // protege contra profileToAuthUserDirect() travar (fetch infinito / rede morta).
   //
-  // Cenário: SDK Supabase captura AbortError internamente e NÃO resolve nem
-  // rejeita a promise de getSession() — o fetch layer aborta a rede, mas o
-  // lock interno do SDK (_acquireInitializeLock) nunca é liberado.
-  // Fix: Promise.race(8s) + signOut({scope:'local'}) no catch.
-  it("[regressão Fix#11] app fica pronto em ≤8s mesmo se getSession() travar infinitamente (SDK hang)", async () => {
-    // Simula exatamente o cenário do Fix#9/#11:
-    // getSession() NUNCA resolve nem rejeita — SDK hang interno
-    mockGetSession.mockReturnValue(new Promise(() => { /* never resolves */ }));
+  // Cenário: localStorage tem sessão válida, mas fetch() para /rest/v1/profiles
+  // nunca resolve. App deve ficar pronto via safety timer em ≤6s.
+  it("[regressão Fix#11/13] app fica pronto em ≤6s mesmo se fetch de profile travar infinitamente", async () => {
+    // Sessão local presente → init tentará profileToAuthUserDirect()
+    setValidLocalSession();
+    // fetch nunca resolve — simula hang de rede/timeout silencioso
+    mockFetch.mockReturnValue(new Promise(() => { /* never resolves */ }));
 
     let getByTestId: (id: string) => HTMLElement;
     await act(async () => {
@@ -653,20 +658,20 @@ describe("AuthContext", () => {
       getByTestId = result.getByTestId;
     });
 
-    // Imediatamente após montar: não deve estar pronto ainda
+    // Imediatamente após montar: não deve estar pronto (fetch pendente)
     expect(getByTestId!("ready").textContent).toBe("false");
 
-    // Avança 8s + 1ms — Promise.race deve rejeitar e completeInitialization() deve rodar
+    // Avança 6s + 1ms — safety timer deve disparar completeInitialization()
     await act(async () => {
-      vi.advanceTimersByTime(8_001);
+      vi.advanceTimersByTime(6_001);
       await Promise.resolve();
       await Promise.resolve();
       await Promise.resolve();
     });
 
-    // App DEVE estar pronto — mesmo com o SDK completamente travado
+    // App DEVE estar pronto — mesmo com fetch completamente travado
     expect(getByTestId!("ready").textContent).toBe("true");
-    // Sem sessão válida — usuário não autenticado
+    // Usuário null — profile não carregou (fetch travou)
     expect(getByTestId!("user").textContent).toBe("null");
   });
 });

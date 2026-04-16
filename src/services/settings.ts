@@ -25,10 +25,10 @@ export async function upsertRegiao(
   const { data, error } = await supabase
     .from("regioes")
     .upsert(regiao as TableInsert<"regioes">, { onConflict: "id" })
-    .select("id, name, description")
-    .single();
+    .select("id, name, description");
   if (error) throw new Error(error.message);
-  return data as Regiao;
+  if (!data || data.length === 0) throw new Error("Falha ao salvar região.");
+  return data[0] as Regiao;
 }
 
 export async function deleteRegiao(id: string): Promise<void> {
@@ -63,10 +63,10 @@ export async function upsertBairro(
   const { data, error } = await supabase
     .from("bairros")
     .upsert(bairro, { onConflict: "id" })
-    .select()
-    .single();
+    .select();
   if (error) throw new Error(error.message);
-  return data as Bairro;
+  if (!data || data.length === 0) throw new Error("Falha ao salvar bairro.");
+  return data[0] as Bairro;
 }
 
 export async function deleteBairro(id: string): Promise<void> {
@@ -93,10 +93,10 @@ export async function updateFormaPagamento(
     .from("formas_pagamento")
     .update(patch)
     .eq("id", id)
-    .select()
-    .single();
+    .select();
   if (error) throw new Error(error.message);
-  return data as FormaPagamento;
+  if (!data || data.length === 0) throw new Error("Forma de pagamento não encontrada.");
+  return data[0] as FormaPagamento;
 }
 
 export async function createFormaPagamento(
@@ -105,10 +105,10 @@ export async function createFormaPagamento(
   const { data, error } = await supabase
     .from("formas_pagamento")
     .insert(payload)
-    .select("id, name, description, enabled, order")
-    .single();
+    .select("id, name, description, enabled, order");
   if (error) throw new Error(error.message);
-  return data as FormaPagamento;
+  if (!data || data.length === 0) throw new Error("Falha ao criar forma de pagamento.");
+  return data[0] as FormaPagamento;
 }
 
 // ── Cargos ────────────────────────────────────────────────────────────────────
@@ -131,10 +131,10 @@ export async function upsertCargo(
   const { data, error } = await supabase
     .from("cargos")
     .upsert(cargo as TableInsert<"cargos">, { onConflict: "id" })
-    .select()
-    .single();
+    .select();
   if (error) throw new Error(error.message);
-  return data as Cargo;
+  if (!data || data.length === 0) throw new Error("Falha ao salvar cargo.");
+  return data[0] as Cargo;
 }
 
 export async function deleteCargo(id: string): Promise<void> {
@@ -159,10 +159,10 @@ export async function upsertTipoOperacao(
   const { data, error } = await supabase
     .from("tipos_operacao_config")
     .upsert(tipo as TableInsert<"tipos_operacao_config">, { onConflict: "id" })
-    .select()
-    .single();
+    .select();
   if (error) throw new Error(error.message);
-  return data as TipoOperacaoConfig;
+  if (!data || data.length === 0) throw new Error("Falha ao salvar tipo de operação.");
+  return data[0] as TipoOperacaoConfig;
 }
 
 export async function deleteTipoOperacao(id: string): Promise<void> {
@@ -187,10 +187,10 @@ export async function upsertTaxaExtra(
   const { data, error } = await supabase
     .from("taxas_extras_config")
     .upsert(taxa as TableInsert<"taxas_extras_config">, { onConflict: "id" })
-    .select()
-    .single();
+    .select();
   if (error) throw new Error(error.message);
-  return data as TaxaExtraConfig;
+  if (!data || data.length === 0) throw new Error("Falha ao salvar taxa extra.");
+  return data[0] as TaxaExtraConfig;
 }
 
 export async function deleteTaxaExtra(id: string): Promise<void> {
@@ -215,10 +215,10 @@ export async function upsertFeriado(
   const { data, error } = await supabase
     .from("feriados")
     .upsert(feriado as TableInsert<"feriados">, { onConflict: "id" })
-    .select()
-    .single();
+    .select();
   if (error) throw new Error(error.message);
-  return data as Feriado;
+  if (!data || data.length === 0) throw new Error("Falha ao salvar feriado.");
+  return data[0] as Feriado;
 }
 
 export async function deleteFeriado(id: string): Promise<void> {

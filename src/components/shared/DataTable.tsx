@@ -29,6 +29,10 @@ export interface ExternalPaginationProps {
   pageCount: number;
   total: number;
   onPageChange: (page: number) => void;
+  /** Current page size — required to render the size selector */
+  pageSize?: number;
+  /** Called when the user picks a new page size; should also reset page to 0 */
+  onPageSizeChange?: (size: number) => void;
 }
 
 interface DataTableProps<T> {
@@ -186,11 +190,41 @@ export function DataTable<T extends { id?: string }>({
       {/* Pagination */}
       {externalPagination ? (
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-sm text-muted-foreground">
-          <span className="tabular-nums">
-            {externalPagination.total === 0
-              ? "0 registros"
-              : `${externalPagination.page * initialPageSize + 1}–${Math.min((externalPagination.page + 1) * initialPageSize, externalPagination.total)} de ${externalPagination.total}`}
-          </span>
+          <div className="flex items-center gap-2">
+            {externalPagination.onPageSizeChange && externalPagination.pageSize != null ? (
+              <>
+                <span>Exibir</span>
+                <Select
+                  value={String(externalPagination.pageSize)}
+                  onValueChange={(v) => {
+                    externalPagination.onPageSizeChange!(Number(v));
+                    externalPagination.onPageChange(0);
+                  }}
+                >
+                  <SelectTrigger className="h-8 w-[70px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {pageSizeOptions.map((opt) => (
+                      <SelectItem key={opt} value={String(opt)}>{opt}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <span>por página</span>
+                <span className="ml-2 hidden sm:inline tabular-nums">
+                  {externalPagination.total === 0
+                    ? "— 0 registros"
+                    : `— ${externalPagination.page * externalPagination.pageSize + 1}–${Math.min((externalPagination.page + 1) * externalPagination.pageSize, externalPagination.total)} de ${externalPagination.total}`}
+                </span>
+              </>
+            ) : (
+              <span className="tabular-nums">
+                {externalPagination.total === 0
+                  ? "0 registros"
+                  : `${externalPagination.page * (externalPagination.pageSize ?? initialPageSize) + 1}–${Math.min((externalPagination.page + 1) * (externalPagination.pageSize ?? initialPageSize), externalPagination.total)} de ${externalPagination.total}`}
+              </span>
+            )}
+          </div>
           {externalPagination.pageCount > 1 && (
             <div className="flex items-center gap-1">
               <Button

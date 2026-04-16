@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { useSolicitacoes, useUpdateSolicitacao } from "@/hooks/useSolicitacoes";
+import { useSolicitacoes, useUpdateSolicitacao, useUpdateRotasBulk } from "@/hooks/useSolicitacoes";
 import { fetchRotasBySolicitacao } from "@/services/solicitacoes";
 import { rowToRota } from "@/lib/mappers";
 import { useClientes, useClienteSaldoMap } from "@/hooks/useClientes";
@@ -25,12 +25,13 @@ export function useConcluirComCaixa() {
   const { getClienteSaldo } = useClienteSaldoMap();
 
   const updateSolMut = useUpdateSolicitacao();
+  const updateRotasBulkMut = useUpdateRotasBulk();
   const concluirFaturaMut = useConcluirFaturaEntrega();
 
   const { addRecebimentoAutomatico } = useCaixaStore();
 
   const concluirComCaixa = useCallback(
-    async (solId: string): Promise<{ success: boolean; error?: string }> => {
+    async (solId: string, options?: { skipFatura?: boolean }): Promise<{ success: boolean; error?: string }> => {
       const sol = solicitacoes.find((s) => s.id === solId);
       if (!sol) return { success: false, error: "Solicitação não encontrada." };
 
@@ -102,6 +103,9 @@ export function useConcluirComCaixa() {
         return { success: false, error: "Erro ao concluir solicitação." };
       }
 
+      // ── Update rotas status to 'concluida' (fire-and-forget, non-fatal) ──
+      updateRotasBulkMut.mutateAsync({ solicitacaoId: solId, status: "concluida" }).catch(() => {});
+
       // ── WhatsApp: entrega concluída ──
       if (cliente?.telefone) {
         const entregadorNome = sol.entregador_id
@@ -125,6 +129,8 @@ export function useConcluirComCaixa() {
       }
 
       // ── Fatura creation/update for faturado clients (persisted to DB) ──
+      // skipFatura=true when called by the driver — invoicing is the admin's responsibility
+      if (options?.skipFatura) return { success: true };
       if (!cliente || cliente.modalidade !== "faturado") return { success: true };
 
       const totalRecebido = solRotas.filter((r) => r.receber_do_cliente).reduce((s, r) => s + (r.valor_a_receber ?? 0), 0);

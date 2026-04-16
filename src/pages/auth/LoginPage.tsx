@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { z } from "zod";
 import { useAuth, ROLE_REDIRECTS } from "@/contexts/AuthContext";
@@ -8,14 +8,40 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mail, Lock, AlertCircle, Package, MapPin, BarChart3, Shield, Sun, Moon } from "lucide-react";
+import { Mail, Lock, AlertCircle, Package, MapPin, BarChart3, Shield, Sun, Moon, FileText } from "lucide-react";
 import { ButtonSpinner } from "@/components/shared/BrandedLoader";
-import { MotoIcon } from "@/components/shared/MotoIcon";
+import { supabase } from "@/lib/supabase";
+import logoLevaTraz from "@/assets/logo-leva-e-traz.png";
 
-const loginSchema = z.object({
+const loginEmailSchema = z.object({
   email: z.string().email("Email inválido"),
   password: z.string().min(6, "Mínimo 6 caracteres"),
 });
+
+const loginDocSchema = z.object({
+  documento: z.string().refine((v) => {
+    const digits = v.replace(/\D/g, "");
+    return digits.length === 11 || digits.length === 14;
+  }, "CPF (11 dígitos) ou CNPJ (14 dígitos) inválido"),
+  password: z.string().min(6, "Mínimo 6 caracteres"),
+});
+
+function maskDocumento(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 14);
+  if (digits.length <= 11) {
+    return digits
+      .replace(/(\d{3})(\d)/, "$1.$2")
+      .replace(/(\d{3})(\d)/, "$1.$2")
+      .replace(/(\d{3})(\d{1,2})$/, "$1-$2");
+  }
+  return digits
+    .replace(/(\d{2})(\d)/, "$1.$2")
+    .replace(/(\d{3})(\d)/, "$1.$2")
+    .replace(/(\d{3})(\d)/, "$1/$2")
+    .replace(/(\d{4})(\d{1,2})$/, "$1-$2");
+}
+
+type LoginMode = "email" | "documento";
 
 const MAX_ATTEMPTS_DISPLAY = 5;
 
@@ -28,10 +54,19 @@ const features = [
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { login, loading, isBlocked, remainingAttempts } = useAuth();
+  const { user, isReady, login, loading, isBlocked, remainingAttempts } = useAuth();
   const { resolvedTheme, setTheme } = useTheme();
 
+  // Redirecionar automaticamente se a sessão já está restaurada
+  useEffect(() => {
+    if (isReady && user) {
+      navigate(ROLE_REDIRECTS[user.role] || "/admin", { replace: true });
+    }
+  }, [isReady, user, navigate]);
+
+  const [loginMode, setLoginMode] = useState<LoginMode>("email");
   const [email, setEmail] = useState("");
+  const [documento, setDocumento] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
@@ -43,19 +78,46 @@ export default function LoginPage() {
     setError("");
     setFieldErrors({});
 
-    const normalizedEmail = email.trim().toLowerCase();
-    const result = loginSchema.safeParse({ email: normalizedEmail, password });
-    if (!result.success) {
-      const errors: Record<string, string> = {};
-      result.error.issues.forEach((issue) => {
-        errors[issue.path[0] as string] = issue.message;
-      });
-      setFieldErrors(errors);
-      return;
+    let resolvedEmail: string;
+
+    if (loginMode === "email") {
+      const normalizedEmail = email.trim().toLowerCase();
+      const result = loginEmailSchema.safeParse({ email: normalizedEmail, password });
+      if (!result.success) {
+        const errors: Record<string, string> = {};
+        result.error.issues.forEach((issue) => {
+          errors[issue.path[0] as string] = issue.message;
+        });
+        setFieldErrors(errors);
+        return;
+      }
+      resolvedEmail = normalizedEmail;
+    } else {
+      const result = loginDocSchema.safeParse({ documento, password });
+      if (!result.success) {
+        const errors: Record<string, string> = {};
+        result.error.issues.forEach((issue) => {
+          errors[issue.path[0] as string] = issue.message;
+        });
+        setFieldErrors(errors);
+        return;
+      }
+      const digits = documento.replace(/\D/g, "");
+      try {
+        const { data: foundEmail, error: rpcError } = await supabase.rpc("lookup_email_by_documento", { doc_input: digits });
+        if (rpcError || !foundEmail) {
+          setError("Documento não cadastrado. Verifique o CPF/CNPJ informado.");
+          return;
+        }
+        resolvedEmail = foundEmail;
+      } catch {
+        setError("Erro ao buscar documento. Tente novamente.");
+        return;
+      }
     }
 
     try {
-      const loginPromise = login(normalizedEmail, password, rememberMe);
+      const loginPromise = login(resolvedEmail, password, rememberMe);
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("timeout")), 30000)
       );
@@ -72,6 +134,15 @@ export default function LoginPage() {
         : "Erro inesperado ao fazer login.");
     }
   };
+
+  // Enquanto auth inicializa, não mostrar formulário (evita flash)
+  if (!isReady) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <ButtonSpinner />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen grid lg:grid-cols-[1fr_1.2fr] bg-background">
@@ -102,8 +173,8 @@ export default function LoginPage() {
               transition={{ duration: 0.5, delay: 0.1 }}
               className="flex items-center gap-3"
             >
-              <div className="h-14 w-14 rounded-xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/25">
-                <MotoIcon className="h-7 w-7 text-primary-foreground" />
+              <div className="h-14 w-14 rounded-full overflow-hidden shadow-lg shadow-primary/25">
+                <img src={logoLevaTraz} alt="Leva e Traz" className="h-full w-full object-cover" />
               </div>
               <div>
                 <span className="text-xl font-bold tracking-tight block">Leva e Traz</span>
@@ -138,22 +209,70 @@ export default function LoginPage() {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="space-y-1.5">
-              <Label htmlFor="email" className="text-base font-medium">Email</Label>
-              <div className="relative group">
-                <Mail className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" />
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="seu@email.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="pl-11 h-12 text-base rounded-xl border-border/60 bg-muted/40 dark:bg-[hsl(230_30%_8%)] dark:border-[hsl(230_25%_16%)] focus:bg-background dark:focus:bg-[hsl(230_30%_10%)] focus:border-primary/50 transition-all"
-                  disabled={isBlocked}
-                />
-              </div>
-              {fieldErrors.email && <p className="text-sm text-destructive">{fieldErrors.email}</p>}
+            {/* Login mode toggle */}
+            <div className="flex rounded-xl border border-border/60 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => { setLoginMode("email"); setError(""); setFieldErrors({}); }}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-colors ${
+                  loginMode === "email"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted/40 dark:bg-[hsl(230_30%_8%)] text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Mail className="h-4 w-4" />
+                Email
+              </button>
+              <button
+                type="button"
+                onClick={() => { setLoginMode("documento"); setError(""); setFieldErrors({}); }}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-colors ${
+                  loginMode === "documento"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted/40 dark:bg-[hsl(230_30%_8%)] text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <FileText className="h-4 w-4" />
+                CPF / CNPJ
+              </button>
             </div>
+
+            {loginMode === "email" ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="email" className="text-base font-medium">Email</Label>
+                <div className="relative group">
+                  <Mail className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" />
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="seu@email.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="pl-11 h-12 text-base rounded-xl border-border/60 bg-muted/40 dark:bg-[hsl(230_30%_8%)] dark:border-[hsl(230_25%_16%)] focus:bg-background dark:focus:bg-[hsl(230_30%_10%)] focus:border-primary/50 transition-all"
+                    disabled={isBlocked}
+                  />
+                </div>
+                {fieldErrors.email && <p className="text-sm text-destructive">{fieldErrors.email}</p>}
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Label htmlFor="documento" className="text-base font-medium">CPF ou CNPJ</Label>
+                <div className="relative group">
+                  <FileText className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" />
+                  <Input
+                    id="documento"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="000.000.000-00"
+                    value={documento}
+                    onChange={(e) => setDocumento(maskDocumento(e.target.value))}
+                    className="pl-11 h-12 text-base rounded-xl border-border/60 bg-muted/40 dark:bg-[hsl(230_30%_8%)] dark:border-[hsl(230_25%_16%)] focus:bg-background dark:focus:bg-[hsl(230_30%_10%)] focus:border-primary/50 transition-all"
+                    disabled={isBlocked}
+                  />
+                </div>
+                {fieldErrors.documento && <p className="text-sm text-destructive">{fieldErrors.documento}</p>}
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
@@ -253,8 +372,8 @@ export default function LoginPage() {
               transition={{ duration: 0.6, delay: 0.4, type: "spring", stiffness: 200 }}
               className="mx-auto"
             >
-              <div className="h-24 w-24 rounded-2xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center mx-auto shadow-2xl shadow-primary/30 rotate-3 hover:rotate-0 transition-transform duration-500">
-                <MotoIcon className="h-12 w-12 text-primary-foreground" />
+              <div className="h-28 w-28 rounded-full overflow-hidden mx-auto shadow-2xl shadow-primary/30 rotate-3 hover:rotate-0 transition-transform duration-500">
+                <img src={logoLevaTraz} alt="Leva e Traz" className="h-full w-full object-cover" />
               </div>
             </motion.div>
 

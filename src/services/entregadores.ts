@@ -30,14 +30,14 @@ export async function fetchEntregadoresAtivos(): Promise<EntregadorRow[]> {
   return data as EntregadorRow[];
 }
 
-export async function fetchEntregadorById(id: string): Promise<EntregadorRow> {
+export async function fetchEntregadorById(id: string): Promise<EntregadorRow | null> {
   const { data, error } = await supabase
     .from("entregadores")
     .select("*")
     .eq("id", id)
-    .single();
+    .maybeSingle();
   if (error) throw new Error(error.message);
-  return data as EntregadorRow;
+  return data as EntregadorRow | null;
 }
 
 // ── Criação / Edição ──────────────────────────────────────────────────────────
@@ -48,10 +48,10 @@ export async function createEntregador(
   const { data, error } = await supabase
     .from("entregadores")
     .insert(input)
-    .select()
-    .single();
+    .select();
   if (error) throw new Error(error.message);
-  return data as EntregadorRow;
+  if (!data || data.length === 0) throw new Error("Falha ao criar entregador.");
+  return data[0] as EntregadorRow;
 }
 
 export async function updateEntregador(
@@ -62,10 +62,10 @@ export async function updateEntregador(
     .from("entregadores")
     .update(patch)
     .eq("id", id)
-    .select()
-    .single();
+    .select();
   if (error) throw new Error(error.message);
-  return data as EntregadorRow;
+  if (!data || data.length === 0) throw new Error("Entregador não encontrado ou sem permissão para atualizar.");
+  return data[0] as EntregadorRow;
 }
 
 export async function deleteEntregador(id: string): Promise<void> {

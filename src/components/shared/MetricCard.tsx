@@ -11,6 +11,7 @@ interface MetricCardProps {
   deltaLabel?: string;
   loading?: boolean;
   className?: string;
+  valueColor?: string;
 }
 
 export function MetricCard({
@@ -22,6 +23,7 @@ export function MetricCard({
   deltaLabel,
   loading = false,
   className,
+  valueColor,
 }: MetricCardProps) {
   const safeValue = value === undefined || value === null || (typeof value === "number" && isNaN(value)) ? "0" : value;
   const safeDelta = delta !== undefined && !isNaN(delta) ? delta : undefined;
@@ -54,7 +56,7 @@ export function MetricCard({
           </div>
         )}
       </div>
-      <p className="text-2xl font-bold tracking-tight tabular-nums">{safeValue}</p>
+      <p className={cn("text-2xl font-bold tracking-tight tabular-nums", valueColor)}>{safeValue}</p>
       <div className="flex items-center gap-2 mt-1">
         {safeDelta !== undefined && (
           <span

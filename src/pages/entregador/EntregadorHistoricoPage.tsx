@@ -10,7 +10,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { formatCurrency, formatDateBR } from "@/lib/formatters";
 import { useSolicitacoesByEntregador } from "@/hooks/useSolicitacoes";
-import { useClientes } from "@/hooks/useClientes";
 import { DatePickerWithRange } from "@/components/shared/DatePickerWithRange";
 import type { DateRange } from "react-day-picker";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -23,8 +22,6 @@ import { useEntregadorId } from "@/hooks/useEntregadorId";
 export default function EntregadorHistoricoPage() {
   const { entregadorId: ENTREGADOR_ID } = useEntregadorId();
   const { data: solicitacoes = [] } = useSolicitacoesByEntregador(ENTREGADOR_ID ?? "");
-  const { data: clientes = [] } = useClientes();
-  const getClienteNome = (id: string) => clientes.find((c) => c.id === id)?.nome ?? id;
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("todos");
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
@@ -35,7 +32,7 @@ export default function EntregadorHistoricoPage() {
       .filter((s) => {
         if (!search) return true;
         const q = search.toLowerCase();
-        return s.codigo.toLowerCase().includes(q) || getClienteNome(s.cliente_id).toLowerCase().includes(q);
+        return s.codigo.toLowerCase().includes(q) || (s.cliente_nome ?? "").toLowerCase().includes(q);
       })
       .filter((s) => statusFilter === "todos" || s.status === statusFilter)
       .filter((s) => {
@@ -52,11 +49,11 @@ export default function EntregadorHistoricoPage() {
         return match;
       })
       .sort((a, b) => new Date(b.data_solicitacao).getTime() - new Date(a.data_solicitacao).getTime());
-  }, [search, statusFilter, dateRange, solicitacoes, clientes]);
+  }, [search, statusFilter, dateRange, solicitacoes]);
 
   const columns: Column<Solicitacao>[] = [
     { key: "codigo", header: "Código", sortable: true, cell: (s) => <span className="text-sm font-medium">{s.codigo}</span> },
-    { key: "cliente_id", header: "Cliente", cell: (s) => <span className="text-sm text-muted-foreground">{getClienteNome(s.cliente_id)}</span> },
+    { key: "cliente_id", header: "Cliente", cell: (s) => <span className="text-sm text-muted-foreground">{s.cliente_nome ?? "—"}</span> },
     { key: "ponto_coleta", header: "Coleta", cell: (s) => <span className="text-sm text-muted-foreground truncate max-w-[200px] block">{s.ponto_coleta}</span> },
     { key: "data_solicitacao", header: "Data", sortable: true, cell: (s) => <span className="text-sm">{formatDateBR(s.data_solicitacao)}</span> },
     
@@ -83,7 +80,7 @@ export default function EntregadorHistoricoPage() {
           <div className="mt-2 space-y-1">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <User className="h-3 w-3 shrink-0" />
-              <span className="truncate">{getClienteNome(s.cliente_id)}</span>
+              <span className="truncate">{s.cliente_nome ?? "—"}</span>
             </div>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <MapPin className="h-3 w-3 shrink-0" />
@@ -116,7 +113,7 @@ export default function EntregadorHistoricoPage() {
               subtitle: `${entregas.length} entregas`,
               headers: ["Código", "Cliente", "Coleta", "Data", "Status"],
               rows: entregas.map((s) => [
-                s.codigo, getClienteNome(s.cliente_id), s.ponto_coleta,
+                s.codigo, s.cliente_nome ?? "—", s.ponto_coleta,
                 formatDateBR(s.data_solicitacao),
                 s.status,
               ]),
@@ -129,7 +126,7 @@ export default function EntregadorHistoricoPage() {
               title: "Histórico de Entregas",
               headers: ["Código", "Cliente", "Coleta", "Data", "Status"],
               rows: entregas.map((s) => [
-                s.codigo, getClienteNome(s.cliente_id), s.ponto_coleta,
+                s.codigo, s.cliente_nome ?? "—", s.ponto_coleta,
                 formatDateBR(s.data_solicitacao),
                 s.status,
               ]),

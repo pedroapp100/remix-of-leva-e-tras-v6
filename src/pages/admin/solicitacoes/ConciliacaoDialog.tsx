@@ -104,12 +104,12 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
   const diffOperacao = diffOperacaoCents / 100;
   const diffLoja = diffLojaCents / 100;
 
-  const handleConcluir = () => {
+  const handleConcluir = async () => {
     if (allPagamentos.length === 0) { toast.error("Registre ao menos um pagamento."); return; }
     if (allPagamentos.some((p) => p.valor <= 0)) { toast.error("Todos os pagamentos devem ter valor positivo."); return; }
     if (!isDriverView && !isBalanced) { toast.error("Os valores não estão balanceados. Verifique os pagamentos."); return; }
 
-    // Persist payments to global store
+    // Persist payments to DB
     if (solicitacaoId) {
       const persistedPagamentos = allPagamentos
         .filter((pag) => pag.forma_pagamento_id !== FATURAR_ID)
@@ -123,7 +123,12 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
           created_by: null as string | null,
         }));
       if (persistedPagamentos.length > 0) {
-        createPagamentosMut.mutate(persistedPagamentos);
+        try {
+          await createPagamentosMut.mutateAsync(persistedPagamentos);
+        } catch {
+          toast.error("Erro ao salvar pagamentos. Tente novamente.");
+          return;
+        }
       }
     }
 

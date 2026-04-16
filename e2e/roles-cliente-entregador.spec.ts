@@ -114,7 +114,7 @@ test.describe("Perfis — Cliente (5 cenários)", () => {
 
   test("cliente navega para Meu Financeiro", async ({ page }) => {
     test.setTimeout(90_000);
-    await spaNavigate(page, "/cliente/financeiro");
+    await page.goto("/cliente/financeiro", { waitUntil: "load" });
     await waitForPageLoad(page);
     await expect(
       page.getByRole("heading", { name: /Meu Financeiro/i }),
@@ -173,7 +173,7 @@ test.describe("Perfis — Entregador (5 cenários)", () => {
   });
 
   test("entregador navega para Histórico", async ({ page }) => {
-    await spaNavigate(page, "/entregador/historico");
+    await page.goto("/entregador/historico", { waitUntil: "load" });
     await waitForPageLoad(page);
     await expect(
       page.getByRole("heading", { name: /Histórico de Entregas/i }),
@@ -196,5 +196,47 @@ test.describe("Perfis — Entregador (5 cenários)", () => {
     await spaNavigate(page, "/admin/financeiro");
     await page.waitForURL(/\/(entregador|login)/, { timeout: 20_000 });
     await expect(page).toHaveURL(/\/(entregador|login)/);
+  });
+});
+
+// ─────────────────────────────────────────────────────
+// SUITE: Sessão sobrevive a reload (hard navigation)
+// Valida Fix #13 — init por localStorage não perde sessão em F5
+// Garante que regressões no AuthContext sejam detectadas antes de ir a produção.
+// ─────────────────────────────────────────────────────
+test.describe("Sessão sobrevive a reload (hard navigation)", () => {
+  test.skip(
+    !CLIENTE_EMAIL || !CLIENTE_PASSWORD || !ENTREGADOR_EMAIL || !ENTREGADOR_PASSWORD,
+    "Defina E2E_CLIENTE_EMAIL, E2E_CLIENTE_PASSWORD, E2E_ENTREGADOR_EMAIL e E2E_ENTREGADOR_PASSWORD em .env.e2e",
+  );
+
+  test("cliente: F5 em rota protegida mantém sessão ativa", async ({ page }) => {
+    test.setTimeout(90_000);
+    await loginAs(page, CLIENTE_EMAIL!, CLIENTE_PASSWORD!, "/cliente");
+    await spaNavigate(page, "/cliente/solicitacoes");
+    await waitForPageLoad(page);
+
+    // Simula F5 — destrói React em memória, reinicia AuthContext do zero via localStorage
+    await page.reload({ waitUntil: "load" });
+    await waitForPageLoad(page);
+
+    // Deve permanecer na rota protegida, NÃO redirecionar para /login
+    await expect(page).not.toHaveURL(/\/login/);
+    await expect(page).toHaveURL(/\/cliente/);
+  });
+
+  test("entregador: F5 em rota protegida mantém sessão ativa", async ({ page }) => {
+    test.setTimeout(90_000);
+    await loginAs(page, ENTREGADOR_EMAIL!, ENTREGADOR_PASSWORD!, "/entregador");
+    await spaNavigate(page, "/entregador/solicitacoes");
+    await waitForPageLoad(page);
+
+    // Simula F5 — destrói React em memória, reinicia AuthContext do zero via localStorage
+    await page.reload({ waitUntil: "load" });
+    await waitForPageLoad(page);
+
+    // Deve permanecer na rota protegida, NÃO redirecionar para /login
+    await expect(page).not.toHaveURL(/\/login/);
+    await expect(page).toHaveURL(/\/entregador/);
   });
 });

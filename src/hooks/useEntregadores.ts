@@ -30,7 +30,7 @@ export function useEntregadoresAtivos() {
 }
 
 export function useEntregadorById(id: string) {
-  return useQuery<EntregadorRow>({
+  return useQuery<EntregadorRow | null>({
     queryKey: ["entregadores", id],
     queryFn: () => fetchEntregadorById(id),
     enabled: Boolean(id),
