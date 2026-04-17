@@ -236,9 +236,9 @@ export default function CaixasEntregadoresPage() {
   // --- Filters (shared between tabs) ---
   const renderFilters = () => (
     <div className="flex flex-col sm:flex-row gap-3 flex-wrap items-end">
-      <SearchInput value={search} onChange={setSearch} placeholder="Buscar por entregador..." className="flex-1 min-w-[200px]" />
+      <SearchInput value={search} onChange={setSearch} placeholder="Buscar por entregador..." className="flex-1" />
       <Select value={entregadorFilter} onValueChange={setEntregadorFilter}>
-        <SelectTrigger className="w-[180px]"><SelectValue placeholder="Entregador" /></SelectTrigger>
+        <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Entregador" /></SelectTrigger>
         <SelectContent>
           <SelectItem value="todos">Todos</SelectItem>
           {uniqueEntregadores.map((e) => (
@@ -247,7 +247,7 @@ export default function CaixasEntregadoresPage() {
         </SelectContent>
       </Select>
       <Select value={statusFilter} onValueChange={setStatusFilter}>
-        <SelectTrigger className="w-[140px]"><SelectValue placeholder="Status" /></SelectTrigger>
+        <SelectTrigger className="w-full sm:w-[140px]"><SelectValue placeholder="Status" /></SelectTrigger>
         <SelectContent>
           <SelectItem value="todos">Todos</SelectItem>
           <SelectItem value="aberto">Aberto</SelectItem>

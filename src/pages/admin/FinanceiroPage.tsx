@@ -176,20 +176,22 @@ export default function FinanceiroPage() {
       <Card>
         <CardContent className="p-4">
           <Tabs value={activeFinTab} onValueChange={setActiveFinTab} data-onboarding="finance-tabs">
-            <TabsList>
-              <TabsTrigger value="despesas" className="gap-1.5">
-                <TrendingDown className="h-4 w-4" /> Despesas
-              </TabsTrigger>
-              <TabsTrigger value="receitas" className="gap-1.5">
-                <Receipt className="h-4 w-4" /> Receitas
-              </TabsTrigger>
-              <TabsTrigger value="recorrentes" className="gap-1.5">
-                <RefreshCw className="h-4 w-4" /> Recorrentes
-              </TabsTrigger>
-              <TabsTrigger value="livro-caixa" className="gap-1.5">
-                <BookOpen className="h-4 w-4" /> Livro Caixa
-              </TabsTrigger>
-            </TabsList>
+            <div className="overflow-x-auto pb-1 -mx-1 px-1">
+              <TabsList className="w-max">
+                <TabsTrigger value="despesas" className="gap-1.5">
+                  <TrendingDown className="h-4 w-4" /> Despesas
+                </TabsTrigger>
+                <TabsTrigger value="receitas" className="gap-1.5">
+                  <Receipt className="h-4 w-4" /> Receitas
+                </TabsTrigger>
+                <TabsTrigger value="recorrentes" className="gap-1.5">
+                  <RefreshCw className="h-4 w-4" /> Recorrentes
+                </TabsTrigger>
+                <TabsTrigger value="livro-caixa" className="gap-1.5">
+                  <BookOpen className="h-4 w-4" /> Livro Caixa
+                </TabsTrigger>
+              </TabsList>
+            </div>
             <TabsContent value="despesas" className="mt-4">
               <DespesasTab despesas={despesas} />
             </TabsContent>

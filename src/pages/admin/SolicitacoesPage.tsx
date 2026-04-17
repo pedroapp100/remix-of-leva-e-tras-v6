@@ -495,7 +495,7 @@ export default function SolicitacoesPage() {
       }
     >
       {/* Metrics */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
         <MetricCard title="Pendentes" value={metrics.pendentes} icon={ClipboardList} />
         <MetricCard title="Aceitas" value={metrics.aceitas} icon={CheckCircle} />
         <MetricCard title="Em Andamento" value={metrics.emAndamento} icon={Truck} />
@@ -507,27 +507,29 @@ export default function SolicitacoesPage() {
       <Card>
         <CardContent className="space-y-4 pt-6">
           <Tabs value={activeTab} onValueChange={setActiveTab} data-onboarding="status-tabs">
-            <TabsList>
-              {STATUS_TABS.map((tab) => (
-                <TabsTrigger
-                  key={tab.value}
-                  value={tab.value}
-                  className="gap-1.5"
-                >
-                  {tab.label}
-                  <Badge variant="secondary" className="ml-1 text-xs h-5 px-1.5 tabular-nums">
-                    {statusCounts[tab.value] ?? 0}
-                  </Badge>
-                </TabsTrigger>
-              ))}
-            </TabsList>
+            <div className="overflow-x-auto pb-1 -mx-1 px-1">
+              <TabsList className="w-max">
+                {STATUS_TABS.map((tab) => (
+                  <TabsTrigger
+                    key={tab.value}
+                    value={tab.value}
+                    className="gap-1.5"
+                  >
+                    {tab.label}
+                    <Badge variant="secondary" className="ml-1 text-xs h-5 px-1.5 tabular-nums">
+                      {statusCounts[tab.value] ?? 0}
+                    </Badge>
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </div>
           </Tabs>
 
           <div className="flex flex-col sm:flex-row gap-3 flex-wrap items-end">
-            <SearchInput value={search} onChange={setSearch} placeholder="Buscar por código ou cliente..." className="flex-1 min-w-[200px]" />
+            <SearchInput value={search} onChange={setSearch} placeholder="Buscar por código ou cliente..." className="flex-1" />
             <DatePickerWithRange value={dateRange} onChange={setDateRange} />
             {(search || activeTab !== "todas" || dateRange?.from) && (
-              <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground" onClick={() => { setSearch(""); setActiveTab("todas"); setDateRange(undefined); }}>
+              <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground w-full sm:w-auto" onClick={() => { setSearch(""); setActiveTab("todas"); setDateRange(undefined); }}>
                 <X className="h-3.5 w-3.5" /> Limpar filtros
               </Button>
             )}

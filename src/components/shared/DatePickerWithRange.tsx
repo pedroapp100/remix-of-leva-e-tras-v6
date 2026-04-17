@@ -40,11 +40,11 @@ export function DatePickerWithRange({
           <Button
             variant="outline"
             className={cn(
-              "h-10 justify-start text-left font-normal",
+              "h-10 justify-start text-left font-normal w-full sm:w-auto",
               !value?.from && "text-muted-foreground"
             )}
           >
-            <CalendarIcon className="mr-2 h-4 w-4" />
+            <CalendarIcon className="mr-2 h-4 w-4 shrink-0" />
             {formatLabel()}
           </Button>
         </PopoverTrigger>
@@ -58,7 +58,7 @@ export function DatePickerWithRange({
               onChange?.(range);
               if (range?.from && range?.to) setOpen(false);
             }}
-            numberOfMonths={2}
+            numberOfMonths={1}
             locale={ptBR}
           />
         </PopoverContent>

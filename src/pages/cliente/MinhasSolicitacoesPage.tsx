@@ -120,10 +120,10 @@ export default function MinhasSolicitacoesPage() {
       <Card>
         <CardContent className="pt-4 space-y-4">
           <div className="flex flex-col sm:flex-row gap-3 flex-wrap items-end">
-            <SearchInput value={search} onChange={setSearch} placeholder="Buscar por código ou ponto de coleta..." className="flex-1 sm:max-w-xs min-w-[200px]" />
+            <SearchInput value={search} onChange={setSearch} placeholder="Buscar por código ou ponto de coleta..." className="flex-1 sm:max-w-xs" />
             <DatePickerWithRange value={dateRange} onChange={setDateRange} />
             {(search || tab !== "todas" || dateRange?.from) && (
-              <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground" onClick={() => { setSearch(""); setTab("todas"); setDateRange(undefined); }}>
+              <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground w-full sm:w-auto" onClick={() => { setSearch(""); setTab("todas"); setDateRange(undefined); }}>
                 <X className="h-3.5 w-3.5" /> Limpar filtros
               </Button>
             )}

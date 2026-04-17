@@ -274,11 +274,11 @@ export default function FaturasPage() {
               value={search}
               onChange={setSearch}
               placeholder="Buscar por número ou cliente..."
-              className="flex-1 min-w-[200px]"
+              className="flex-1"
             />
             <DatePickerWithRange value={dateRange} onChange={setDateRange} />
             {(search || activeTab !== "ativas" || dateRange?.from) && (
-              <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground" onClick={() => { setSearch(""); setActiveTab("ativas"); setDateRange(undefined); }}>
+              <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground w-full sm:w-auto" onClick={() => { setSearch(""); setActiveTab("ativas"); setDateRange(undefined); }}>
                 <X className="h-3.5 w-3.5" /> Limpar filtros
               </Button>
             )}

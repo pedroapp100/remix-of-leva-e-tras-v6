@@ -288,7 +288,7 @@ export default function EntregasPage() {
       actions={<ExportDropdown onExportExcel={handleExportCSV} onExportPDF={handleExportPDF} />}
     >
       {/* Metrics */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
         <MetricCard title="Total" value={metrics.total} icon={Package} />
         <MetricCard title="Ativas" value={metrics.ativas} icon={Truck} />
         <MetricCard title="Concluídas" value={metrics.concluidas} icon={CheckCircle} />
@@ -300,16 +300,18 @@ export default function EntregasPage() {
       <Card>
         <CardContent className="space-y-4 pt-6">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList>
-              {STATUS_TABS.map((tab) => (
-                <TabsTrigger key={tab.value} value={tab.value} className="gap-1.5">
-                  {tab.label}
-                  <Badge variant="secondary" className="ml-1 text-xs h-5 px-1.5 tabular-nums">
-                    {statusCounts[tab.value] ?? 0}
-                  </Badge>
-                </TabsTrigger>
-              ))}
-            </TabsList>
+            <div className="overflow-x-auto pb-1 -mx-1 px-1">
+              <TabsList className="w-max">
+                {STATUS_TABS.map((tab) => (
+                  <TabsTrigger key={tab.value} value={tab.value} className="gap-1.5">
+                    {tab.label}
+                    <Badge variant="secondary" className="ml-1 text-xs h-5 px-1.5 tabular-nums">
+                      {statusCounts[tab.value] ?? 0}
+                    </Badge>
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </div>
           </Tabs>
 
           <div className="flex flex-col sm:flex-row gap-3 flex-wrap items-end">
@@ -317,10 +319,10 @@ export default function EntregasPage() {
               value={search}
               onChange={setSearch}
               placeholder="Buscar por código, cliente, destinatário ou bairro..."
-              className="flex-1 min-w-[200px]"
+              className="flex-1"
             />
             <Select value={filterTipo} onValueChange={setFilterTipo}>
-              <SelectTrigger className="w-[160px] h-9">
+              <SelectTrigger className="w-full sm:w-[160px] h-9">
                 <SelectValue placeholder="Tipo" />
               </SelectTrigger>
               <SelectContent>
@@ -331,7 +333,7 @@ export default function EntregasPage() {
               </SelectContent>
             </Select>
             <Select value={filterEntregador} onValueChange={setFilterEntregador}>
-              <SelectTrigger className="w-[180px] h-9">
+              <SelectTrigger className="w-full sm:w-[180px] h-9">
                 <SelectValue placeholder="Entregador" />
               </SelectTrigger>
               <SelectContent>
@@ -346,7 +348,7 @@ export default function EntregasPage() {
               <Button
                 variant="ghost"
                 size="sm"
-                className="gap-1.5 text-muted-foreground hover:text-foreground"
+                className="gap-1.5 text-muted-foreground hover:text-foreground w-full sm:w-auto"
                 onClick={() => {
                   setSearch("");
                   setActiveTab("todas");
