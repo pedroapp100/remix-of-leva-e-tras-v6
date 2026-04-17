@@ -82,18 +82,16 @@ export default function ClientesPage() {
       const payload = insertData as unknown as ClienteInsert;
       await createCliente.mutateAsync({ ...payload, profile_id: null, documento: null });
 
-      // Auto-criar conta de acesso via Supabase Auth
+      // Auto-criar conta de acesso via Admin API (Edge Function)
       if (senha) {
         const docDigits = data.documento?.replace(/\D/g, "") || undefined;
-        const { error } = await supabase.auth.signUp({
-          email: data.email,
-          password: senha,
-          options: { data: { nome: data.nome, role: "cliente", documento: docDigits } },
+        const { data: fnData, error } = await supabase.functions.invoke("create-user", {
+          body: { email: data.email, password: senha, nome: data.nome, role: "cliente", documento: docDigits },
         });
-        if (error) {
-          toast.warning(`Cliente cadastrado, mas erro ao criar acesso: ${error.message}`);
+        if (error || fnData?.error) {
+          toast.warning(`Cliente cadastrado, mas erro ao criar acesso: ${fnData?.error ?? error?.message}`);
         } else {
-          toast.success(`Cliente cadastrado! Convite enviado para ${data.email}`, { duration: 10000 });
+          toast.success(`Cliente cadastrado! Acesso criado para ${data.email}`, { duration: 10000 });
         }
       } else {
         toast.success("Cliente cadastrado com sucesso!");

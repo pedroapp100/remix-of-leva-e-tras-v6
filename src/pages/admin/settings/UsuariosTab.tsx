@@ -100,14 +100,19 @@ export function UsuariosTab() {
           toast.error("A senha deve ter no mínimo 6 caracteres.");
           return;
         }
-        const { data, error } = await supabase.auth.signUp({
-          email: form.email.trim().toLowerCase(),
-          password: form.password.trim(),
-          options: { data: { nome: form.nome.trim(), role: "admin", documento: form.documento.replace(/\D/g, "") || null } },
+        const { data, error } = await supabase.functions.invoke("create-user", {
+          body: {
+            email: form.email.trim().toLowerCase(),
+            password: form.password.trim(),
+            nome: form.nome.trim(),
+            role: "admin",
+            documento: form.documento.replace(/\D/g, "") || undefined,
+            cargo_id: form.cargo_id || undefined,
+          },
         });
-        if (error) { toast.error(error.message); return; }
-        if (data.user && form.cargo_id) {
-          await updateProfile.mutateAsync({ id: data.user.id, patch: { cargo_id: form.cargo_id } });
+        if (error || data?.error) {
+          toast.error(data?.error ?? error?.message ?? "Erro ao criar usuário.");
+          return;
         }
         toast.success(`Usuário criado: ${form.email.trim().toLowerCase()}`);
         await refetch();

@@ -99,18 +99,16 @@ export default function EntregadoresPage() {
       const payload = insertData as unknown as EntregadorInsert;
       const created = await createEntregador.mutateAsync({ ...payload, profile_id: null });
 
-      // Auto-criar conta de acesso via Supabase Auth
+      // Auto-criar conta de acesso via Admin API (Edge Function)
       if (senha) {
         const docDigits = data.documento?.replace(/\D/g, "") || undefined;
-        const { error } = await supabase.auth.signUp({
-          email: data.email,
-          password: senha,
-          options: { data: { nome: data.nome, role: "entregador", documento: docDigits } },
+        const { data: fnData, error } = await supabase.functions.invoke("create-user", {
+          body: { email: data.email, password: senha, nome: data.nome, role: "entregador", documento: docDigits },
         });
-        if (error) {
-          toast.warning(`Entregador cadastrado, mas erro ao criar acesso: ${error.message}`);
+        if (error || fnData?.error) {
+          toast.warning(`Entregador cadastrado, mas erro ao criar acesso: ${fnData?.error ?? error?.message}`);
         } else {
-          toast.success(`Entregador cadastrado! Convite enviado para ${data.email}`, { duration: 10000 });
+          toast.success(`Entregador cadastrado! Acesso criado para ${data.email}`, { duration: 10000 });
         }
       } else {
         toast.success("Entregador cadastrado com sucesso!");
