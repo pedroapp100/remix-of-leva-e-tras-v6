@@ -9,6 +9,8 @@ import { ThemeProvider } from "@/contexts/ThemeProvider";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { BrandedLoader } from "@/components/shared/BrandedLoader";
 import { toast } from "sonner";
+import { PWAInstallBanner } from "@/components/PWAInstallBanner";
+import { OfflineBanner } from "@/components/OfflineBanner";
 import Index from "./pages/Index";
 
 const ProtectedAppShell = lazy(() =>
@@ -139,6 +141,8 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
+        <OfflineBanner />
+        <PWAInstallBanner />
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <AuthProvider>
               <CacheSentinel />

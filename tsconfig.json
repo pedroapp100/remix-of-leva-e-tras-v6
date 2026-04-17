@@ -12,6 +12,7 @@
     "skipLibCheck": true,
     "strictNullChecks": false
   },
+  "exclude": ["node_modules"],
   "files": [],
   "references": [
     {
