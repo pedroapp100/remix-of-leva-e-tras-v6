@@ -81,7 +81,7 @@ export function HeroSection() {
           <motion.h1
             variants={fadeUp}
             custom={1}
-            className="text-[1.75rem] sm:text-4xl lg:text-[3.5rem] xl:text-[4rem] font-bold tracking-tight leading-[1.06]"
+            className="text-[1.75rem] sm:text-4xl lg:text-[3.5rem] xl:text-[4rem] font-bold tracking-tight leading-[1.18]"
           >
             Sua loja vende,{" "}
             <span className="relative inline-block">
