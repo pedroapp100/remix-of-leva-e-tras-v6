@@ -16,6 +16,7 @@ import { Plus, Pencil, Trash2, UserCog, X } from "lucide-react";
 import { toast } from "sonner";
 import type { UserStatus } from "@/types/database";
 import type { ProfileRow } from "@/services/users";
+import { maskDocumento } from "@/lib/formatters";
 
 interface UserFormData {
   nome: string;
@@ -23,9 +24,10 @@ interface UserFormData {
   password: string;
   cargo_id: string;
   status: UserStatus;
+  documento: string;
 }
 
-const emptyForm: UserFormData = { nome: "", email: "", password: "", cargo_id: "", status: "ativo" };
+const emptyForm: UserFormData = { nome: "", email: "", password: "", cargo_id: "", status: "ativo", documento: "" };
 
 export function UsuariosTab() {
   const { data: adminUsers = [], refetch } = useAdminProfiles();
@@ -66,6 +68,7 @@ export function UsuariosTab() {
       password: "",
       cargo_id: user.cargo_id ?? "",
       status: (user.ativo ? "ativo" : "inativo") as UserStatus,
+      documento: user.documento ? maskDocumento(user.documento) : "",
     });
     setDialogOpen(true);
   }
@@ -83,6 +86,7 @@ export function UsuariosTab() {
           nome: form.nome.trim(),
           cargo_id: form.cargo_id || null,
           ativo: form.status === "ativo",
+          documento: form.documento.replace(/\D/g, "") || null,
         },
       });
       toast.success("Usuário atualizado com sucesso.");
@@ -98,7 +102,7 @@ export function UsuariosTab() {
       const { error } = await supabase.auth.signUp({
         email: form.email.trim().toLowerCase(),
         password: form.password.trim(),
-        options: { data: { nome: form.nome.trim(), role: "admin", cargo_id: form.cargo_id || null } },
+        options: { data: { nome: form.nome.trim(), role: "admin", cargo_id: form.cargo_id || null, documento: form.documento.replace(/\D/g, "") || null } },
       });
       if (error) { toast.error(error.message); return; }
       toast.success("Convite enviado para ${form.email.trim().toLowerCase()}");
@@ -285,6 +289,18 @@ export function UsuariosTab() {
             <div className="space-y-2">
               <Label>Email</Label>
               <Input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} placeholder="email@empresa.com" />
+            </div>
+            <div className="space-y-2">
+              <Label>
+                CPF / CNPJ{" "}
+                <span className="text-xs text-muted-foreground">(opcional — permite login por documento)</span>
+              </Label>
+              <Input
+                value={form.documento}
+                onChange={(e) => setForm((f) => ({ ...f, documento: maskDocumento(e.target.value) }))}
+                placeholder="000.000.000-00"
+                maxLength={18}
+              />
             </div>
             <div className="space-y-2">
               <Label>{editingId ? "Nova Senha (deixe em branco para manter)" : "Senha"}</Label>

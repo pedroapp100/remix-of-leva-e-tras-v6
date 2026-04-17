@@ -43,6 +43,25 @@ export function formatCNPJ(cnpj: string): string {
 }
 
 /**
+ * Máscara de input para CPF (000.000.000-00) ou CNPJ (00.000.000/0000-00)
+ * baseada na quantidade de dígitos digitada.
+ */
+export function maskDocumento(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 14);
+  if (digits.length <= 11) {
+    return digits
+      .replace(/(\d{3})(\d)/, "$1.$2")
+      .replace(/(\d{3})(\d)/, "$1.$2")
+      .replace(/(\d{3})(\d{1,2})$/, "$1-$2");
+  }
+  return digits
+    .replace(/(\d{2})(\d)/, "$1.$2")
+    .replace(/(\d{3})(\d)/, "$1.$2")
+    .replace(/(\d{3})(\d)/, "$1/$2")
+    .replace(/(\d{4})(\d{1,2})$/, "$1-$2");
+}
+
+/**
  * Formata data no padrão BR: dd/mm/aaaa
  */
 export function formatDateBR(date: string | Date): string {
