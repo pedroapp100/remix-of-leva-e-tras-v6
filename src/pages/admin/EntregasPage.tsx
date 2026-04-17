@@ -7,7 +7,7 @@ import { TipoOperacaoBadge, getTipoOperacaoLabel } from "@/components/shared/Tip
 import { useSolicitacoes, useRotasWindow } from "@/hooks/useSolicitacoes";
 import { useClientes } from "@/hooks/useClientes";
 import { useEntregadores } from "@/hooks/useEntregadores";
-import { useBairros } from "@/hooks/useSettings";
+import { useBairros, useTiposOperacao } from "@/hooks/useSettings";
 import { DatePickerWithRange } from "@/components/shared/DatePickerWithRange";
 import type { DateRange } from "react-day-picker";
 import { Button } from "@/components/ui/button";
@@ -67,6 +67,7 @@ export default function EntregasPage() {
   const { data: clientes = [] } = useClientes();
   const { data: entregadores = [] } = useEntregadores();
   const { data: bairros = [] } = useBairros();
+  const { data: tipos = [] } = useTiposOperacao();
 
   const getClienteNome = (id: string) => clientes.find((c) => c.id === id)?.nome ?? id;
   const getEntregadorNome = (id: string | null | undefined) => !id ? "—" : (entregadores.find((e) => e.id === id)?.nome ?? id);
@@ -130,12 +131,12 @@ export default function EntregasPage() {
     }
 
     return {
-      tipoOptions: [...tiposSet].map((t) => ({ value: t, label: getTipoOperacaoLabel(t) })),
+      tipoOptions: [...tiposSet].map((t) => ({ value: t, label: tipos.find((tp) => tp.id === t)?.nome ?? t })),
       entregadorOptions: [...entregadorSet].map((id) => ({ value: id, label: getEntregadorNome(id) })),
       metrics: { total: entregas.length, ativas, concluidas, canceladas, totalTaxas, totalRepasse },
       statusCounts: { todas: entregas.length, ativa: ativas, concluida: concluidas, cancelada: canceladas } as Record<string, number>,
     };
-  }, [entregas]);
+  }, [entregas, tipos]);
 
   // Filter
   const filtered = useMemo(() => {
