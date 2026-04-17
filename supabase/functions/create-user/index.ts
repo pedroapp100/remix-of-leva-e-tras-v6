@@ -42,12 +42,12 @@ serve(async (req) => {
       );
     }
 
-    // Criar cliente com a chave do chamador para verificar quem é
-    const callerClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-      global: { headers: { Authorization: authHeader } },
-    });
+    // Extrair JWT do header e criar admin client
+    const token = authHeader.replace("Bearer ", "");
+    const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    const { data: { user: caller }, error: authError } = await callerClient.auth.getUser();
+    // Verificar token do chamador via admin client
+    const { data: { user: caller }, error: authError } = await adminClient.auth.getUser(token);
     if (authError || !caller) {
       return new Response(
         JSON.stringify({ error: "Token inválido ou expirado." }),
@@ -56,7 +56,6 @@ serve(async (req) => {
     }
 
     // Verificar se o chamador é admin
-    const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const { data: callerProfile } = await adminClient
       .from("profiles")
       .select("role, ativo")

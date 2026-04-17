@@ -111,7 +111,9 @@ export function UsuariosTab() {
           },
         });
         if (error || data?.error) {
-          toast.error(data?.error ?? error?.message ?? "Erro ao criar usuário.");
+          const ctx = (error as any)?.context;
+          const msg = ctx?.data?.error ?? data?.error ?? error?.message ?? "Erro ao criar usuário.";
+          toast.error(msg);
           return;
         }
         toast.success(`Usuário criado: ${form.email.trim().toLowerCase()}`);

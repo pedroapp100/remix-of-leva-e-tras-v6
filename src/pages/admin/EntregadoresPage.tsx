@@ -106,7 +106,9 @@ export default function EntregadoresPage() {
           body: { email: data.email, password: senha, nome: data.nome, role: "entregador", documento: docDigits },
         });
         if (error || fnData?.error) {
-          toast.warning(`Entregador cadastrado, mas erro ao criar acesso: ${fnData?.error ?? error?.message}`);
+          const ctx = (error as any)?.context;
+          const msg = ctx?.data?.error ?? fnData?.error ?? error?.message ?? "Erro ao criar acesso.";
+          toast.warning(`Entregador cadastrado, mas erro ao criar acesso: ${msg}`);
         } else {
           toast.success(`Entregador cadastrado! Acesso criado para ${data.email}`, { duration: 10000 });
         }
