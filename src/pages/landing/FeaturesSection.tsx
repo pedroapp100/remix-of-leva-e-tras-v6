@@ -56,7 +56,7 @@ export function FeaturesSection() {
             Para lojistas
           </span>
         </div>
-        <h2 className="text-3xl sm:text-4xl font-bold tracking-tight" style={{ color: '#141729' }}>
+        <h2 className="text-xl sm:text-3xl font-bold tracking-tight" style={{ color: '#141729' }}>
           Tudo que sua loja precisa
         </h2>
         <p className="mt-4 text-sm sm:text-base text-slate-500 max-w-lg mx-auto leading-relaxed">

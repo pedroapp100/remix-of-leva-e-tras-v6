@@ -43,7 +43,7 @@ export function HowItWorksSection() {
             Passo a passo
           </span>
         </div>
-        <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
+        <h2 className="text-xl sm:text-3xl font-bold tracking-tight">
           Como funciona
         </h2>
         <p className="mt-4 text-sm sm:text-base text-muted-foreground max-w-md mx-auto leading-relaxed">

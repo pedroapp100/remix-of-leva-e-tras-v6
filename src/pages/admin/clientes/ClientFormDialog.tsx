@@ -172,7 +172,7 @@ export function ClientFormDialog({ open, onOpenChange, editing, onSave }: Client
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-xl">{editing ? "Editar Cliente" : "Cadastrar Novo Cliente"}</DialogTitle>
+          <DialogTitle className="text-base sm:text-xl">{editing ? "Editar Cliente" : "Cadastrar Novo Cliente"}</DialogTitle>
           <DialogDescription>
             Preencha as informações abaixo para {editing ? "atualizar o cliente" : "cadastrar um novo cliente"} no sistema.
           </DialogDescription>

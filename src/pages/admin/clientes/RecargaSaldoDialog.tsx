@@ -67,7 +67,7 @@ export function RecargaSaldoDialog({ open, onOpenChange, cliente }: RecargaSaldo
         <div className="space-y-4 py-2">
           <div className="rounded-lg bg-muted/50 p-3 flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Saldo atual</span>
-            <span className="text-lg font-bold tabular-nums">
+            <span className="text-base sm:text-lg font-bold tabular-nums">
               {saldoAtual.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
             </span>
           </div>
@@ -95,7 +95,7 @@ export function RecargaSaldoDialog({ open, onOpenChange, cliente }: RecargaSaldo
           {valor > 0 && (
             <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 flex items-center justify-between">
               <span className="text-sm font-medium">Novo saldo</span>
-              <span className="text-lg font-bold tabular-nums text-primary">
+              <span className="text-base sm:text-lg font-bold tabular-nums text-primary">
                 {(saldoAtual + valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
               </span>
             </div>

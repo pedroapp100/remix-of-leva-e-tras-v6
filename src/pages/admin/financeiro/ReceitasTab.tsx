@@ -158,7 +158,7 @@ export function ReceitasTab({ receitas, faturas = [] }: ReceitasTabProps) {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Receitas Lançadas</p>
-              <p className="text-xl font-bold tabular-nums">{formatCurrency(totalReceitasLancadas)}</p>
+              <p className="text-base sm:text-xl font-bold tabular-nums">{formatCurrency(totalReceitasLancadas)}</p>
             </div>
           </CardContent>
         </Card>
@@ -169,7 +169,7 @@ export function ReceitasTab({ receitas, faturas = [] }: ReceitasTabProps) {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Faturas Recebidas</p>
-              <p className="text-xl font-bold tabular-nums">{formatCurrency(totalFaturasRecebidas)}</p>
+              <p className="text-base sm:text-xl font-bold tabular-nums">{formatCurrency(totalFaturasRecebidas)}</p>
             </div>
           </CardContent>
         </Card>

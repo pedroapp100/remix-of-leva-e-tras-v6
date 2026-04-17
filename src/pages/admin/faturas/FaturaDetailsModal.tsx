@@ -239,7 +239,7 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate 
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-3xl max-h-[90vh] p-0 gap-0">
           <DialogHeader className="p-6 pb-4">
-            <DialogTitle className="flex items-center gap-3 text-xl">
+            <DialogTitle className="flex items-center gap-3 text-base sm:text-xl">
               <FileText className="h-5 w-5 text-primary" />
               Fatura {fatura.numero}
             </DialogTitle>
@@ -287,7 +287,7 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate 
                     <SummaryItem label="Ajustes" value={ajustes.reduce((sum, a) => sum + (a.tipo === "credito" ? a.valor : -a.valor), 0)} icon={<ArrowDownUp className="h-4 w-4 text-amber-500" />} />
                     <div>
                       <p className="text-muted-foreground text-xs mb-1">Saldo Líquido</p>
-                      <p className={cn("text-lg font-bold tabular-nums", saldoColor)}>{formatCurrency(saldo)}</p>
+                      <p className={cn("text-base sm:text-lg font-bold tabular-nums", saldoColor)}>{formatCurrency(saldo)}</p>
                       <p className="text-xs text-muted-foreground">{saldoLabel}</p>
                     </div>
                   </div>
@@ -540,7 +540,7 @@ function SummaryItem({ label, value, icon }: { label: string; value: number; ico
   return (
     <div>
       <p className="text-muted-foreground text-xs mb-1 flex items-center gap-1">{icon} {label}</p>
-      <p className="text-lg font-semibold tabular-nums">{formatCurrency(value)}</p>
+      <p className="text-base sm:text-lg font-semibold tabular-nums">{formatCurrency(value)}</p>
     </div>
   );
 }

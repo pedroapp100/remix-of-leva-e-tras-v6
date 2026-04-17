@@ -144,7 +144,7 @@ export function AdminSidebar() {
                         activeClassName=""
                       >
                         <item.icon className="shrink-0 !h-5 !w-5" />
-                        {!collapsed && <span className="text-lg font-medium">{item.title}</span>}
+                        {!collapsed && <span className="text-sm sm:text-base font-medium">{item.title}</span>}
                         {badgeCount > 0 && (
                           <span className={`absolute ${collapsed ? "-top-1 -right-1" : "right-0 top-1/2 -translate-y-1/2"} flex h-5 min-w-[20px] items-center justify-center rounded-full px-1 text-[10px] font-bold text-primary-foreground ${item.title === "Faturas" ? "bg-destructive" : "bg-primary"}`}>
                             {badgeCount}
@@ -176,7 +176,7 @@ export function AdminSidebar() {
             >
               <NavLink to="/admin/configuracoes" className={collapsed ? "flex items-center justify-center" : ""} activeClassName="">
                 <Settings className="shrink-0 !h-5 !w-5" />
-                {!collapsed && <span className="text-lg font-medium">Configurações</span>}
+                {!collapsed && <span className="text-sm sm:text-base font-medium">Configurações</span>}
               </NavLink>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -188,7 +188,7 @@ export function AdminSidebar() {
               className={`text-sidebar-foreground/70 hover:bg-destructive/10 hover:text-destructive cursor-pointer rounded-lg ${collapsed ? "h-10 w-10 justify-center p-0" : "h-10"}`}
             >
               <LogOut className="shrink-0 !h-5 !w-5" />
-              {!collapsed && <span className="text-lg font-medium">Sair</span>}
+              {!collapsed && <span className="text-sm sm:text-base font-medium">Sair</span>}
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

@@ -111,7 +111,7 @@ export function WelcomeModal() {
                   <Sparkles className="h-5 w-5 text-primary" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold leading-tight">Bem-vindo ao Leva e Traz!</h2>
+                  <h2 className="text-base sm:text-lg font-bold leading-tight">Bem-vindo ao Leva e Traz!</h2>
                   <p className="text-xs text-muted-foreground">Sistema de gestão logística de entregas</p>
                 </div>
               </motion.div>

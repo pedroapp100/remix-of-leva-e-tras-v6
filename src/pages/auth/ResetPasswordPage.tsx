@@ -113,7 +113,7 @@ export default function ResetPasswordPage() {
             </div>
             <span className="text-xl font-semibold tracking-tight">Leva e Traz</span>
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight">Nova senha</h1>
+          <h1 className="text-lg sm:text-2xl font-semibold tracking-tight">Nova senha</h1>
           <p className="text-sm text-muted-foreground">Defina uma nova senha para sua conta</p>
         </div>
 

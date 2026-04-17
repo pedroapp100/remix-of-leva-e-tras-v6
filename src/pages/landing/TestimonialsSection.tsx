@@ -38,7 +38,7 @@ export function TestimonialsSection() {
             Depoimentos
           </span>
         </div>
-        <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">
+        <h2 className="text-xl sm:text-3xl font-bold tracking-tight text-slate-900">
           O que nossos clientes dizem
         </h2>
         <p className="mt-4 text-sm sm:text-base text-slate-500 max-w-md mx-auto leading-relaxed">

@@ -27,7 +27,7 @@ export function SegmentsSection() {
           >
             Segmentos
           </Badge>
-          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">
+          <h2 className="text-xl sm:text-2xl font-bold tracking-tight">
             Quem atendemos
           </h2>
           <p className="mt-3 text-sm text-muted-foreground max-w-md mx-auto">

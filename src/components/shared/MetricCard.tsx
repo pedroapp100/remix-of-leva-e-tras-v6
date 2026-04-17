@@ -56,7 +56,7 @@ export function MetricCard({
           </div>
         )}
       </div>
-      <p className={cn("text-2xl font-bold tracking-tight tabular-nums", valueColor)}>{safeValue}</p>
+      <p className={cn("text-xl sm:text-2xl font-bold tracking-tight tabular-nums", valueColor)}>{safeValue}</p>
       <div className="flex items-center gap-2 mt-1">
         {safeDelta !== undefined && (
           <span

@@ -239,15 +239,15 @@ export function ClientesReportTab() {
       <div className="grid grid-cols-3 gap-3">
         <Card className="p-4 text-center">
           <p className="text-xs text-muted-foreground">Faturas Abertas</p>
-          <p className="text-2xl font-bold tabular-nums">{data.faturasAbertas}</p>
+          <p className="text-xl sm:text-2xl font-bold tabular-nums">{data.faturasAbertas}</p>
         </Card>
         <Card className="p-4 text-center">
           <p className="text-xs text-muted-foreground">Faturas Vencidas</p>
-          <p className="text-2xl font-bold tabular-nums text-destructive">{data.faturasVencidas}</p>
+          <p className="text-xl sm:text-2xl font-bold tabular-nums text-destructive">{data.faturasVencidas}</p>
         </Card>
         <Card className="p-4 text-center">
           <p className="text-xs text-muted-foreground">Faturas Pagas/Finalizadas</p>
-          <p className="text-2xl font-bold tabular-nums text-primary">{data.faturasPagas}</p>
+          <p className="text-xl sm:text-2xl font-bold tabular-nums text-primary">{data.faturasPagas}</p>
         </Card>
       </div>
 

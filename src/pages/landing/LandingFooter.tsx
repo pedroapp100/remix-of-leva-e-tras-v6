@@ -7,7 +7,7 @@ export function LandingFooter() {
         <div className="flex items-center gap-3">
           <img src={logoLevaTraz} alt="Leva e Traz" className="h-16 w-16 rounded-full object-contain" />
           <div>
-            <span className="font-semibold text-2xl">Leva e Traz</span>
+            <span className="font-semibold text-xl">Leva e Traz</span>
             <span className="text-muted-foreground block text-sm">
               Onde e quando você precisar!
             </span>

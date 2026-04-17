@@ -62,7 +62,7 @@ export function StatsSection() {
                 <div className="mx-auto mb-4 h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-all duration-500 group-hover:scale-110 group-hover:shadow-lg group-hover:shadow-primary/25">
                   <stat.icon className="h-[18px] w-[18px]" />
                 </div>
-                <p className="text-2xl sm:text-3xl font-bold tabular-nums tracking-tight text-foreground">
+                <p className="text-xl sm:text-2xl font-bold tabular-nums tracking-tight text-foreground">
                   {stat.value !== null ? (
                     <AnimatedNumber value={stat.value} prefix={stat.prefix} suffix={stat.suffix} />
                   ) : (

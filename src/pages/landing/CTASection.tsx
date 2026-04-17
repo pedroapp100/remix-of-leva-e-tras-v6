@@ -22,7 +22,7 @@ export function CTASection() {
           <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-primary/30">
             <Store className="h-8 w-8 text-primary-foreground" />
           </div>
-          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mb-3">
+          <h2 className="text-xl sm:text-2xl font-bold tracking-tight mb-3">
             Sua loja merece entregas de confiança
           </h2>
           <p className="text-sm text-muted-foreground max-w-sm mx-auto mb-8">

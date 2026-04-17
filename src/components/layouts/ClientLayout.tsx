@@ -84,7 +84,7 @@ function ClientSidebar() {
                         activeClassName=""
                       >
                         <item.icon className="shrink-0 !h-5 !w-5" />
-                        {!collapsed && <span className="text-lg font-medium">{item.title}</span>}
+                        {!collapsed && <span className="text-sm sm:text-base font-medium">{item.title}</span>}
                       </NavLink>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -110,7 +110,7 @@ function ClientSidebar() {
             >
               <NavLink to="/cliente/perfil" className={collapsed ? "flex items-center justify-center" : ""} activeClassName="">
                 <User className="shrink-0 !h-5 !w-5" />
-                {!collapsed && <span className="text-lg font-medium">Meu Perfil</span>}
+                {!collapsed && <span className="text-sm sm:text-base font-medium">Meu Perfil</span>}
               </NavLink>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -121,7 +121,7 @@ function ClientSidebar() {
               className={`text-sidebar-foreground/70 hover:bg-destructive/10 hover:text-destructive cursor-pointer rounded-lg ${collapsed ? "h-10 w-10 justify-center p-0" : "h-10"}`}
             >
               <LogOut className="shrink-0 !h-5 !w-5" />
-              {!collapsed && <span className="text-lg font-medium">Sair</span>}
+              {!collapsed && <span className="text-sm sm:text-base font-medium">Sair</span>}
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

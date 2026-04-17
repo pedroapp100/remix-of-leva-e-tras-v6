@@ -70,7 +70,7 @@ export function EntregadorProfileModal({ entregador, onClose, onEdit }: Entregad
                 className="h-14 w-14 text-lg"
               />
               <div>
-                <DialogTitle className="text-xl font-semibold">{entregador.nome}</DialogTitle>
+                <DialogTitle className="text-base sm:text-xl font-semibold">{entregador.nome}</DialogTitle>
                 <DialogDescription className="text-sm text-muted-foreground">{entregador.email}</DialogDescription>
                 <div className="flex items-center gap-2 mt-1">
                   <Badge variant={entregador.status === "ativo" ? "default" : "secondary"}>
@@ -94,28 +94,28 @@ export function EntregadorProfileModal({ entregador, onClose, onEdit }: Entregad
             <Card>
               <CardContent className="p-3 text-center">
                 <Package className="h-5 w-5 mx-auto text-primary mb-1" />
-                <p className="text-2xl font-bold">{solicitacoes.length}</p>
+                <p className="text-xl sm:text-2xl font-bold">{solicitacoes.length}</p>
                 <p className="text-xs text-muted-foreground">Total entregas</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-3 text-center">
                 <CheckCircle2 className="h-5 w-5 mx-auto text-green-500 mb-1" />
-                <p className="text-2xl font-bold">{concluidas}</p>
+                <p className="text-xl sm:text-2xl font-bold">{concluidas}</p>
                 <p className="text-xs text-muted-foreground">Concluídas</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-3 text-center">
                 <Clock className="h-5 w-5 mx-auto text-yellow-500 mb-1" />
-                <p className="text-2xl font-bold">{emAndamento}</p>
+                <p className="text-xl sm:text-2xl font-bold">{emAndamento}</p>
                 <p className="text-xs text-muted-foreground">Em andamento</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-3 text-center">
                 <TrendingUp className="h-5 w-5 mx-auto text-blue-500 mb-1" />
-                <p className="text-2xl font-bold">{fmt(comissao?.comissao)}</p>
+                <p className="text-xl sm:text-2xl font-bold">{fmt(comissao?.comissao)}</p>
                 <p className="text-xs text-muted-foreground">Comissão total</p>
               </CardContent>
             </Card>

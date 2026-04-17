@@ -183,7 +183,7 @@ export default function LoginPage() {
             </motion.div>
 
             <div className="space-y-2">
-              <h1 className="text-3xl font-bold tracking-tight">
+              <h1 className="text-2xl font-bold tracking-tight">
                 Bem-vindo de volta
               </h1>
               <p className="text-base text-muted-foreground">
@@ -378,7 +378,7 @@ export default function LoginPage() {
             </motion.div>
 
             <div className="space-y-4">
-              <h2 className="text-3xl font-bold tracking-tight leading-tight">
+              <h2 className="text-2xl font-bold tracking-tight leading-tight">
                 Logística last-mile{" "}
                 <span className="bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
                   inteligente

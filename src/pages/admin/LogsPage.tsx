@@ -48,7 +48,7 @@ function MetricCard({
           <p className="text-xs text-muted-foreground">{label}</p>
           {loading
             ? <Skeleton className="h-6 w-16 mt-1" />
-            : <p className="text-xl font-bold tabular-nums">{value.toLocaleString("pt-BR")}</p>
+            : <p className="text-base sm:text-xl font-bold tabular-nums">{value.toLocaleString("pt-BR")}</p>
           }
         </div>
       </CardContent>

@@ -81,7 +81,7 @@ export function HeroSection() {
           <motion.h1
             variants={fadeUp}
             custom={1}
-            className="text-4xl sm:text-5xl lg:text-[3.5rem] xl:text-[4rem] font-bold tracking-tight leading-[1.06]"
+            className="text-[1.75rem] sm:text-4xl lg:text-[3.5rem] xl:text-[4rem] font-bold tracking-tight leading-[1.06]"
           >
             Sua loja vende,{" "}
             <span className="relative inline-block">
@@ -136,7 +136,7 @@ export function HeroSection() {
                   ? displayItems.map((client, i) => (
                       <div
                         key={i}
-                        className="h-20 w-20 rounded-2xl border-2 border-background bg-card overflow-hidden shadow-md shrink-0"
+                        className="h-10 w-10 sm:h-16 sm:w-16 rounded-2xl border-2 border-background bg-card overflow-hidden shadow-md shrink-0"
                         title={client.nome}
                       >
                         {client.logo_url ? (
@@ -146,7 +146,7 @@ export function HeroSection() {
                             className="h-full w-full object-contain p-1.5"
                           />
                         ) : (
-                          <div className="h-full w-full bg-gradient-to-br from-primary/50 to-primary/20 flex items-center justify-center text-lg font-bold text-primary-foreground">
+                          <div className="h-full w-full bg-gradient-to-br from-primary/50 to-primary/20 flex items-center justify-center text-xs sm:text-base font-bold text-primary-foreground">
                             {client.nome.charAt(0).toUpperCase()}
                           </div>
                         )}
@@ -155,7 +155,7 @@ export function HeroSection() {
                   : FALLBACK.map((letter, i) => (
                       <div
                         key={i}
-                        className="h-20 w-20 rounded-2xl bg-gradient-to-br from-primary/50 to-primary/20 border-2 border-background flex items-center justify-center text-lg font-bold text-primary-foreground shadow-md"
+                        className="h-10 w-10 sm:h-16 sm:w-16 rounded-2xl bg-gradient-to-br from-primary/50 to-primary/20 border-2 border-background flex items-center justify-center text-xs sm:text-base font-bold text-primary-foreground shadow-md"
                       >
                         {letter}
                       </div>

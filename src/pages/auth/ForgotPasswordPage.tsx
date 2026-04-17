@@ -45,7 +45,7 @@ export default function ForgotPasswordPage() {
             </div>
             <span className="text-xl font-semibold tracking-tight">Leva e Traz</span>
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight">Recuperar senha</h1>
+          <h1 className="text-lg sm:text-2xl font-semibold tracking-tight">Recuperar senha</h1>
           <p className="text-sm text-muted-foreground">
             Informe seu email para receber o link de recuperação
           </p>

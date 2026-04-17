@@ -403,7 +403,7 @@ export function SimuladorOperacoes({ clienteId: fixedClienteId, showClienteSelec
 
               <div className="flex justify-between items-center">
                 <span className="text-base font-bold">Total Estimado</span>
-                <span className="text-2xl font-bold text-primary tabular-nums">
+                <span className="text-xl sm:text-2xl font-bold text-primary tabular-nums">
                   {fmt(resultado.total)}
                 </span>
               </div>

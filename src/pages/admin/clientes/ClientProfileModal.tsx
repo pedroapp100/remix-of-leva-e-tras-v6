@@ -119,7 +119,7 @@ export function ClientProfileModal({ client, onClose, onEdit }: ClientProfileMod
         {/* Header */}
         <div className="px-6 pt-6 pb-4 space-y-1">
           <DialogHeader>
-            <DialogTitle className="text-xl">Perfil de {client.nome}</DialogTitle>
+            <DialogTitle className="text-base sm:text-xl">Perfil de {client.nome}</DialogTitle>
             <DialogDescription>Visualize todas as informações e históricos do cliente.</DialogDescription>
           </DialogHeader>
         </div>
@@ -212,7 +212,7 @@ export function ClientProfileModal({ client, onClose, onEdit }: ClientProfileMod
                   {saldoPrePago !== null && (
                     <div className="rounded-lg bg-muted/50 p-3 flex items-center justify-between">
                       <span className="text-sm text-muted-foreground">Saldo Pré-Pago</span>
-                      <span className={`text-lg font-bold tabular-nums ${saldoPrePago <= 100 ? "text-destructive" : "text-primary"}`}>
+                      <span className={`text-base sm:text-lg font-bold tabular-nums ${saldoPrePago <= 100 ? "text-destructive" : "text-primary"}`}>
                         {saldoPrePago.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                       </span>
                     </div>
@@ -316,17 +316,17 @@ export function ClientProfileModal({ client, onClose, onEdit }: ClientProfileMod
               {/* Resumo */}
               <div className="grid grid-cols-3 gap-4 mb-5">
                 <div className="rounded-lg bg-muted/50 p-3 text-center">
-                  <p className="text-lg font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+                  <p className="text-base sm:text-lg font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
                     {recargas.reduce((s, r) => s + r.valor, 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                   </p>
                   <p className="text-xs text-muted-foreground">Total Recargas</p>
                 </div>
                 <div className="rounded-lg bg-muted/50 p-3 text-center">
-                  <p className="text-lg font-bold tabular-nums">{recargas.length}</p>
+                  <p className="text-base sm:text-lg font-bold tabular-nums">{recargas.length}</p>
                   <p className="text-xs text-muted-foreground">Recargas Realizadas</p>
                 </div>
                 <div className="rounded-lg bg-muted/50 p-3 text-center">
-                  <p className={`text-lg font-bold tabular-nums ${(saldoPrePago ?? 0) <= 100 ? "text-destructive" : "text-primary"}`}>
+                  <p className={`text-base sm:text-lg font-bold tabular-nums ${(saldoPrePago ?? 0) <= 100 ? "text-destructive" : "text-primary"}`}>
                     {(saldoPrePago ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                   </p>
                   <p className="text-xs text-muted-foreground">Saldo Atual</p>
@@ -459,7 +459,7 @@ function FieldItem({ label, value }: { label: string; value: string }) {
 function MiniMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="text-center p-3 rounded-lg bg-muted/50">
-      <p className="text-lg font-bold tabular-nums">{value}</p>
+      <p className="text-base sm:text-lg font-bold tabular-nums">{value}</p>
       <p className="text-xs text-muted-foreground">{label}</p>
     </div>
   );
