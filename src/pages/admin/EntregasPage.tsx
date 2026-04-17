@@ -300,18 +300,16 @@ export default function EntregasPage() {
       <Card>
         <CardContent className="space-y-4 pt-6">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <div className="overflow-x-auto pb-1 -mx-1 px-1">
-              <TabsList className="w-max">
-                {STATUS_TABS.map((tab) => (
-                  <TabsTrigger key={tab.value} value={tab.value} className="gap-1.5">
-                    {tab.label}
-                    <Badge variant="secondary" className="ml-1 text-xs h-5 px-1.5 tabular-nums">
-                      {statusCounts[tab.value] ?? 0}
-                    </Badge>
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </div>
+            <TabsList className="flex-wrap h-auto">
+              {STATUS_TABS.map((tab) => (
+                <TabsTrigger key={tab.value} value={tab.value} className="gap-1.5">
+                  {tab.label}
+                  <Badge variant="secondary" className="ml-1 text-xs h-5 px-1.5 tabular-nums">
+                    {statusCounts[tab.value] ?? 0}
+                  </Badge>
+                </TabsTrigger>
+              ))}
+            </TabsList>
           </Tabs>
 
           <div className="flex flex-col sm:flex-row gap-3 flex-wrap items-end">
