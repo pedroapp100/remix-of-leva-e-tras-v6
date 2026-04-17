@@ -79,36 +79,44 @@ export function UsuariosTab() {
       return;
     }
 
-    if (editingId) {
-      await updateProfile.mutateAsync({
-        id: editingId,
-        patch: {
-          nome: form.nome.trim(),
-          cargo_id: form.cargo_id || null,
-          ativo: form.status === "ativo",
-          documento: form.documento.replace(/\D/g, "") || null,
-        },
-      });
-      toast.success("Usuário atualizado com sucesso.");
-    } else {
-      if (!form.password.trim()) {
-        toast.error("Defina uma senha para o novo usuário.");
-        return;
+    try {
+      if (editingId) {
+        await updateProfile.mutateAsync({
+          id: editingId,
+          patch: {
+            nome: form.nome.trim(),
+            cargo_id: form.cargo_id || null,
+            ativo: form.status === "ativo",
+            documento: form.documento.replace(/\D/g, "") || null,
+          },
+        });
+        toast.success("Usuário atualizado com sucesso.");
+      } else {
+        if (!form.password.trim()) {
+          toast.error("Defina uma senha para o novo usuário.");
+          return;
+        }
+        if (form.password.trim().length < 6) {
+          toast.error("A senha deve ter no mínimo 6 caracteres.");
+          return;
+        }
+        const { data, error } = await supabase.auth.signUp({
+          email: form.email.trim().toLowerCase(),
+          password: form.password.trim(),
+          options: { data: { nome: form.nome.trim(), role: "admin", documento: form.documento.replace(/\D/g, "") || null } },
+        });
+        if (error) { toast.error(error.message); return; }
+        if (data.user && form.cargo_id) {
+          await updateProfile.mutateAsync({ id: data.user.id, patch: { cargo_id: form.cargo_id } });
+        }
+        toast.success(`Usuário criado: ${form.email.trim().toLowerCase()}`);
+        await refetch();
       }
-      if (form.password.trim().length < 6) {
-        toast.error("A senha deve ter no mínimo 6 caracteres.");
-        return;
-      }
-      const { error } = await supabase.auth.signUp({
-        email: form.email.trim().toLowerCase(),
-        password: form.password.trim(),
-        options: { data: { nome: form.nome.trim(), role: "admin", cargo_id: form.cargo_id || null, documento: form.documento.replace(/\D/g, "") || null } },
-      });
-      if (error) { toast.error(error.message); return; }
-      toast.success("Convite enviado para ${form.email.trim().toLowerCase()}");
-      await refetch();
+      setDialogOpen(false);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro inesperado ao salvar usuário.";
+      toast.error(message);
     }
-    setDialogOpen(false);
   }
 
   async function handleDelete() {
