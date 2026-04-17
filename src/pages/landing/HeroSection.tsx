@@ -3,29 +3,17 @@ import { useEffect, useState, memo } from "react";
 import { ArrowRight, Zap, Store, Shield } from "lucide-react";
 import heroDelivery from "@/assets/hero-delivery.jpg";
 import { Button } from "@/components/ui/button";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion } from "framer-motion";
 import { supabase } from "@/lib/supabase";
 
 const KenBurnsHero = memo(function KenBurnsHero() {
-  const prefersReduced = useReducedMotion();
   return (
-    <motion.img
+    <img
       src={heroDelivery}
       alt="Entregador Leva e Traz em ação"
       className="w-full h-full object-cover object-center"
       width={1920}
       height={1080}
-      style={{ willChange: "transform" }}
-      animate={
-        prefersReduced
-          ? { scale: [1, 1.05], x: [0, -15] }
-          : { scale: [1, 1.25], x: [0, -80], y: [0, -20] }
-      }
-      transition={
-        prefersReduced
-          ? { duration: 18, ease: "linear", repeat: Infinity, repeatType: "reverse" }
-          : { duration: 8, ease: "easeInOut", repeat: Infinity, repeatType: "reverse" }
-      }
     />
   );
 });
