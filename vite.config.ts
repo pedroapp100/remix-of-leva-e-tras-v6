@@ -50,6 +50,8 @@ export default defineConfig(({ mode }) => ({
         ],
       },
       workbox: {
+        clientsClaim: true,
+        skipWaiting: true,
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/api\//],
@@ -77,16 +79,6 @@ export default defineConfig(({ mode }) => ({
             options: {
               cacheName: "supabase-storage",
               expiration: { maxEntries: 60, maxAgeSeconds: 60 * 60 * 24 * 30 },
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-          // Fontes e ícones externos
-          {
-            urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/i,
-            handler: "CacheFirst",
-            options: {
-              cacheName: "google-fonts",
-              expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 },
               cacheableResponse: { statuses: [0, 200] },
             },
           },
