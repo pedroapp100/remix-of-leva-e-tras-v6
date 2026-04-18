@@ -2,12 +2,11 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import type { Rota, PagamentoSolicitacao, Solicitacao } from "@/types/database";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFormasPagamento, useBairros } from "@/hooks/useSettings";
-import { useRotasBySolicitacao, usePagamentosBySolicitacao, useCreatePagamentos, useUpdateSolicitacao } from "@/hooks/useSolicitacoes";
+import { useRotasBySolicitacao, usePagamentosBySolicitacao, useCreatePagamentos, useUpdateSolicitacao, useAppendHistorico } from "@/hooks/useSolicitacoes";
 import { useClientes } from "@/hooks/useClientes";
 import { useEntregadores } from "@/hooks/useEntregadores";
 import { useConcluirComCaixa } from "@/hooks/useConcluirComCaixa";
 import { useFaturas, useConcluirFaturaEntrega } from "@/hooks/useFaturas";
-import { appendHistorico } from "@/services/solicitacoes";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -56,6 +55,7 @@ export function AdminConciliacaoDialog({
   const { data: faturas = [] } = useFaturas();
   const concluirFaturaMut = useConcluirFaturaEntrega();
   const updateSolMut = useUpdateSolicitacao();
+  const appendHistoricoMut = useAppendHistorico();
   const { data: formasPagamento = [] } = useFormasPagamento();
   const { data: bairros = [] } = useBairros();
 
@@ -211,6 +211,10 @@ export function AdminConciliacaoDialog({
     }
 
     // Generate invoice / conclude delivery
+    let faturaNumero: string | undefined;
+    let faturaId: string | undefined;
+    let autoFechada = false;
+
     if (solicitacao.status === "em_andamento") {
       // em_andamento: conclude delivery + create fatura atomically via useConcluirComCaixa
       const result = await concluirComCaixa(solicitacao.id);
@@ -243,6 +247,9 @@ export function AdminConciliacaoDialog({
           toast.error(result.error ?? "Erro ao gerar/atualizar fatura.");
           return;
         }
+        faturaNumero = result.fatura_numero;
+        faturaId = result.fatura_id;
+        autoFechada = result.auto_fechada ?? false;
       } catch (e) {
         toast.error("Erro ao gerar fatura: " + (e instanceof Error ? e.message : String(e)));
         return;
@@ -263,7 +270,18 @@ export function AdminConciliacaoDialog({
     }
     onConfirm();
     onOpenChange(false);
-    appendHistorico(solicitacao.id, "conciliacao_admin", "Conciliação administrativa realizada — fatura gerada", { usuario_id: user?.id ?? null }).catch(e => console.error("[historico]", e));
+    const descHistorico = faturaNumero
+      ? `Fatura ${faturaNumero} gerada${autoFechada ? " — fechada automaticamente" : ""}`
+      : "Conciliação administrativa realizada";
+    appendHistoricoMut.mutate({
+      solId: solicitacao.id,
+      tipo: "conciliacao_admin",
+      descricao: descHistorico,
+      extra: {
+        usuario_id: user?.id ?? null,
+        metadata: faturaId ? { fatura_id: faturaId, fatura_numero: faturaNumero } : null,
+      },
+    });
     toast.success("Conciliação conferida e fatura gerada! ✅");
   };
 

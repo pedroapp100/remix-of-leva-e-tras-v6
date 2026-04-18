@@ -11,9 +11,21 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { MapPin, Phone, User, Clock, DollarSign, MessageCircle, Store, Building2 } from "lucide-react";
+import { MapPin, Phone, User, Clock, DollarSign, MessageCircle, Store, Building2, Plus, Truck, CheckCircle, Receipt, X, XCircle, ArrowRight } from "lucide-react";
 
 const FATURAR_ID = "__faturar__";
+
+const HISTORICO_TIPO_CONFIG: Record<string, { icon: React.ElementType; color: string }> = {
+  criacao:          { icon: Plus,         color: "text-emerald-500" },
+  atribuicao:       { icon: User,         color: "text-primary" },
+  inicio:           { icon: Truck,        color: "text-amber-500" },
+  conclusao:        { icon: CheckCircle,  color: "text-emerald-500" },
+  conciliacao:      { icon: DollarSign,   color: "text-primary" },
+  conciliacao_admin:{ icon: Receipt,      color: "text-primary" },
+  cancelamento:     { icon: X,            color: "text-destructive" },
+  rejeicao:         { icon: XCircle,      color: "text-destructive" },
+  transferencia:    { icon: ArrowRight,   color: "text-amber-500" },
+};
 
 // tipoStyles removed — now using TipoOperacaoBadge component
 
@@ -426,20 +438,31 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
             {historicoRows.length === 0 ? (
               <p className="text-sm text-muted-foreground italic">Nenhum registro de histórico.</p>
             ) : (
-              <div className="space-y-2">
-                {historicoRows.map((ev) => {
+              <div className="space-y-0">
+                {historicoRows.map((ev, idx) => {
                   const userName = ev.usuario_id
                     ? (adminProfiles.find((p) => p.id === ev.usuario_id)?.nome
                       ?? entregadores.find((e) => e.profile_id === ev.usuario_id)?.nome
                       ?? null)
                     : null;
+                  const config = HISTORICO_TIPO_CONFIG[ev.tipo] ?? { icon: Clock, color: "text-muted-foreground" };
+                  const Icon = config.icon;
+                  const isLast = idx === historicoRows.length - 1;
                   return (
                     <div key={ev.id} className="flex items-start gap-3 text-sm">
-                      <Clock className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />
-                      <div>
-                        <p>{ev.descricao}</p>
-                        {userName && <p className="text-xs text-muted-foreground">por {userName}</p>}
-                        <p className="text-xs text-muted-foreground tabular-nums">{fmtDate(ev.created_at)}</p>
+                      {/* icon + connector */}
+                      <div className="flex flex-col items-center shrink-0">
+                        <div className={`mt-0.5 h-6 w-6 rounded-full flex items-center justify-center bg-muted/50 border border-border/50 ${config.color}`}>
+                          <Icon className="h-3 w-3" />
+                        </div>
+                        {!isLast && <div className="w-px flex-1 min-h-[12px] bg-border/40 my-0.5" />}
+                      </div>
+                      {/* content */}
+                      <div className={`pb-3 ${isLast ? "" : ""}`}>
+                        <p className="leading-snug">{ev.descricao}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {fmtDate(ev.created_at)}{userName ? ` · ${userName}` : ""}
+                        </p>
                       </div>
                     </div>
                   );

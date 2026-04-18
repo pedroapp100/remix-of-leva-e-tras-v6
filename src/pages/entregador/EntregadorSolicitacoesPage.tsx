@@ -6,10 +6,9 @@ import type { Solicitacao } from "@/types/database";
 import { STATUS_SOLICITACAO_LABELS } from "@/types/database";
 import { TipoOperacaoBadge } from "@/components/shared/TipoOperacaoBadge";
 
-import { useSolicitacoesByEntregador, useUpdateSolicitacao, useRotasBySolicitacaoIds } from "@/hooks/useSolicitacoes";
+import { useSolicitacoesByEntregador, useUpdateSolicitacao, useRotasBySolicitacaoIds, useAppendHistorico } from "@/hooks/useSolicitacoes";
 import { useConcluirComCaixa } from "@/hooks/useConcluirComCaixa";
 import { useAuth } from "@/contexts/AuthContext";
-import { appendHistorico } from "@/services/solicitacoes";
 import { DatePickerWithRange } from "@/components/shared/DatePickerWithRange";
 import type { DateRange } from "react-day-picker";
 import { Button } from "@/components/ui/button";
@@ -49,6 +48,7 @@ export default function EntregadorSolicitacoesPage() {
   const { data: allRotas = [] } = useRotasBySolicitacaoIds(solIds);
   const getRotasBySolicitacao = (solId: string) => allRotas.filter(r => r.solicitacao_id === solId);
   const concluirComCaixa = useConcluirComCaixa();
+  const appendHistoricoMut = useAppendHistorico();
   const { user } = useAuth();
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState("todas");
@@ -102,7 +102,7 @@ export default function EntregadorSolicitacoesPage() {
       status: "em_andamento",
       data_inicio: new Date().toISOString(),
     } });
-    appendHistorico(sol.id, "inicio", "Entrega iniciada pelo entregador", { usuario_id: user?.id ?? null, status_anterior: sol.status, status_novo: "em_andamento" }).catch(e => console.error("[historico]", e));
+    appendHistoricoMut.mutate({ solId: sol.id, tipo: "inicio", descricao: "Entrega iniciada pelo entregador", extra: { usuario_id: user?.id ?? null, status_anterior: sol.status, status_novo: "em_andamento" } });
     toast.success("Corrida iniciada! Boa entrega! 🚀");
     void sendNotificationToRole("admin", {
       title: "Corrida iniciada",
@@ -120,7 +120,7 @@ export default function EntregadorSolicitacoesPage() {
       return;
     }
     toast.success("Entrega concluída com sucesso! ✅");
-    appendHistorico(sol.id, "conclusao", "Entrega concluída pelo entregador", { usuario_id: user?.id ?? null, status_anterior: sol.status, status_novo: "concluida" }).catch(e => console.error("[historico]", e));
+    appendHistoricoMut.mutate({ solId: sol.id, tipo: "conclusao", descricao: "Entrega concluída pelo entregador", extra: { usuario_id: user?.id ?? null, status_anterior: sol.status, status_novo: "concluida" } });
     void sendNotificationToRole("admin", {
       title: "Entrega conclueída",
       message: `Corrida ${sol.codigo} foi conclueída — ${sol.cliente_nome ?? sol.codigo}.`,

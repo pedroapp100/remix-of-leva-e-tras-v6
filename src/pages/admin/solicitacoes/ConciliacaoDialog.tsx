@@ -12,9 +12,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CurrencyInput } from "@/components/shared/CurrencyInput";
 import { Plus, Trash2, AlertTriangle, CheckCircle, Info, Store, User } from "lucide-react";
 import { toast } from "sonner";
-import { useCreatePagamentos } from "@/hooks/useSolicitacoes";
+import { useCreatePagamentos, useAppendHistorico } from "@/hooks/useSolicitacoes";
 import { useClienteSaldoMap, useClientes } from "@/hooks/useClientes";
-import { appendHistorico } from "@/services/solicitacoes";
 
 interface PagamentoLinha {
   id: string;
@@ -42,6 +41,7 @@ const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", curren
 export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clienteId, solicitacaoId, isEditing = false, isConcluding = false, isDriverView = false }: ConciliacaoDialogProps) {
   const { user } = useAuth();
   const createPagamentosMut = useCreatePagamentos();
+  const appendHistoricoMut = useAppendHistorico();
   const { getClienteSaldo } = useClienteSaldoMap();
   const { data: clientes = [] } = useClientes();
   const { data: formasPagamento = [] } = useFormasPagamento();
@@ -138,7 +138,7 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
     onConcluir();
     onOpenChange(false);
     if (solicitacaoId) {
-      appendHistorico(solicitacaoId, "conciliacao", "Pagamentos registrados pelo entregador", { usuario_id: user?.id ?? null }).catch(e => console.error("[historico]", e));
+      appendHistoricoMut.mutate({ solId: solicitacaoId, tipo: "conciliacao", descricao: "Pagamentos registrados pelo entregador", extra: { usuario_id: user?.id ?? null } });
     }
   };
 
