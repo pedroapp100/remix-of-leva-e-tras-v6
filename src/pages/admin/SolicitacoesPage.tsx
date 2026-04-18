@@ -11,6 +11,8 @@ import { useSolicitacoes, useSolicitacoesPageable, useUpdateSolicitacao, useCrea
 import { useClientes } from "@/hooks/useClientes";
 import { useEntregadores } from "@/hooks/useEntregadores";
 import { useConcluirComCaixa } from "@/hooks/useConcluirComCaixa";
+import { useAuth } from "@/contexts/AuthContext";
+import { appendHistorico } from "@/services/solicitacoes";
 import { DatePickerWithRange } from "@/components/shared/DatePickerWithRange";
 import type { DateRange } from "react-day-picker";
 import { Button } from "@/components/ui/button";
@@ -53,6 +55,7 @@ export default function SolicitacoesPage() {
   const { data: clientes = [] } = useClientes();
   const { data: entregadores = [] } = useEntregadores();
   const concluirComCaixa = useConcluirComCaixa();
+  const { user } = useAuth();
 
   const getClienteNome = (id: string) => clientes.find((c) => c.id === id)?.nome ?? id;
   const getEntregadorNome = (id: string | null | undefined) => !id ? "—" : (entregadores.find((e) => e.id === id)?.nome ?? id);
@@ -205,7 +208,7 @@ export default function SolicitacoesPage() {
     }));
 
     try {
-      await createSolMut.mutateAsync({
+      const result = await createSolMut.mutateAsync({
         sol: {
           codigo,
           cliente_id: data.clienteId,
@@ -221,6 +224,15 @@ export default function SolicitacoesPage() {
         },
         rotas: rotaInserts,
       });
+
+      const clienteNome = getClienteNome(data.clienteId);
+      const nRotas = data.rotas.length;
+      if (isRetroativoConcluida) {
+        const entNome = data.entregadorId ? getEntregadorNome(data.entregadorId) : null;
+        void appendHistorico(result.sol.id, "criacao", `Solicitação retroativa criada já como concluída para ${clienteNome} com ${nRotas} rota${nRotas > 1 ? "s" : ""}${entNome && entNome !== "—" ? ` — atribuída a ${entNome}` : ""}`, { usuario_id: user?.id ?? "", status_novo: "concluida" });
+      } else {
+        void appendHistorico(result.sol.id, "criacao", `Solicitação criada para ${clienteNome} com ${nRotas} rota${nRotas > 1 ? "s" : ""}`, { usuario_id: user?.id ?? "", status_novo: status });
+      }
 
       toast.success(`Solicitação ${codigo} criada!`);
 
@@ -247,6 +259,8 @@ export default function SolicitacoesPage() {
   const handleAssign = (solId: string, entregadorId: string) => {
     const sol = solicitacoes.find((s) => s.id === solId);
     updateSolMut.mutate({ id: solId, patch: { entregador_id: entregadorId, status: "aceita" } });
+    const entNome = getEntregadorNome(entregadorId);
+    void appendHistorico(solId, "atribuicao", `Entregador ${entNome} foi atribuído à solicitação`, { usuario_id: user?.id ?? "", status_anterior: sol?.status ?? "", status_novo: "aceita" });
     toast.success("Entregador atribuído!");
     const entregador = entregadores.find((e) => e.id === entregadorId);
     if (entregador?.profile_id) {
@@ -261,6 +275,7 @@ export default function SolicitacoesPage() {
 
   const handleStartDelivery = (sol: Solicitacao) => {
     updateSolMut.mutate({ id: sol.id, patch: { status: "em_andamento", data_inicio: new Date().toISOString() } });
+    void appendHistorico(sol.id, "inicio", "Entrega iniciada pelo administrador", { usuario_id: user?.id ?? "", status_anterior: sol.status, status_novo: "em_andamento" });
     toast.success("Entrega iniciada!");
     if (sol.entregador_id) {
       const entregador = entregadores.find((e) => e.id === sol.entregador_id);
@@ -281,6 +296,7 @@ export default function SolicitacoesPage() {
       toast.error(result.error ?? "Erro ao concluir solicitação.");
       return;
     }
+    void appendHistorico(sol.id, "conclusao", "Entrega concluída pelo administrador", { usuario_id: user?.id ?? "", status_anterior: sol.status, status_novo: "concluida" });
     toast.success("Solicitação concluída!");
     if (sol.entregador_id) {
       const entregador = entregadores.find((e) => e.id === sol.entregador_id);
@@ -300,6 +316,8 @@ export default function SolicitacoesPage() {
     const { sol, action } = justifyTarget;
     const newStatus = action === "cancelar" ? "cancelada" : "rejeitada";
     updateSolMut.mutate({ id: sol.id, patch: { status: newStatus, justificativa } });
+    const tipoHist = action === "cancelar" ? "cancelamento" : "rejeicao";
+    void appendHistorico(sol.id, tipoHist, `Solicitação ${newStatus}. Motivo: ${justificativa}`, { usuario_id: user?.id ?? "", status_anterior: sol.status, status_novo: newStatus });
     toast.success(`Solicitação ${newStatus}!`);
     if (sol.entregador_id) {
       const entregador = entregadores.find((e) => e.id === sol.entregador_id);
@@ -326,6 +344,7 @@ export default function SolicitacoesPage() {
       status: "aceita",
       data_inicio: sol.status === "em_andamento" ? null : sol.data_inicio,
     } });
+    void appendHistorico(sol.id, "transferencia", `Entrega transferida de ${previousName} para ${newName}`, { usuario_id: user?.id ?? "", status_anterior: sol.status, status_novo: "aceita" });
     toast.success(`Solicitação transferida para ${newName}!`);
     const novoEntregador = entregadores.find((e) => e.id === newEntregadorId);
     if (novoEntregador?.profile_id) {

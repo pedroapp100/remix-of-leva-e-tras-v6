@@ -8,6 +8,8 @@ import { TipoOperacaoBadge } from "@/components/shared/TipoOperacaoBadge";
 
 import { useSolicitacoesByEntregador, useUpdateSolicitacao, useRotasBySolicitacaoIds } from "@/hooks/useSolicitacoes";
 import { useConcluirComCaixa } from "@/hooks/useConcluirComCaixa";
+import { useAuth } from "@/contexts/AuthContext";
+import { appendHistorico } from "@/services/solicitacoes";
 import { DatePickerWithRange } from "@/components/shared/DatePickerWithRange";
 import type { DateRange } from "react-day-picker";
 import { Button } from "@/components/ui/button";
@@ -47,6 +49,7 @@ export default function EntregadorSolicitacoesPage() {
   const { data: allRotas = [] } = useRotasBySolicitacaoIds(solIds);
   const getRotasBySolicitacao = (solId: string) => allRotas.filter(r => r.solicitacao_id === solId);
   const concluirComCaixa = useConcluirComCaixa();
+  const { user } = useAuth();
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState("todas");
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
@@ -99,6 +102,7 @@ export default function EntregadorSolicitacoesPage() {
       status: "em_andamento",
       data_inicio: new Date().toISOString(),
     } });
+    void appendHistorico(sol.id, "inicio", "Entrega iniciada pelo entregador", { usuario_id: user?.id ?? "", status_anterior: sol.status, status_novo: "em_andamento" });
     toast.success("Corrida iniciada! Boa entrega! 🚀");
     void sendNotificationToRole("admin", {
       title: "Corrida iniciada",
@@ -116,6 +120,7 @@ export default function EntregadorSolicitacoesPage() {
       return;
     }
     toast.success("Entrega concluída com sucesso! ✅");
+    void appendHistorico(sol.id, "conclusao", "Entrega concluída pelo entregador", { usuario_id: user?.id ?? "", status_anterior: sol.status, status_novo: "concluida" });
     void sendNotificationToRole("admin", {
       title: "Entrega conclueída",
       message: `Corrida ${sol.codigo} foi conclueída — ${sol.cliente_nome ?? sol.codigo}.`,

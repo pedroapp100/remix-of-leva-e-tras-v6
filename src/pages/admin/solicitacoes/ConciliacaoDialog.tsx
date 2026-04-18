@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import type { Rota } from "@/types/database";
+import { useAuth } from "@/contexts/AuthContext";
 import { useFormasPagamento, useBairros } from "@/hooks/useSettings";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ import { Plus, Trash2, AlertTriangle, CheckCircle, Info, Store, User } from "luc
 import { toast } from "sonner";
 import { useCreatePagamentos } from "@/hooks/useSolicitacoes";
 import { useClienteSaldoMap, useClientes } from "@/hooks/useClientes";
+import { appendHistorico } from "@/services/solicitacoes";
 
 interface PagamentoLinha {
   id: string;
@@ -38,6 +40,7 @@ interface ConciliacaoDialogProps {
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clienteId, solicitacaoId, isEditing = false, isConcluding = false, isDriverView = false }: ConciliacaoDialogProps) {
+  const { user } = useAuth();
   const createPagamentosMut = useCreatePagamentos();
   const { getClienteSaldo } = useClienteSaldoMap();
   const { data: clientes = [] } = useClientes();
@@ -134,6 +137,9 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
 
     onConcluir();
     onOpenChange(false);
+    if (solicitacaoId) {
+      void appendHistorico(solicitacaoId, "conciliacao", "Pagamentos registrados pelo entregador", { usuario_id: user?.id ?? "" });
+    }
   };
 
   return (

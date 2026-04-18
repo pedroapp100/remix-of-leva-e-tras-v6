@@ -7,6 +7,7 @@ import { useClientes } from "@/hooks/useClientes";
 import { useEntregadores } from "@/hooks/useEntregadores";
 import { useConcluirComCaixa } from "@/hooks/useConcluirComCaixa";
 import { useFaturas, useConcluirFaturaEntrega } from "@/hooks/useFaturas";
+import { appendHistorico } from "@/services/solicitacoes";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -262,6 +263,7 @@ export function AdminConciliacaoDialog({
     }
     onConfirm();
     onOpenChange(false);
+    void appendHistorico(solicitacao.id, "conciliacao_admin", "Conciliação administrativa realizada — fatura gerada", { usuario_id: user?.id ?? "" });
     toast.success("Conciliação conferida e fatura gerada! ✅");
   };
 

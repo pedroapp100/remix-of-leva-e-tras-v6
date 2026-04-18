@@ -2,9 +2,10 @@ import { useMemo } from "react";
 import type { Solicitacao, Rota, PagamentoSolicitacao } from "@/types/database";
 import { STATUS_SOLICITACAO_LABELS } from "@/types/database";
 import { TipoOperacaoBadge } from "@/components/shared/TipoOperacaoBadge";
-import { useRotasBySolicitacao, usePagamentosBySolicitacao } from "@/hooks/useSolicitacoes";
+import { useRotasBySolicitacao, usePagamentosBySolicitacao, useHistoricoBySolicitacao } from "@/hooks/useSolicitacoes";
 import { useClientes } from "@/hooks/useClientes";
 import { useEntregadores } from "@/hooks/useEntregadores";
+import { useAdminProfiles } from "@/hooks/useUsers";
 import { useBairros, useRegioes, useFormasPagamento } from "@/hooks/useSettings";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
@@ -195,8 +196,10 @@ function RotaConciliationCard({ rota, pagamentos, isFaturado, getBairroName, get
 export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = false }: ViewSolicitacaoDialogProps) {
   const { data: rotas = [] } = useRotasBySolicitacao(solicitacao?.id ?? "");
   const { data: allPagamentos = [] } = usePagamentosBySolicitacao(solicitacao?.id ?? "");
+  const { data: historicoRows = [] } = useHistoricoBySolicitacao(solicitacao?.id ?? "");
   const { data: clientes = [] } = useClientes();
   const { data: entregadores = [] } = useEntregadores();
+  const { data: adminProfiles = [] } = useAdminProfiles();
   const { data: bairros = [] } = useBairros();
   const { data: regioes = [] } = useRegioes();
   const { data: formasPagamento = [] } = useFormasPagamento();
@@ -420,17 +423,29 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
           {/* Histórico */}
           <div>
             <h4 className="text-sm font-semibold mb-3">Histórico</h4>
-            <div className="space-y-2">
-              {solicitacao.historico.map((ev, i) => (
-                <div key={i} className="flex items-start gap-3 text-sm">
-                  <Clock className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />
-                  <div>
-                    <p>{ev.descricao}</p>
-                    <p className="text-xs text-muted-foreground tabular-nums">{fmtDate(ev.timestamp)}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
+            {historicoRows.length === 0 ? (
+              <p className="text-sm text-muted-foreground italic">Nenhum registro de histórico.</p>
+            ) : (
+              <div className="space-y-2">
+                {historicoRows.map((ev) => {
+                  const userName = ev.usuario_id
+                    ? (adminProfiles.find((p) => p.id === ev.usuario_id)?.nome
+                      ?? entregadores.find((e) => e.profile_id === ev.usuario_id)?.nome
+                      ?? null)
+                    : null;
+                  return (
+                    <div key={ev.id} className="flex items-start gap-3 text-sm">
+                      <Clock className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />
+                      <div>
+                        <p>{ev.descricao}</p>
+                        {userName && <p className="text-xs text-muted-foreground">por {userName}</p>}
+                        <p className="text-xs text-muted-foreground tabular-nums">{fmtDate(ev.created_at)}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </DialogContent>
