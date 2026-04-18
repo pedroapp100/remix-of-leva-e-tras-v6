@@ -17,24 +17,24 @@
 
 @layer base {
   :root {
-    /* ── Light Mode — Spring Blue ── */
-    --background: 220 14% 96%;
+    /* ── Light Mode — Slate Cloud ── */
+    --background: 220 20% 93%;
     --foreground: 240 30% 10%;
 
-    --card: 0 0% 100%;
+    --card: 220 20% 98%;
     --card-foreground: 240 30% 10%;
 
-    --popover: 0 0% 100%;
+    --popover: 220 20% 98%;
     --popover-foreground: 240 30% 10%;
 
     --primary: 231 75% 55%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 14% 92%;
+    --secondary: 220 16% 88%;
     --secondary-foreground: 240 30% 10%;
 
-    --muted: 220 14% 95%;
-    --muted-foreground: 220 10% 46%;
+    --muted: 220 16% 90%;
+    --muted-foreground: 220 12% 44%;
 
     --accent: 231 75% 55%;
     --accent-foreground: 0 0% 100%;
@@ -42,8 +42,8 @@
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 14% 90%;
-    --input: 220 14% 90%;
+    --border: 220 16% 86%;
+    --input: 220 16% 86%;
     --ring: 231 75% 55%;
 
     --radius: 0.5rem;
@@ -60,17 +60,17 @@
     --status-overdue: 20 90% 50%;
 
     /* ── Surfaces ── */
-    --surface-elevated: 0 0% 100%;
-    --surface-sunken: 220 14% 96%;
+    --surface-elevated: 220 20% 98%;
+    --surface-sunken: 220 20% 90%;
 
     /* ── Sidebar ── */
-    --sidebar-background: 0 0% 100%;
+    --sidebar-background: 224 28% 96%;
     --sidebar-foreground: 220 25% 18%;
     --sidebar-primary: 231 75% 55%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 231 75% 96%;
-    --sidebar-accent-foreground: 231 75% 55%;
-    --sidebar-border: 220 14% 92%;
+    --sidebar-accent: 231 75% 93%;
+    --sidebar-accent-foreground: 231 75% 38%;
+    --sidebar-border: 220 16% 88%;
     --sidebar-ring: 231 75% 55%;
 
     /* ── Charts ── */
