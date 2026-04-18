@@ -147,7 +147,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen grid lg:grid-cols-[1fr_1.2fr] bg-background">
       {/* ── Coluna Formulário ── */}
-      <div className="flex items-center justify-center p-4 sm:p-6 md:p-12 relative bg-surface-sunken dark:bg-[hsl(230_40%_8%)]">
+      <div className="flex items-center justify-center p-4 sm:p-6 md:p-12 relative bg-surface-sunken dark:bg-[hsl(230_40%_8%)] overflow-hidden">
         {/* Theme toggle */}
         <button
           onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
@@ -157,7 +157,7 @@ export default function LoginPage() {
           {resolvedTheme === "dark" ? <Sun className="h-5 w-5 text-foreground" /> : <Moon className="h-5 w-5 text-foreground" />}
         </button>
         {/* Subtle glow */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[500px] h-[300px] bg-primary/8 dark:bg-primary/10 rounded-full blur-[100px] pointer-events-none" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-[500px] h-[300px] bg-primary/8 dark:bg-primary/10 rounded-full blur-[100px] pointer-events-none" />
 
         <motion.div
           initial={{ opacity: 0, y: 20 }}
