@@ -229,9 +229,9 @@ export default function SolicitacoesPage() {
       const nRotas = data.rotas.length;
       if (isRetroativoConcluida) {
         const entNome = data.entregadorId ? getEntregadorNome(data.entregadorId) : null;
-        void appendHistorico(result.sol.id, "criacao", `Solicitação retroativa criada já como concluída para ${clienteNome} com ${nRotas} rota${nRotas > 1 ? "s" : ""}${entNome && entNome !== "—" ? ` — atribuída a ${entNome}` : ""}`, { usuario_id: user?.id ?? null, status_novo: "concluida" });
+        appendHistorico(result.sol.id, "criacao", `Solicitação retroativa criada já como concluída para ${clienteNome} com ${nRotas} rota${nRotas > 1 ? "s" : ""}${entNome && entNome !== "—" ? ` — atribuída a ${entNome}` : ""}`, { usuario_id: user?.id ?? null, status_novo: "concluida" }).catch(e => console.error("[historico]", e));
       } else {
-        void appendHistorico(result.sol.id, "criacao", `Solicitação criada para ${clienteNome} com ${nRotas} rota${nRotas > 1 ? "s" : ""}`, { usuario_id: user?.id ?? null, status_novo: status });
+        appendHistorico(result.sol.id, "criacao", `Solicitação criada para ${clienteNome} com ${nRotas} rota${nRotas > 1 ? "s" : ""}`, { usuario_id: user?.id ?? null, status_novo: status }).catch(e => console.error("[historico]", e));
       }
 
       toast.success(`Solicitação ${codigo} criada!`);
@@ -260,7 +260,7 @@ export default function SolicitacoesPage() {
     const sol = solicitacoes.find((s) => s.id === solId);
     updateSolMut.mutate({ id: solId, patch: { entregador_id: entregadorId, status: "aceita" } });
     const entNome = getEntregadorNome(entregadorId);
-    void appendHistorico(solId, "atribuicao", `Entregador ${entNome} foi atribuído à solicitação`, { usuario_id: user?.id ?? null, status_anterior: sol?.status ?? "", status_novo: "aceita" });
+    appendHistorico(solId, "atribuicao", `Entregador ${entNome} foi atribuído à solicitação`, { usuario_id: user?.id ?? null, status_anterior: sol?.status ?? "", status_novo: "aceita" }).catch(e => console.error("[historico]", e));
     toast.success("Entregador atribuído!");
     const entregador = entregadores.find((e) => e.id === entregadorId);
     if (entregador?.profile_id) {
@@ -275,7 +275,7 @@ export default function SolicitacoesPage() {
 
   const handleStartDelivery = (sol: Solicitacao) => {
     updateSolMut.mutate({ id: sol.id, patch: { status: "em_andamento", data_inicio: new Date().toISOString() } });
-    void appendHistorico(sol.id, "inicio", "Entrega iniciada pelo administrador", { usuario_id: user?.id ?? null, status_anterior: sol.status, status_novo: "em_andamento" });
+    appendHistorico(sol.id, "inicio", "Entrega iniciada pelo administrador", { usuario_id: user?.id ?? null, status_anterior: sol.status, status_novo: "em_andamento" }).catch(e => console.error("[historico]", e));
     toast.success("Entrega iniciada!");
     if (sol.entregador_id) {
       const entregador = entregadores.find((e) => e.id === sol.entregador_id);
@@ -296,7 +296,7 @@ export default function SolicitacoesPage() {
       toast.error(result.error ?? "Erro ao concluir solicitação.");
       return;
     }
-    void appendHistorico(sol.id, "conclusao", "Entrega concluída pelo administrador", { usuario_id: user?.id ?? null, status_anterior: sol.status, status_novo: "concluida" });
+    appendHistorico(sol.id, "conclusao", "Entrega concluída pelo administrador", { usuario_id: user?.id ?? null, status_anterior: sol.status, status_novo: "concluida" }).catch(e => console.error("[historico]", e));
     toast.success("Solicitação concluída!");
     if (sol.entregador_id) {
       const entregador = entregadores.find((e) => e.id === sol.entregador_id);
@@ -317,7 +317,7 @@ export default function SolicitacoesPage() {
     const newStatus = action === "cancelar" ? "cancelada" : "rejeitada";
     updateSolMut.mutate({ id: sol.id, patch: { status: newStatus, justificativa } });
     const tipoHist = action === "cancelar" ? "cancelamento" : "rejeicao";
-    void appendHistorico(sol.id, tipoHist, `Solicitação ${newStatus}. Motivo: ${justificativa}`, { usuario_id: user?.id ?? null, status_anterior: sol.status, status_novo: newStatus });
+    appendHistorico(sol.id, tipoHist, `Solicitação ${newStatus}. Motivo: ${justificativa}`, { usuario_id: user?.id ?? null, status_anterior: sol.status, status_novo: newStatus }).catch(e => console.error("[historico]", e));
     toast.success(`Solicitação ${newStatus}!`);
     if (sol.entregador_id) {
       const entregador = entregadores.find((e) => e.id === sol.entregador_id);
@@ -344,7 +344,7 @@ export default function SolicitacoesPage() {
       status: "aceita",
       data_inicio: sol.status === "em_andamento" ? null : sol.data_inicio,
     } });
-    void appendHistorico(sol.id, "transferencia", `Entrega transferida de ${previousName} para ${newName}`, { usuario_id: user?.id ?? null, status_anterior: sol.status, status_novo: "aceita" });
+    appendHistorico(sol.id, "transferencia", `Entrega transferida de ${previousName} para ${newName}`, { usuario_id: user?.id ?? null, status_anterior: sol.status, status_novo: "aceita" }).catch(e => console.error("[historico]", e));
     toast.success(`Solicitação transferida para ${newName}!`);
     const novoEntregador = entregadores.find((e) => e.id === newEntregadorId);
     if (novoEntregador?.profile_id) {
