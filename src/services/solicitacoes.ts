@@ -328,9 +328,9 @@ export async function appendHistorico(
     solicitacao_id: solId,
     tipo,
     descricao,
-    status_anterior: "",
-    status_novo: "",
-    usuario_id: "",
+    status_anterior: null,
+    status_novo: null,
+    usuario_id: null,
     metadata: {},
     ...extra,
   });

@@ -113,7 +113,7 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate 
         tipo,
         valor,
         motivo,
-        usuario_id: user?.id ?? "",
+        usuario_id: user?.id ?? null,
       });
       await updateFatura.mutateAsync({
         id: fatura.id,

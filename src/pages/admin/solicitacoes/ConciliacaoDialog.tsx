@@ -138,7 +138,7 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
     onConcluir();
     onOpenChange(false);
     if (solicitacaoId) {
-      void appendHistorico(solicitacaoId, "conciliacao", "Pagamentos registrados pelo entregador", { usuario_id: user?.id ?? "" });
+      void appendHistorico(solicitacaoId, "conciliacao", "Pagamentos registrados pelo entregador", { usuario_id: user?.id ?? null });
     }
   };
 

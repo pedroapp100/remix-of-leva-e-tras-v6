@@ -102,7 +102,7 @@ export default function EntregadorSolicitacoesPage() {
       status: "em_andamento",
       data_inicio: new Date().toISOString(),
     } });
-    void appendHistorico(sol.id, "inicio", "Entrega iniciada pelo entregador", { usuario_id: user?.id ?? "", status_anterior: sol.status, status_novo: "em_andamento" });
+    void appendHistorico(sol.id, "inicio", "Entrega iniciada pelo entregador", { usuario_id: user?.id ?? null, status_anterior: sol.status, status_novo: "em_andamento" });
     toast.success("Corrida iniciada! Boa entrega! 🚀");
     void sendNotificationToRole("admin", {
       title: "Corrida iniciada",
@@ -120,7 +120,7 @@ export default function EntregadorSolicitacoesPage() {
       return;
     }
     toast.success("Entrega concluída com sucesso! ✅");
-    void appendHistorico(sol.id, "conclusao", "Entrega concluída pelo entregador", { usuario_id: user?.id ?? "", status_anterior: sol.status, status_novo: "concluida" });
+    void appendHistorico(sol.id, "conclusao", "Entrega concluída pelo entregador", { usuario_id: user?.id ?? null, status_anterior: sol.status, status_novo: "concluida" });
     void sendNotificationToRole("admin", {
       title: "Entrega conclueída",
       message: `Corrida ${sol.codigo} foi conclueída — ${sol.cliente_nome ?? sol.codigo}.`,

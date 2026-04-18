@@ -263,7 +263,7 @@ export function AdminConciliacaoDialog({
     }
     onConfirm();
     onOpenChange(false);
-    void appendHistorico(solicitacao.id, "conciliacao_admin", "Conciliação administrativa realizada — fatura gerada", { usuario_id: user?.id ?? "" });
+    void appendHistorico(solicitacao.id, "conciliacao_admin", "Conciliação administrativa realizada — fatura gerada", { usuario_id: user?.id ?? null });
     toast.success("Conciliação conferida e fatura gerada! ✅");
   };
 
