@@ -120,7 +120,7 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
   const diffLoja = diffLojaCents / 100;
 
   const handleConcluir = async () => {
-    if (allPagamentos.length === 0) { toast.error("Registre ao menos um pagamento."); return; }
+    if (!isDriverView && allPagamentos.length === 0) { toast.error("Registre ao menos um pagamento."); return; }
     if (allPagamentos.some((p) => p.valor <= 0)) { toast.error("Todos os pagamentos devem ter valor positivo."); return; }
     if (!isDriverView && !isBalanced) { toast.error("Os valores não estão balanceados. Verifique os pagamentos."); return; }
 
@@ -335,7 +335,12 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
                 <span className="text-muted-foreground">Total Recebido</span>
                 <span className="tabular-nums text-right font-medium">{fmt(allPagamentos.reduce((s, p) => s + p.valor, 0))}</span>
               </div>
-              {allPagamentos.length > 0 && (
+              {allPagamentos.length === 0 ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Info className="h-4 w-4" />
+                  Nenhum valor recebido — clique em Registrar para confirmar.
+                </div>
+              ) : (
                 <>
                   <Separator />
                   <div className="flex items-center gap-2 text-sm font-medium text-primary">

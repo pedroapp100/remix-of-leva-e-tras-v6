@@ -116,6 +116,15 @@ export default function EntregadoresPage() {
           }
           toast.warning(`Entregador cadastrado, mas erro ao criar acesso: ${msg}`);
         } else {
+          // Vincular o profile_id ao registro do entregador
+          const profileId = (fnData as { user: { id: string; email: string } })?.user?.id;
+          if (profileId) {
+            try {
+              await updateEntregadorMutation.mutateAsync({ id: created.id, patch: { profile_id: profileId } });
+            } catch {
+              toast.warning("Entregador criado, mas erro ao vincular perfil. Contate o suporte.");
+            }
+          }
           toast.success(`Entregador cadastrado! Acesso criado para ${data.email}`, { duration: 10000 });
         }
       } else {

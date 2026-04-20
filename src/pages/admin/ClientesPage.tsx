@@ -80,7 +80,7 @@ export default function ClientesPage() {
     } else {
       const { id: _id, created_at: _ca, updated_at: _ua, ...insertData } = data;
       const payload = insertData as unknown as ClienteInsert;
-      await createCliente.mutateAsync({ ...payload, profile_id: null, documento: null });
+      const created = await createCliente.mutateAsync({ ...payload, profile_id: null, documento: null });
 
       // Auto-criar conta de acesso via Admin API (Edge Function)
       if (senha) {
@@ -99,6 +99,15 @@ export default function ClientesPage() {
           }
           toast.warning(`Cliente cadastrado, mas erro ao criar acesso: ${msg}`);
         } else {
+          // Vincular o profile_id ao registro do cliente
+          const profileId = (fnData as { user: { id: string; email: string } })?.user?.id;
+          if (profileId) {
+            try {
+              await updateClienteMutation.mutateAsync({ id: created.id, patch: { profile_id: profileId } });
+            } catch {
+              toast.warning("Cliente criado, mas erro ao vincular perfil. Contate o suporte.");
+            }
+          }
           toast.success(`Cliente cadastrado! Acesso criado para ${data.email}`, { duration: 10000 });
         }
       } else {
