@@ -22,20 +22,48 @@ import type { RotaForm } from "./RotaCard";
 
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-function resolverTarifa(bairros: { id: string; taxa_entrega: number; nome: string }[], tabelaPrecos: { cliente_id: string; ativo: boolean; prioridade: number; bairro_destino_id?: string | null; tipo_operacao?: string | null; taxa_base: number }[], bairroId: string, clienteId?: string, tipoOp?: string): { taxa: number; fallback: boolean } {
+/**
+ * Resolve a taxa para uma rota seguindo hierarquia de 3 níveis:
+ * 1. Regra específica por bairro + tipo de operação
+ * 2. Regra por região do bairro + tipo de operação
+ * 3. Regra geral (sem bairro e sem região) + tipo de operação
+ * 4. Fallback: taxa_entrega padrão do bairro
+ */
+function resolverTarifa(
+  bairros: { id: string; taxa_entrega: number; nome: string; region_id: string }[],
+  tabelaPrecos: { cliente_id: string; ativo: boolean; prioridade: number; bairro_destino_id?: string | null; regiao_id?: string | null; tipo_operacao?: string | null; taxa_base: number }[],
+  bairroId: string,
+  clienteId?: string,
+  tipoOp?: string
+): { taxa: number; fallback: boolean } {
   const bairro = bairros.find((b) => b.id === bairroId);
   if (!bairro) return { taxa: 0, fallback: false };
 
   if (clienteId) {
-    const regra = tabelaPrecos
+    const regrasFiltradas = tabelaPrecos
       .filter((p) => p.cliente_id === clienteId && p.ativo)
-      .sort((a, b) => a.prioridade - b.prioridade)
-      .find((p) => {
-        const matchBairro = !p.bairro_destino_id || p.bairro_destino_id === bairroId;
-        const matchTipo = !tipoOp || p.tipo_operacao === "todos" || p.tipo_operacao === tipoOp;
-        return matchBairro && matchTipo;
-      });
-    if (regra) return { taxa: regra.taxa_base, fallback: false };
+      .sort((a, b) => a.prioridade - b.prioridade);
+
+    const matchTipo = (p: (typeof regrasFiltradas)[0]) =>
+      !tipoOp || p.tipo_operacao === "todos" || p.tipo_operacao === tipoOp;
+
+    // Nível 1: bairro específico + tipo
+    const porBairro = regrasFiltradas.find(
+      (p) => p.bairro_destino_id === bairroId && matchTipo(p)
+    );
+    if (porBairro) return { taxa: porBairro.taxa_base, fallback: false };
+
+    // Nível 2: região do bairro + tipo
+    const porRegiao = regrasFiltradas.find(
+      (p) => !p.bairro_destino_id && p.regiao_id === bairro.region_id && matchTipo(p)
+    );
+    if (porRegiao) return { taxa: porRegiao.taxa_base, fallback: false };
+
+    // Nível 3: regra geral (sem bairro e sem região) + tipo
+    const geral = regrasFiltradas.find(
+      (p) => !p.bairro_destino_id && !p.regiao_id && matchTipo(p)
+    );
+    if (geral) return { taxa: geral.taxa_base, fallback: false };
   }
 
   return { taxa: bairro.taxa_entrega, fallback: true };
@@ -261,7 +289,7 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit }: Launch
   const saldoCliente = clienteId ? getClienteSaldo(clienteId) : 0;
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) resetForm(); onOpenChange(o); }}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
          <DialogHeader>
           <DialogTitle>

@@ -43,6 +43,7 @@ export function rowToRota(row: RotaRow): Rota {
     valor_a_receber: row.valor_a_receber,
     taxa_resolvida: row.taxa_resolvida,
     regra_preco_id: row.regra_preco_id,
+    pagamento_operacao: (row.pagamento_operacao as "faturar" | "pago_na_hora" | "descontar_saldo") ?? "faturar",
     status: row.status,
   };
 }

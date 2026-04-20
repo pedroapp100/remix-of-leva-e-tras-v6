@@ -6,7 +6,6 @@ import { useNotifications, type Notification } from "@/contexts/NotificationCont
 import { useNavigate } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { OnboardingHelpButton } from "@/onboarding/OnboardingHelpButton";
 import { Button } from "@/components/ui/button";
 import { useCargos } from "@/hooks/useSettings";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -90,8 +89,6 @@ export function AppHeader() {
           <Calendar className="h-3.5 w-3.5" />
           <span>{today}</span>
         </div>
-        {/* Onboarding help */}
-        <OnboardingHelpButton />
         {/* Theme toggle */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

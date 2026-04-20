@@ -339,9 +339,13 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                             <Store className="h-3.5 w-3.5 text-status-pending" />
                             Cobrar do Cliente
                           </span>
-                          <div className="flex items-center justify-between text-sm">
-                            <span className="text-muted-foreground">Valor a receber</span>
-                            <span className="tabular-nums font-medium">{fmt(rota.valor_a_receber)}</span>
+                          <div className="flex items-center justify-between text-sm font-semibold">
+                            <span className="text-muted-foreground">
+                              {rota.pagamento_operacao === "pago_na_hora" ? "Total a cobrar" : "Valor a receber"}
+                            </span>
+                            <span className="tabular-nums">
+                              {fmt((rota.valor_a_receber ?? 0) + (rota.pagamento_operacao === "pago_na_hora" ? (rota.taxa_resolvida ?? 0) : 0))}
+                            </span>
                           </div>
                         </div>
                       )}
@@ -365,9 +369,13 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                         <Store className="h-3.5 w-3.5 text-status-pending" />
                         Cobrar do Cliente
                       </span>
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">Valor cobrado</span>
-                        <span className="tabular-nums font-medium">{fmt(rota.valor_a_receber)}</span>
+                      <div className="flex items-center justify-between text-sm font-semibold">
+                        <span className="text-muted-foreground">
+                          {rota.pagamento_operacao === "pago_na_hora" ? "Total cobrado" : "Valor cobrado"}
+                        </span>
+                        <span className="tabular-nums">
+                          {fmt((rota.valor_a_receber ?? 0) + (rota.pagamento_operacao === "pago_na_hora" ? (rota.taxa_resolvida ?? 0) : 0))}
+                        </span>
                       </div>
                     </div>
                   )}

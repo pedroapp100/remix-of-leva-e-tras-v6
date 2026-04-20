@@ -46,7 +46,9 @@ export function useConcluirComCaixa() {
         return { success: false, error: "Erro ao carregar rotas da solicitação." };
       }
 
-      const totalTaxas = solRotas.reduce((s, r) => s + (r.taxa_resolvida ?? 0), 0);
+      const totalTaxas = solRotas
+        .filter((r) => r.pagamento_operacao === "faturar")
+        .reduce((s, r) => s + (r.taxa_resolvida ?? 0), 0);
 
       // ── Pre-paid balance validation ──
       if (cliente?.modalidade === "pre_pago") {

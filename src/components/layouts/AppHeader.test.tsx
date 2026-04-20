@@ -31,10 +31,6 @@ vi.mock("@/contexts/NotificationContext", () => ({
   }),
 }));
 
-vi.mock("@/onboarding/OnboardingHelpButton", () => ({
-  OnboardingHelpButton: () => <div data-testid="onboarding-help" />,
-}));
-
 vi.mock("@/hooks/useSettings", () => ({
   useCargos: () => ({ data: [] }),
 }));

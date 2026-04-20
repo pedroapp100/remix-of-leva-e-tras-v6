@@ -89,8 +89,14 @@ export default function ClientesPage() {
           body: { email: data.email, password: senha, nome: data.nome, role: "cliente", documento: docDigits },
         });
         if (error || fnData?.error) {
-          const ctx = (error as any)?.context;
-          const msg = ctx?.data?.error ?? fnData?.error ?? error?.message ?? "Erro ao criar acesso.";
+          let msg = fnData?.error ?? "Erro ao criar acesso.";
+          if (!fnData?.error && error) {
+            try {
+              const ctx = (error as any)?.context;
+              const body = ctx && typeof ctx.json === "function" ? await ctx.json() : null;
+              msg = body?.error ?? error.message ?? msg;
+            } catch { /* ignora */ }
+          }
           toast.warning(`Cliente cadastrado, mas erro ao criar acesso: ${msg}`);
         } else {
           toast.success(`Cliente cadastrado! Acesso criado para ${data.email}`, { duration: 10000 });

@@ -1,11 +1,10 @@
-import { useState, useRef } from "react";
-import { DataTable, SearchInput, ConfirmDialog } from "@/components/shared";
+import { useState, useRef, useMemo } from "react";
+import { SearchInput, ConfirmDialog } from "@/components/shared";
 import { useLogStore } from "@/contexts/LogStore";
-import type { Column } from "@/components/shared/DataTable";
 import type { Bairro } from "@/types/database";
 import { useBairros, useRegioes, useUpsertBairro, useDeleteBairro } from "@/hooks/useSettings";
 import { Button } from "@/components/ui/button";
-import { Plus, Pencil, Trash2, AlertTriangle, Upload, FileSpreadsheet, X } from "lucide-react";
+import { Plus, Pencil, Trash2, AlertTriangle, Upload, FileSpreadsheet, X, ChevronDown, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -36,6 +35,20 @@ export function BairrosTab() {
   const [nome, setNome] = useState("");
   const [regionId, setRegionId] = useState("");
   const [taxa, setTaxa] = useState(0);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+  const toggleGroup = (id: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  // Ao buscar, força todos os grupos abertos para não esconder resultados
+  const isCollapsed = (id: string) =>
+    search.trim() === "" && !expandedGroups.has(id);
 
   type ParsedBairro = { nome: string; regiao: string; region_id: string; taxa_entrega: number; valid: boolean; error?: string };
 
@@ -163,37 +176,52 @@ export function BairrosTab() {
     setImportPreview([]);
   };
 
-  const columns: Column<Bairro>[] = [
-    { key: "nome", header: "Nome", sortable: true, cell: (r) => <span className="font-medium">{r.nome}</span> },
-    { key: "region_id", header: "Região", cell: (r) => <Badge variant="outline">{getRegionName(r.region_id)}</Badge> },
-    {
-      key: "taxa_entrega", header: "Taxa Entrega", sortable: true,
-      cell: (r) => <span className="tabular-nums font-medium">{r.taxa_entrega.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>,
-    },
-    {
-      key: "actions", header: "Ações", className: "w-28 text-right",
-      cell: (r) => (
-        <div className="flex items-center justify-end gap-1">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors duration-200" onClick={(e) => { e.stopPropagation(); openEdit(r); }}><Pencil className="h-4 w-4" /></Button>
-              </TooltipTrigger>
-              <TooltipContent>Editar bairro</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/30 transition-colors duration-200" onClick={(e) => { e.stopPropagation(); setDeleteTarget(r); }}><Trash2 className="h-4 w-4" /></Button>
-              </TooltipTrigger>
-              <TooltipContent>Excluir bairro</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
-      ),
-    },
-  ];
+  const grupos = useMemo(() => {
+    const porRegiao = new Map<string, Bairro[]>();
+    for (const b of filtered) {
+      const key = b.region_id ?? "__sem_regiao__";
+      if (!porRegiao.has(key)) porRegiao.set(key, []);
+      porRegiao.get(key)!.push(b);
+    }
+    // Ordenar bairros dentro de cada grupo
+    for (const list of porRegiao.values()) {
+      list.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+    }
+    // Grupos de regiões cadastradas primeiro (ordenados por nome), depois sem região
+    const gruposOrdenados: { regiaoId: string; nome: string; bairros: Bairro[] }[] = [];
+    for (const r of [...regioes].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))) {
+      const lista = porRegiao.get(r.id);
+      if (lista && lista.length > 0) {
+        gruposOrdenados.push({ regiaoId: r.id, nome: r.name, bairros: lista });
+      }
+    }
+    const semRegiao = porRegiao.get("__sem_regiao__");
+    if (semRegiao && semRegiao.length > 0) {
+      gruposOrdenados.push({ regiaoId: "__sem_regiao__", nome: "Sem região", bairros: semRegiao });
+    }
+    return gruposOrdenados;
+  }, [filtered, regioes]);
+
+  const renderBairroActions = (r: Bairro) => (
+    <div className="flex items-center justify-end gap-1">
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors duration-200" onClick={(e) => { e.stopPropagation(); openEdit(r); }}><Pencil className="h-4 w-4" /></Button>
+          </TooltipTrigger>
+          <TooltipContent>Editar bairro</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/30 transition-colors duration-200" onClick={(e) => { e.stopPropagation(); setDeleteTarget(r); }}><Trash2 className="h-4 w-4" /></Button>
+          </TooltipTrigger>
+          <TooltipContent>Excluir bairro</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </div>
+  );
 
   return (
     <Card>
@@ -212,23 +240,80 @@ export function BairrosTab() {
             <Button onClick={openCreate} size="sm"><Plus className="h-4 w-4 mr-2" /> Novo Bairro</Button>
           </div>
         </div>
-        <DataTable data={filtered} columns={columns} emptyTitle="Nenhum bairro cadastrado" emptySubtitle="Cadastre o primeiro bairro para começar." emptyActionLabel="Cadastrar primeiro bairro" onEmptyAction={openCreate}
-          renderMobileCard={(r) => (
-            <div className="rounded-lg border border-border bg-card p-4 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-medium">{r.nome}</span>
-                <Badge variant="outline">{getRegionName(r.region_id)}</Badge>
+
+        {filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center gap-3">
+            <p className="text-muted-foreground font-medium">Nenhum bairro cadastrado</p>
+            <p className="text-sm text-muted-foreground">Cadastre o primeiro bairro para começar.</p>
+            <Button size="sm" onClick={openCreate}><Plus className="h-4 w-4 mr-2" />Cadastrar primeiro bairro</Button>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {grupos.map(({ regiaoId, nome: regiaoNome, bairros: listaBairros }) => (
+              <div key={regiaoId} className="rounded-lg border border-border overflow-hidden">
+                {/* Cabeçalho clicável */}
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(regiaoId)}
+                  className="w-full flex items-center gap-2 px-4 py-3 bg-muted/40 hover:bg-muted/60 transition-colors text-left"
+                >
+                  {isCollapsed(regiaoId)
+                    ? <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                    : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />}
+                  <span className="text-sm font-semibold text-foreground">{regiaoNome}</span>
+                  <Badge variant="secondary" className="text-xs ml-1">
+                    {listaBairros.length} {listaBairros.length === 1 ? "bairro" : "bairros"}
+                  </Badge>
+                </button>
+
+                {!isCollapsed(regiaoId) && (
+                  <>
+                    {/* Tabela desktop */}
+                    <div className="hidden sm:block">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-muted/20">
+                            <TableHead className="text-xs">Nome</TableHead>
+                            <TableHead className="text-xs">Taxa de Entrega (fallback)</TableHead>
+                            <TableHead className="w-24 text-right text-xs">Ações</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {listaBairros.map((b) => (
+                            <TableRow key={b.id} className="hover:bg-muted/30">
+                              <TableCell className="font-medium">{b.nome}</TableCell>
+                              <TableCell className="tabular-nums text-muted-foreground">
+                                {b.taxa_entrega.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                              </TableCell>
+                              <TableCell className="text-right">{renderBairroActions(b)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                    {/* Cards mobile */}
+                    <div className="sm:hidden divide-y divide-border">
+                      {listaBairros.map((b) => (
+                        <div key={b.id} className="p-4 space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium">{b.nome}</span>
+                            <div className="flex items-center gap-1">
+                              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" onClick={(e) => { e.stopPropagation(); openEdit(b); }}><Pencil className="h-4 w-4" /></Button>
+                              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" onClick={(e) => { e.stopPropagation(); setDeleteTarget(b); }}><Trash2 className="h-4 w-4" /></Button>
+                            </div>
+                          </div>
+                          <span className="tabular-nums text-sm text-muted-foreground">
+                            {b.taxa_entrega.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
-              <div className="flex items-center justify-between">
-                <span className="tabular-nums font-medium text-sm">{r.taxa_entrega.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
-                <div className="flex items-center gap-1">
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" onClick={(e) => { e.stopPropagation(); openEdit(r); }}><Pencil className="h-4 w-4" /></Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" onClick={(e) => { e.stopPropagation(); setDeleteTarget(r); }}><Trash2 className="h-4 w-4" /></Button>
-                </div>
-              </div>
-            </div>
-          )}
-        />
+            ))}
+          </div>
+        )}
       </CardContent>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

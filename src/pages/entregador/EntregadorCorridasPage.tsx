@@ -94,8 +94,8 @@ export default function EntregadorCorridasPage() {
     } });
     toast.success("Entrega concluída com sucesso! ✅");
     void sendNotificationToRole("admin", {
-      title: "Entrega conclueída",
-      message: `Corrida ${sol.codigo} foi conclueída — ${sol.cliente_nome ?? sol.codigo}.`,
+      title: "Entrega concluída",
+      message: `Corrida ${sol.codigo} foi concluída — ${sol.cliente_nome ?? sol.codigo}.`,
       type: "success",
       link: "/admin/solicitacoes",
     });

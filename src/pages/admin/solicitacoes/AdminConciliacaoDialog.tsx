@@ -224,7 +224,9 @@ export function AdminConciliacaoDialog({
       }
     } else if (solicitacao.status === "concluida" && cliente?.modalidade === "faturado") {
       // Already concluded + faturado client: call fatura RPC directly (avoid double-caixa)
-      const totalTaxas = rotas.reduce((s, r) => s + (r.taxa_resolvida ?? 0), 0);
+      const totalTaxas = rotas
+        .filter((r) => r.pagamento_operacao === "faturar")
+        .reduce((s, r) => s + (r.taxa_resolvida ?? 0), 0);
       const totalRecebido = rotas
         .filter((r) => r.receber_do_cliente)
         .reduce((s, r) => s + (r.valor_a_receber ?? 0), 0);

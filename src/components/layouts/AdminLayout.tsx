@@ -2,12 +2,10 @@ import { Outlet } from "react-router-dom";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AdminSidebar } from "./AdminSidebar";
 import { AppHeader } from "./AppHeader";
-import { OnboardingRoleSync } from "@/onboarding/OnboardingRoleSync";
 
 export function AdminLayout() {
   return (
     <>
-      <OnboardingRoleSync />
       <SidebarProvider>
         <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:p-4 focus:bg-background focus:text-foreground">Pular para o conteúdo</a>
         <div className="min-h-screen flex flex-col w-full">

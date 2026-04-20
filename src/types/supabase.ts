@@ -454,6 +454,7 @@ export interface Tables {
       valor_a_receber: number | null;
       taxa_resolvida: number | null;
       regra_preco_id: string | null;
+      pagamento_operacao: "faturar" | "pago_na_hora" | "descontar_saldo";
       status: "ativa" | "concluida" | "cancelada";
       created_at: string;
       updated_at: string;

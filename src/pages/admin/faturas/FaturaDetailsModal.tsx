@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { fetchRotasBySolicitacao, updateRota } from "@/services/solicitacoes";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,6 +36,7 @@ import {
   useCreateAjuste,
   useCreateHistoricoFatura,
   useEntregasByFatura,
+  useFaturaById,
 } from "@/hooks/useFaturas";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -49,12 +52,14 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate 
   const faturaId = fatura?.id ?? "";
 
   // ── Queries reais ──
+  const { data: liveFatura } = useFaturaById(faturaId);
   const { data: lancamentos = [] } = useLancamentosByFatura(faturaId);
   const { data: ajustes = [] } = useAjustesByFatura(faturaId);
   const { data: historico = [] } = useHistoricoFatura(faturaId);
   const { data: entregas = [] } = useEntregasByFatura(faturaId);
 
   // ── Mutations ──
+  const queryClient = useQueryClient();
   const updateFatura = useUpdateFatura();
   const createAjuste = useCreateAjuste();
   const createHistorico = useCreateHistoricoFatura();
@@ -70,7 +75,7 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate 
 
   if (!fatura) return null;
 
-  const saldo = fatura.saldo_liquido ?? 0;
+  const saldo = liveFatura?.saldo_liquido ?? fatura.saldo_liquido ?? 0;
   // saldo < 0 → loja deve pagar à empresa (empresa RECEBE) → verde
   // saldo > 0 → empresa deve repassar à loja (empresa PAGA) → vermelho
   const saldoColor = saldo < 0 ? "text-emerald-500" : saldo > 0 ? "text-destructive" : "text-muted-foreground";
@@ -224,6 +229,87 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate 
       toast.error("Erro ao registrar pagamento");
     }
   };
+  const handleSaveEntregaEdit = async (solicitacaoId: string, codigo: string) => {
+    const vals = editValues[solicitacaoId];
+    const original = entregas.find((e) => e.solicitacao_id === solicitacaoId);
+    if (!vals || !original) return;
+
+    const diffTaxas = vals.valor_taxas - original.valor_taxas;
+    const diffRecebido = vals.valor_recebido_cliente - original.valor_recebido_cliente;
+    const novoSaldo = saldo - diffTaxas;
+
+    try {
+      // 1. Busca as rotas reais para atualizar valores no banco
+      const rotasReais = await fetchRotasBySolicitacao(solicitacaoId);
+
+      if (rotasReais.length > 0 && Math.abs(diffTaxas) > 0.001) {
+        const fatorTaxa = original.valor_taxas > 0
+          ? vals.valor_taxas / original.valor_taxas
+          : 1 / rotasReais.length;
+        for (const rota of rotasReais) {
+          await updateRota(rota.id, {
+            taxa_resolvida: original.valor_taxas > 0
+              ? (rota.taxa_resolvida ?? 0) * fatorTaxa
+              : vals.valor_taxas / rotasReais.length,
+          });
+        }
+      }
+
+      if (rotasReais.length > 0 && Math.abs(diffRecebido) > 0.001) {
+        const rotasComRecebido = rotasReais.filter((r) => r.receber_do_cliente);
+        if (rotasComRecebido.length > 0) {
+          const fatorRecebido = original.valor_recebido_cliente > 0
+            ? vals.valor_recebido_cliente / original.valor_recebido_cliente
+            : 1 / rotasComRecebido.length;
+          for (const rota of rotasComRecebido) {
+            await updateRota(rota.id, {
+              valor_a_receber: original.valor_recebido_cliente > 0
+                ? (rota.valor_a_receber ?? 0) * fatorRecebido
+                : vals.valor_recebido_cliente / rotasComRecebido.length,
+            });
+          }
+        }
+      }
+
+      // 2. Ajuste financeiro + saldo se taxa mudou
+      if (Math.abs(diffTaxas) > 0.001) {
+        const ajusteTipo: TipoAjuste = diffTaxas > 0 ? "debito" : "credito";
+        await createAjuste.mutateAsync({
+          fatura_id: fatura.id,
+          solicitacao_id: solicitacaoId,
+          tipo: ajusteTipo,
+          valor: Math.abs(diffTaxas),
+          motivo: `Correção manual — entrega ${codigo}: taxa ${formatCurrency(original.valor_taxas)} → ${formatCurrency(vals.valor_taxas)}${Math.abs(diffRecebido) > 0.001 ? `, recebido ${formatCurrency(original.valor_recebido_cliente)} → ${formatCurrency(vals.valor_recebido_cliente)}` : ""}`,
+          usuario_id: user?.id ?? null,
+        });
+        await updateFatura.mutateAsync({
+          id: fatura.id,
+          patch: { saldo_liquido: novoSaldo },
+        });
+      }
+
+      // 3. Histórico
+      await createHistorico.mutateAsync({
+        fatura_id: fatura.id,
+        tipo: "ajuste",
+        descricao: `Entrega ${codigo} editada: taxa ${formatCurrency(original.valor_taxas)} → ${formatCurrency(vals.valor_taxas)}, recebido ${formatCurrency(original.valor_recebido_cliente)} → ${formatCurrency(vals.valor_recebido_cliente)}`,
+        usuario_id: user?.id ?? null,
+        valor_anterior: saldo,
+        valor_novo: Math.abs(diffTaxas) > 0.001 ? novoSaldo : saldo,
+        metadata: null,
+      });
+
+      // 4. Re-fetcha entregas para refletir novos valores na tela
+      await queryClient.invalidateQueries({ queryKey: ["entregas_fatura", fatura.id] });
+
+      setEditingEntrega(null);
+      toast.success(`Entrega ${codigo} salva com sucesso`);
+    } catch (err) {
+      console.error("handleSaveEntregaEdit:", err);
+      toast.error("Erro ao salvar edição da entrega");
+    }
+  };
+
   const handleGerarPDF = async () => {
     const entregasMap: Record<string, typeof entregas> = entregas.length > 0 ? { [fatura.id]: entregas } : {};
     try {
@@ -335,12 +421,7 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate 
                                 if (!expandedEntrega) setExpandedEntrega(e.solicitacao_id);
                               }}
                               onCancelEdit={() => setEditingEntrega(null)}
-                              onSaveEdit={() => {
-                                const vals = editValues[e.solicitacao_id];
-                                if (!vals) return;
-                                toast.success(`Entrega ${e.codigo} atualizada: taxa ${formatCurrency(vals.valor_taxas)}, recebido ${formatCurrency(vals.valor_recebido_cliente)}`);
-                                setEditingEntrega(null);
-                              }}
+                              onSaveEdit={() => { void handleSaveEntregaEdit(e.solicitacao_id, e.codigo); }}
                               onEditChange={(field, val) => {
                                 setEditValues(prev => ({
                                   ...prev,
@@ -558,6 +639,22 @@ function EntregaCard({ entrega, expanded, onToggle, isEditing, editValue, canEdi
   onEditChange?: (field: "valor_taxas" | "valor_recebido_cliente", value: number) => void;
   onRemove?: () => void;
 }) {
+  const toDisplay = (v: number) =>
+    v === 0 ? "" : v.toFixed(2).replace(".", ",");
+
+  const [taxasStr, setTaxasStr] = useState(() => toDisplay(editValue?.valor_taxas ?? 0));
+  const [recebidoStr, setRecebidoStr] = useState(() => toDisplay(editValue?.valor_recebido_cliente ?? 0));
+
+  // Sincroniza ao entrar no modo edição
+  useEffect(() => {
+    if (isEditing && editValue) {
+      setTaxasStr(toDisplay(editValue.valor_taxas));
+      setRecebidoStr(toDisplay(editValue.valor_recebido_cliente));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditing]);
+
+  const parseVal = (s: string) => parseFloat(s.replace(/\./g, "").replace(",", ".")) || 0;
   return (
     <div className={cn("border rounded-lg overflow-hidden", isEditing ? "border-primary/50 ring-1 ring-primary/20" : "border-border/50")}>
       <div className="w-full flex items-center justify-between p-3 text-left hover:bg-muted/30 transition-colors">
@@ -603,20 +700,40 @@ function EntregaCard({ entrega, expanded, onToggle, isEditing, editValue, canEdi
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Valor Taxas (R$)</label>
                 <Input
-                  type="number"
-                  step="0.01"
-                  value={editValue.valor_taxas}
-                  onChange={(e) => onEditChange?.("valor_taxas", parseFloat(e.target.value) || 0)}
+                  type="text"
+                  inputMode="decimal"
+                  value={taxasStr}
+                  placeholder="0,00"
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/[^0-9,]/g, "");
+                    setTaxasStr(raw);
+                    onEditChange?.("valor_taxas", parseVal(raw));
+                  }}
+                  onBlur={() => {
+                    const n = parseVal(taxasStr);
+                    setTaxasStr(n === 0 ? "" : n.toFixed(2).replace(".", ","));
+                  }}
                   className="h-8 text-sm tabular-nums"
                 />
               </div>
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Valor Recebido (R$)</label>
                 <Input
-                  type="number"
-                  step="0.01"
-                  value={editValue.valor_recebido_cliente}
-                  onChange={(e) => onEditChange?.("valor_recebido_cliente", parseFloat(e.target.value) || 0)}
+                  type="text"
+                  inputMode="decimal"
+                  value={recebidoStr}
+                  placeholder="0,00"
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/[^0-9,]/g, "");
+                    setRecebidoStr(raw);
+                    onEditChange?.("valor_recebido_cliente", parseVal(raw));
+                  }}
+                  onBlur={() => {
+                    const n = parseVal(recebidoStr);
+                    setRecebidoStr(n === 0 ? "" : n.toFixed(2).replace(".", ","));
+                  }}
                   className="h-8 text-sm tabular-nums"
                 />
               </div>

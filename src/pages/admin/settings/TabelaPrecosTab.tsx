@@ -7,7 +7,7 @@ import type { TabelaPrecoInsert } from "@/services/clientes";
 import { useBairros, useRegioes, useTiposOperacao } from "@/hooks/useSettings";
 import { useClientes, useTabelaPrecos, useUpsertTabelaPreco, useDeleteTabelaPreco } from "@/hooks/useClientes";
 import { Button } from "@/components/ui/button";
-import { Plus, Pencil, Trash2, CircleDot, ArrowUp, ArrowDown } from "lucide-react";
+import { Plus, Pencil, Trash2, CircleDot, ArrowUp, ArrowDown, ChevronDown, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -55,6 +55,7 @@ export function TabelaPrecosTab({ initialClienteId }: TabelaPrecosTabProps) {
   const [taxaUrgencia, setTaxaUrgencia] = useState(0);
   const [ativo, setAtivo] = useState(true);
   const [observacao, setObservacao] = useState("");
+  const [bairrosRegiaoExpanded, setBairrosRegiaoExpanded] = useState(false);
 
   const clientePrecos = precos;
 
@@ -74,14 +75,14 @@ export function TabelaPrecosTab({ initialClienteId }: TabelaPrecosTabProps) {
   const openCreate = () => {
     setEditing(null); setBairroId(""); setRegiaoId(""); setTipoOp(tiposOperacao[0]?.id ?? "");
     setTaxaBase(0); setTaxaRetorno(0); setTaxaEspera(0); setTaxaUrgencia(0);
-    setAtivo(true); setObservacao(""); setDialogOpen(true);
+    setAtivo(true); setObservacao(""); setBairrosRegiaoExpanded(false); setDialogOpen(true);
   };
 
   const openEdit = (p: TabelaPrecoCliente) => {
     setEditing(p); setBairroId(p.bairro_destino_id ?? ""); setRegiaoId(p.regiao_id ?? "");
     setTipoOp(p.tipo_operacao); setTaxaBase(p.taxa_base); setTaxaRetorno(p.taxa_retorno);
     setTaxaEspera(p.taxa_espera); setTaxaUrgencia(p.taxa_urgencia); setAtivo(p.ativo);
-    setObservacao(p.observacao ?? ""); setDialogOpen(true);
+    setObservacao(p.observacao ?? ""); setBairrosRegiaoExpanded(false); setDialogOpen(true);
   };
 
   const upsertPreco = useUpsertTabelaPreco();
@@ -94,6 +95,7 @@ export function TabelaPrecosTab({ initialClienteId }: TabelaPrecosTabProps) {
     value && value !== "none" && value !== "all" ? value : null;
 
   const handleSave = () => {
+    if (!selectedCliente) { toast.error("Selecione um cliente antes de cadastrar a regra."); return; }
     if (taxaBase <= 0) { toast.error("Taxa base deve ser maior que zero."); return; }
 
     const normalizedBairroId = normalizeBairroValue(bairroId);
@@ -222,7 +224,7 @@ export function TabelaPrecosTab({ initialClienteId }: TabelaPrecosTabProps) {
             {coverage.label}
           </div>
           <div className="sm:ml-auto">
-            <Button onClick={openCreate} size="sm"><Plus className="h-4 w-4 mr-2" /> Nova Regra</Button>
+            <Button onClick={openCreate} size="sm" disabled={!selectedCliente}><Plus className="h-4 w-4 mr-2" /> Nova Regra</Button>
           </div>
         </div>
         <DataTable data={clientePrecos} columns={columns} emptyTitle="Nenhuma regra de preço" emptySubtitle="Cadastre regras de preço para este cliente." emptyActionLabel="Cadastrar primeira regra" onEmptyAction={openCreate} pageSize={10}
@@ -287,6 +289,36 @@ export function TabelaPrecosTab({ initialClienteId }: TabelaPrecosTabProps) {
                 </Select>
               </div>
             </div>
+            {/* Bairros da região selecionada */}
+            {regiaoId && regiaoId !== "none" && regiaoId !== "all" && (() => {
+              const bairrosDaRegiao = bairros.filter((b) => b.region_id === regiaoId);
+              if (bairrosDaRegiao.length === 0) return null;
+              return (
+                <div className="rounded-md border border-border overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setBairrosRegiaoExpanded((v) => !v)}
+                    className="w-full flex items-center gap-2 px-3 py-2 bg-muted/30 hover:bg-muted/50 transition-colors text-left"
+                  >
+                    {bairrosRegiaoExpanded
+                      ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {bairrosDaRegiao.length} bairro{bairrosDaRegiao.length !== 1 ? "s" : ""} nesta região
+                    </span>
+                  </button>
+                  {bairrosRegiaoExpanded && (
+                    <div className="px-3 py-2 flex flex-wrap gap-1.5">
+                      {bairrosDaRegiao.map((b) => (
+                        <span key={b.id} className="text-xs bg-muted rounded px-2 py-0.5 text-muted-foreground">
+                          {b.nome}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
             <div className="space-y-2">
               <Label>Tipo de Operação</Label>
               <Select value={tipoOp} onValueChange={setTipoOp}>

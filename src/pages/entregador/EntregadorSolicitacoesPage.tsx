@@ -122,8 +122,8 @@ export default function EntregadorSolicitacoesPage() {
     toast.success("Entrega concluída com sucesso! ✅");
     appendHistoricoMut.mutate({ solId: sol.id, tipo: "conclusao", descricao: "Entrega concluída pelo entregador", extra: { usuario_id: user?.id ?? null, status_anterior: sol.status, status_novo: "concluida" } });
     void sendNotificationToRole("admin", {
-      title: "Entrega conclueída",
-      message: `Corrida ${sol.codigo} foi conclueída — ${sol.cliente_nome ?? sol.codigo}.`,
+      title: "Entrega concluída",
+      message: `Corrida ${sol.codigo} foi concluída — ${sol.cliente_nome ?? sol.codigo}.`,
       type: "success",
       link: "/admin/solicitacoes",
     });

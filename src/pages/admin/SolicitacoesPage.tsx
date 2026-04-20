@@ -204,6 +204,7 @@ export default function SolicitacoesPage() {
       valor_a_receber: r.valor_a_receber ?? null,
       taxa_resolvida: r.taxa_resolvida,
       regra_preco_id: null,
+      pagamento_operacao: r.pagamento_operacao ?? "faturar",
       status: isRetroativoConcluida ? "concluida" as const : "ativa" as const,
     }));
 

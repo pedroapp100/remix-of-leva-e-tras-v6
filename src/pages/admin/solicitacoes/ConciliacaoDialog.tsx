@@ -91,13 +91,25 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
   const totalFaturarCents = allPagamentos.filter((p) => p.forma_pagamento_id === FATURAR_ID && p.pertence_a === "operacao").reduce((s, p) => s + Math.round(p.valor * 100), 0);
   const totalOperacaoCents = allPagamentos.filter((p) => p.pertence_a === "operacao").reduce((s, p) => s + Math.round(p.valor * 100), 0);
   const totalLojaCents = allPagamentos.filter((p) => p.pertence_a === "loja").reduce((s, p) => s + Math.round(p.valor * 100), 0);
-  const totalEsperadoTaxasCents = rotas.reduce((s, r) => s + Math.round((r.taxa_resolvida ?? 0) * 100), 0);
+  // Only faturar routes generate an expected taxa; pago_na_hora is collected in cash at destination
+  const totalEsperadoTaxasCents = rotas
+    .filter((r) => r.pagamento_operacao === "faturar")
+    .reduce((s, r) => s + Math.round((r.taxa_resolvida ?? 0) * 100), 0);
   const totalEsperadoReceberCents = rotas.filter((r) => r.receber_do_cliente).reduce((s, r) => s + Math.round((r.valor_a_receber ?? 0) * 100), 0);
+  // For pago_na_hora routes on faturado clients the driver also collects the operation fee
+  const totalEsperadoPagoNaHoraCents = rotas
+    .filter((r) => r.pagamento_operacao === "pago_na_hora")
+    .reduce((s, r) => s + Math.round((r.taxa_resolvida ?? 0) * 100), 0);
   
   const diffOperacaoCents = totalOperacaoCents - totalEsperadoTaxasCents;
   const diffLojaCents = totalLojaCents - totalEsperadoReceberCents;
-  // For pre-paid and invoiced clients, operation fees are not collected in cash by the driver
-  const isBalanced = (isPrePago || isFaturado ? true : diffOperacaoCents === 0) && diffLojaCents === 0;
+  // Faturado: skip faturar taxa balance (not cash), but require pago_na_hora taxa balance
+  // Pre-pago: all operation fees are always required
+  const isBalanced = (
+    isPrePago ? diffOperacaoCents === 0
+    : isFaturado ? totalEsperadoPagoNaHoraCents === 0 || (totalOperacaoCents - totalEsperadoPagoNaHoraCents) >= 0
+    : diffOperacaoCents === 0
+  ) && diffLojaCents === 0;
 
   const totalOperacao = totalOperacaoCents / 100;
   const totalLoja = totalLojaCents / 100;
@@ -232,9 +244,25 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
                   </div>
                 )}
                 {isDriverView && rota.receber_do_cliente && (
-                  <span className="text-xs text-muted-foreground">Cobrar: {fmt(rota.valor_a_receber ?? 0)}</span>
+                  <span className="text-xs text-muted-foreground">
+                    Cobrar: {fmt(
+                      (rota.valor_a_receber ?? 0) +
+                      (rota.pagamento_operacao === "pago_na_hora" ? (rota.taxa_resolvida ?? 0) : 0)
+                    )}
+                  </span>
                 )}
               </div>
+
+              {!isDriverView && rota.pagamento_operacao === "pago_na_hora" && (
+                <Alert className="border-emerald-500/30 bg-emerald-500/5">
+                  <CheckCircle className="h-4 w-4 text-emerald-500" />
+                  <AlertDescription className="text-xs">
+                    O cliente do lojista já efetuou o pagamento da taxa de operação no valor de{" "}
+                    <strong>{fmt(rota.taxa_resolvida ?? 0)}</strong>. Por isso esta taxa{" "}
+                    <strong>não será faturada</strong>.
+                  </AlertDescription>
+                </Alert>
+              )}
 
               <div className="space-y-2">
                 {(pagamentosPorRota[rota.id] || []).map((pag) => (
