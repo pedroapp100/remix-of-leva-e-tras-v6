@@ -56,7 +56,10 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
   const saldoPrePago = useMemo(() => {
     if (!isPrePago || !clienteId) return null;
     const saldo = getClienteSaldo(clienteId);
-    const totalTaxas = rotas.reduce((s, r) => s + (r.taxa_resolvida ?? 0), 0);
+    // pago_na_hora routes are collected in cash — exclude from balance deduction
+    const totalTaxas = rotas
+      .filter((r) => r.pagamento_operacao !== "pago_na_hora")
+      .reduce((s, r) => s + (r.taxa_resolvida ?? 0), 0);
     return { saldo, totalTaxas, suficiente: saldo >= totalTaxas, diferenca: totalTaxas - saldo };
   }, [isPrePago, clienteId, getClienteSaldo, rotas]);
   const [pagamentosPorRota, setPagamentosPorRota] = useState<Record<string, PagamentoLinha[]>>(() => {
@@ -233,25 +236,53 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
             </Alert>
           )}
 
-          {rotas.map((rota, i) => (
+          {rotas.map((rota, i) => {
+            const totalAReceber =
+              (rota.pagamento_operacao === "pago_na_hora" ? (rota.taxa_resolvida ?? 0) : 0)
+              + (rota.receber_do_cliente ? (rota.valor_a_receber ?? 0) : 0);
+            const meiosNomes = (rota.meios_pagamento_operacao ?? [])
+              .map((id) => formasAtivas.find((f) => f.id === id)?.name)
+              .filter(Boolean) as string[];
+            const mostrarReferencia = isDriverView &&
+              (rota.pagamento_operacao === "pago_na_hora" || rota.receber_do_cliente);
+            const isRotaFaturada = isDriverView && rota.pagamento_operacao === "faturar";
+            const podeRegistrarPagamento = !isRotaFaturada || !!rota.receber_do_cliente;
+            return (
             <div key={rota.id} className="space-y-3">
               <div className="flex items-center justify-between">
                 <h4 className="text-sm font-semibold">Rota {i + 1} — {getBairroName(rota.bairro_destino_id)}</h4>
+                {isRotaFaturada && (
+                  <Badge variant="default" className="text-xs">Faturado</Badge>
+                )}
                 {!isDriverView && (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <span>Taxa: {fmt(rota.taxa_resolvida ?? 0)}</span>
                     {rota.receber_do_cliente && <span>| Receber: {fmt(rota.valor_a_receber ?? 0)}</span>}
                   </div>
                 )}
-                {isDriverView && rota.receber_do_cliente && (
-                  <span className="text-xs text-muted-foreground">
-                    Cobrar: {fmt(
-                      (rota.valor_a_receber ?? 0) +
-                      (rota.pagamento_operacao === "pago_na_hora" ? (rota.taxa_resolvida ?? 0) : 0)
-                    )}
-                  </span>
-                )}
               </div>
+
+              {mostrarReferencia && (
+                <div className="rounded-md border border-primary/20 bg-primary/5 p-3 space-y-1.5">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <span className="text-sm font-semibold tabular-nums text-primary">
+                      Receber {fmt(totalAReceber)}
+                    </span>
+                    {meiosNomes.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {meiosNomes.map((nome, idx) => (
+                          <Badge key={idx} variant="secondary" className="text-[11px] px-2 py-0.5">
+                            {nome}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {meiosNomes.length === 0 && (
+                    <p className="text-[11px] text-muted-foreground">Meio de pagamento não especificado.</p>
+                  )}
+                </div>
+              )}
 
               {!isDriverView && rota.pagamento_operacao === "pago_na_hora" && (
                 <Alert className="border-emerald-500/30 bg-emerald-500/5">
@@ -264,6 +295,14 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
                 </Alert>
               )}
 
+              {isRotaFaturada && !rota.receber_do_cliente && (
+                <p className="text-xs text-muted-foreground italic">
+                  Esta entrega será incluída no faturamento — nenhum valor a receber aqui.
+                </p>
+              )}
+
+              {podeRegistrarPagamento && (
+              <>
               <div className="space-y-2">
                 {(pagamentosPorRota[rota.id] || []).map((pag) => (
                   isDriverView ? (
@@ -322,10 +361,13 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
               <Button variant="outline" size="sm" onClick={() => addPagamento(rota.id)}>
                 <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar pagamento
               </Button>
+              </>
+              )}
 
               {i < rotas.length - 1 && <Separator />}
             </div>
-          ))}
+            );
+          })}
 
           {/* Resumo */}
           {isDriverView ? (

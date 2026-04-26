@@ -7,12 +7,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { BarChart3, Users, TrendingDown, TrendingUp, DollarSign, CalendarDays, X } from "lucide-react";
+import { BarChart3, Users, TrendingDown, TrendingUp, DollarSign, CalendarDays, CalendarClock, X } from "lucide-react";
 import { ResumoFinanceiroTab } from "./relatorios/ResumoFinanceiroTab";
 import { ClientesReportTab } from "./relatorios/ClientesReportTab";
 import { ReceitasReportTab } from "./relatorios/ReceitasReportTab";
 import { DespesasPrevistasTab } from "./relatorios/DespesasPrevistasTab";
 import { ComissoesTab } from "./relatorios/ComissoesTab";
+import { CiclosMetaTab } from "./relatorios/CiclosMetaTab";
 import { useDespesas, useReceitas } from "@/hooks/useFinanceiro";
 import { useAllComissoes } from "@/hooks/useComissao";
 import { formatCurrency, formatDateBR } from "@/lib/formatters";
@@ -193,6 +194,9 @@ export default function RelatoriosPage() {
               <TabsTrigger value="comissoes" className="gap-1.5">
                 <DollarSign className="h-4 w-4" /> Comissões
               </TabsTrigger>
+              <TabsTrigger value="ciclos_meta" className="gap-1.5">
+                <CalendarClock className="h-4 w-4" /> Ciclos de Meta
+              </TabsTrigger>
             </TabsList>
             <TabsContent value="resumo" className="mt-4">
               <ResumoFinanceiroTab dateRange={dateRange} />
@@ -208,6 +212,9 @@ export default function RelatoriosPage() {
             </TabsContent>
             <TabsContent value="comissoes" className="mt-4">
               <ComissoesTab />
+            </TabsContent>
+            <TabsContent value="ciclos_meta" className="mt-4">
+              <CiclosMetaTab />
             </TabsContent>
           </Tabs>
         </CardContent>

@@ -136,6 +136,10 @@ export function useConcluirComCaixa() {
       if (!cliente || cliente.modalidade !== "faturado") return { success: true };
 
       const totalRecebido = solRotas.filter((r) => r.receber_do_cliente).reduce((s, r) => s + (r.valor_a_receber ?? 0), 0);
+
+      // Guard: skip fatura creation when nothing to invoice (all routes are pago_na_hora)
+      if (totalTaxas === 0 && totalRecebido === 0) return { success: true };
+
       const activeFatura = faturas.find(
         (f) => f.cliente_id === sol.cliente_id && f.status_geral === "Aberta"
       );
@@ -150,7 +154,7 @@ export function useConcluirComCaixa() {
           p_total_taxas: totalTaxas,
           p_total_recebido: totalRecebido,
           p_sol_codigo: sol.codigo,
-          p_num_rotas: solRotas.length,
+          p_num_rotas: solRotas.filter((r) => r.pagamento_operacao === "faturar").length,
         });
 
         if (!result.success) {

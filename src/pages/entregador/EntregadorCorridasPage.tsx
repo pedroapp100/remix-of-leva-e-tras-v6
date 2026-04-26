@@ -182,6 +182,9 @@ export default function EntregadorCorridasPage() {
                     {/* Ponto de coleta */}
                     <div className="flex items-center gap-2 text-sm text-muted-foreground mb-3">
                       <Navigation className="h-3.5 w-3.5 shrink-0 text-primary" />
+                      <span className="text-xs shrink-0">
+                        {sol.tipo_coleta === "cliente_loja" ? "Coletar no cliente:" : "Coletar em:"}
+                      </span>
                       <span className="truncate">{sol.ponto_coleta}</span>
                     </div>
 
@@ -194,7 +197,12 @@ export default function EntregadorCorridasPage() {
                             <span className="truncate font-medium">{getBairroNome(rota.bairro_destino_id)}</span>
                             <span className="text-muted-foreground">•</span>
                             <span className="text-muted-foreground truncate">{rota.responsavel}</span>
-                            {rota.receber_do_cliente && rota.valor_a_receber && (
+                            {rota.pagamento_operacao === "pago_na_hora" && (
+                              <Badge variant="outline" className="ml-auto shrink-0 text-[10px] border-amber-500 text-amber-600 px-1.5">
+                                Cobrar: {fmt((rota.taxa_resolvida ?? 0) + (rota.receber_do_cliente ? (rota.valor_a_receber ?? 0) : 0))}
+                              </Badge>
+                            )}
+                            {rota.pagamento_operacao !== "pago_na_hora" && rota.receber_do_cliente && rota.valor_a_receber && (
                               <Badge variant="outline" className="ml-auto text-xs shrink-0">
                                 Cobrar: {fmt(rota.valor_a_receber)}
                               </Badge>

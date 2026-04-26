@@ -25,7 +25,9 @@ export type DiaSemana =
   | "domingo" | "segunda" | "terca" | "quarta"
   | "quinta" | "sexta" | "sabado";
 
-export type TipoComissao = "percentual" | "fixo";
+export type TipoComissao = "percentual" | "fixo" | "meta";
+
+export type MetaModoCalculo = "escalonado" | "faixa_maxima";
 
 export type TipoVeiculo = "moto" | "carro" | "bicicleta" | "a_pe";
 
@@ -140,8 +142,31 @@ export interface Entregador {
   avatar?: string | null;
   tipo_comissao: TipoComissao;
   valor_comissao: number;
+  meta_modo_calculo?: MetaModoCalculo | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ComissaoFaixa {
+  id: string;
+  entregador_id: string;
+  de: number;
+  ate: number;
+  valor_por_entrega: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CicloComissaoMeta {
+  id: string;
+  entregador_id: string;
+  mes_referencia: string; // "YYYY-MM"
+  total_entregas: number;
+  comissao_calculada: number;
+  meta_modo_calculo: MetaModoCalculo;
+  fechado_em: string;
+  criado_por: "automatico" | "manual";
+  created_at: string;
 }
 
 export interface Regiao {
@@ -204,6 +229,7 @@ export interface Solicitacao {
   cliente_nome?: string | null;
   status: StatusSolicitacao;
   tipo_operacao: TipoOperacao;
+  tipo_coleta: "loja_cliente" | "cliente_loja" | "ponto_ponto";
   ponto_coleta: string;
   data_solicitacao: string;
   data_inicio?: string | null;
@@ -230,6 +256,7 @@ export interface Rota {
   taxa_resolvida?: number | null;
   regra_preco_id?: string | null;
   pagamento_operacao: "faturar" | "pago_na_hora" | "descontar_saldo";
+  meios_pagamento_operacao: string[];
   status: "ativa" | "concluida" | "cancelada";
 }
 
@@ -355,6 +382,7 @@ export interface RotaEntregaFatura {
   taxa: number;
   valor_receber: number | null;
   status: "concluida" | "cancelada";
+  pagamento_operacao: "faturar" | "pago_na_hora" | "descontar_saldo";
 }
 
 export interface EntregaFatura {

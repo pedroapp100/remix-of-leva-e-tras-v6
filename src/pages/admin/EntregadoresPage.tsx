@@ -15,6 +15,7 @@ import { Plus, Users, UserCheck, Package, Clock, Pencil, Trash2, X, Eye } from "
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useSolicitacoes } from "@/hooks/useSolicitacoes";
+import { useSaveComissaoFaixas } from "@/hooks/useComissaoFaixas";
 import { EntregadorFormDialog } from "./entregadores/EntregadorFormDialog";
 import { EntregadorProfileModal } from "./entregadores/EntregadorProfileModal";
 
@@ -24,6 +25,7 @@ export default function EntregadoresPage() {
   const createEntregador = useCreateEntregador();
   const updateEntregadorMutation = useUpdateEntregador();
   const deleteEntregadorMutation = useDeleteEntregador();
+  const { mutateAsync: salvarFaixas } = useSaveComissaoFaixas();
   const [search, setSearch] = useState(searchParams.get("q") ?? "");
   const [statusFilter, setStatusFilter] = useState<string>(searchParams.get("status") ?? "todos");
   const [veiculoFilter, setVeiculoFilter] = useState<string>(searchParams.get("veiculo") ?? "todos");
@@ -90,7 +92,7 @@ export default function EntregadoresPage() {
   const openCreate = () => { setEditing(null); setFormOpen(true); };
   const openEdit = (e: Entregador) => { setEditing(e); setFormOpen(true); };
 
-  const handleSave = async (data: Entregador, senha?: string) => {
+  const handleSave = async (data: Entregador, senha?: string, faixas?: { id: string; de: number; ate: number; valor_por_entrega: number }[]) => {
     if (editing) {
       await updateEntregadorMutation.mutateAsync({ id: editing.id, patch: data });
       toast.success("Entregador atualizado com sucesso!");
@@ -98,6 +100,15 @@ export default function EntregadoresPage() {
       const { id: _id, created_at: _ca, updated_at: _ua, ...insertData } = data;
       const payload = insertData as unknown as EntregadorInsert;
       const created = await createEntregador.mutateAsync({ ...payload, profile_id: null });
+
+      // Salvar faixas do tipo meta para novo entregador
+      if (data.tipo_comissao === "meta" && faixas?.length && created?.id) {
+        try {
+          await salvarFaixas({ entregadorId: created.id, faixas });
+        } catch {
+          toast.warning("Entregador cadastrado, mas erro ao salvar faixas. Edite o entregador para configurá-las.");
+        }
+      }
 
       // Auto-criar conta de acesso via Admin API (Edge Function)
       if (senha) {
@@ -168,7 +179,11 @@ export default function EntregadoresPage() {
         <span className="tabular-nums font-medium">
           {r.tipo_comissao === "percentual"
             ? `${r.valor_comissao}%`
-            : r.valor_comissao.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+            : r.tipo_comissao === "fixo"
+            ? r.valor_comissao.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+            : r.meta_modo_calculo === "escalonado"
+            ? "Meta (Escalonado)"
+            : "Meta (Faixa Máx.)"}
         </span>
       ),
     },
@@ -283,7 +298,13 @@ export default function EntregadoresPage() {
                   <div className="flex items-center gap-2">
                     <Badge variant="outline">{TIPO_VEICULO_LABELS[r.veiculo]}</Badge>
                     <span className="tabular-nums font-medium">
-                      {r.tipo_comissao === "percentual" ? `${r.valor_comissao}%` : r.valor_comissao.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                      {r.tipo_comissao === "percentual"
+                        ? `${r.valor_comissao}%`
+                        : r.tipo_comissao === "fixo"
+                        ? r.valor_comissao.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+                        : r.meta_modo_calculo === "escalonado"
+                        ? "Meta (Esc.)"
+                        : "Meta (Fx.)"}
                     </span>
                   </div>
                 </div>

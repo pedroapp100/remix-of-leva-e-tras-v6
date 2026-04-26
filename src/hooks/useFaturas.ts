@@ -33,6 +33,7 @@ import {
 } from "@/services/faturas";
 import {
   fetchSolicitacoesByIds,
+  fetchSolicitacoesByCodigos,
   fetchRotasBySolicitacaoIds,
   type SolicitacaoRow,
   type RotaRow,
@@ -172,25 +173,45 @@ export function useConcluirFaturaEntrega() {
 }
 
 /**
- * Derives EntregaFatura[] from lancamentos_financeiros → solicitacoes → rotas.
- * Only fetches when there are lancamentos with solicitacao_id.
+ * Derives EntregaFatura[] from lancamentos_financeiros + historico_faturas → solicitacoes → rotas.
+ * Covers both faturado (lançamentos) and pago_na_hora (sem lançamento, só histórico) deliveries.
  */
 export function useEntregasByFatura(faturaId: string) {
   return useQuery<EntregaFatura[]>({
     queryKey: ["entregas_fatura", faturaId],
     queryFn: async () => {
-      // 1. Get lancamentos for this fatura
-      const lancamentos = await fetchLancamentosByFatura(faturaId);
-      const solIds = [
-        ...new Set(
-          lancamentos
-            .map((l) => l.solicitacao_id)
-            .filter((id): id is string => id != null)
-        ),
-      ];
+      // 1. Fetch lancamentos + historico in parallel
+      const [lancamentos, historico] = await Promise.all([
+        fetchLancamentosByFatura(faturaId),
+        fetchHistoricoFatura(faturaId),
+      ]);
+
+      // 2. Collect sol IDs from lancamentos (faturado/descontar_saldo deliveries)
+      const solIdSet = new Set(
+        lancamentos
+          .map((l) => l.solicitacao_id)
+          .filter((id): id is string => id != null)
+      );
+
+      // 3. Extract sol codigos from historico (covers pago_na_hora — no lancamento generated)
+      const codigosFromHistorico = historico
+        .filter((h) => h.tipo === "entrega_adicionada" && h.descricao)
+        .map((h) => {
+          const match = h.descricao!.match(/Solicitação (LT-\S+) concluída/);
+          return match?.[1] ?? null;
+        })
+        .filter((c): c is string => c !== null);
+
+      // 4. Fetch extra solicitacoes by codigo (only if any found)
+      if (codigosFromHistorico.length > 0) {
+        const extraSols = await fetchSolicitacoesByCodigos(codigosFromHistorico);
+        for (const s of extraSols) solIdSet.add(s.id);
+      }
+
+      const solIds = [...solIdSet];
       if (solIds.length === 0) return [];
 
-      // 2. Fetch solicitacoes, rotas, entregadores, bairros in parallel
+      // 5. Fetch solicitacoes, rotas, entregadores, bairros in parallel
       const [sols, rotas, entregadores, bairros] = await Promise.all([
         fetchSolicitacoesByIds(solIds),
         fetchRotasBySolicitacaoIds(solIds),
@@ -207,10 +228,12 @@ export function useEntregasByFatura(faturaId: string) {
         rotasBySol.set(r.solicitacao_id, arr);
       }
 
-      // 3. Map to EntregaFatura[]
+      // 6. Map to EntregaFatura[]
       return sols.map((sol): EntregaFatura => {
         const solRotas = rotasBySol.get(sol.id) ?? [];
-        const totalTaxas = solRotas.reduce((s, r) => s + (r.taxa_resolvida ?? 0), 0);
+        const totalTaxasFaturadas = solRotas
+          .filter((r) => r.pagamento_operacao !== "pago_na_hora")
+          .reduce((s, r) => s + (r.taxa_resolvida ?? 0), 0);
         const totalRecebido = solRotas
           .filter((r) => r.receber_do_cliente)
           .reduce((s, r) => s + (r.valor_a_receber ?? 0), 0);
@@ -222,6 +245,7 @@ export function useEntregasByFatura(faturaId: string) {
           taxa: r.taxa_resolvida ?? 0,
           valor_receber: r.receber_do_cliente ? (r.valor_a_receber ?? null) : null,
           status: r.status === "cancelada" ? "cancelada" : "concluida",
+          pagamento_operacao: r.pagamento_operacao,
         }));
 
         return {
@@ -232,7 +256,7 @@ export function useEntregasByFatura(faturaId: string) {
             : "—",
           data_conclusao: sol.data_conclusao ?? sol.updated_at,
           total_rotas: solRotas.length,
-          valor_taxas: totalTaxas,
+          valor_taxas: totalTaxasFaturadas,
           valor_recebido_cliente: totalRecebido,
           status: sol.status === "cancelada" ? "cancelada" : "concluida",
           ponto_coleta: sol.ponto_coleta,

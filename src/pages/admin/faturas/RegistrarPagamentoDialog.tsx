@@ -25,7 +25,7 @@ export function RegistrarPagamentoDialog({ fatura, open, onOpenChange, onConfirm
   const saldo = fatura.saldo_liquido ?? 0;
   const valorSugerido = Math.abs(saldo);
   const [valor, setValor] = useState(valorSugerido > 0 ? valorSugerido : 0);
-  const [formaPagamento, setFormaPagamento] = useState(formasAtivas[0]?.id ?? "");
+  const [formaPagamento, setFormaPagamento] = useState(formasAtivas[0]?.name ?? "");
   const [observacao, setObservacao] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [comprovantes, setComprovantes] = useState<File[]>([]);
@@ -51,7 +51,7 @@ export function RegistrarPagamentoDialog({ fatura, open, onOpenChange, onConfirm
     try {
       await onConfirm(valor, formaPagamento, observacao);
       setValor(0);
-      setFormaPagamento(formasAtivas[0]?.id ?? "");
+      setFormaPagamento(formasAtivas[0]?.name ?? "");
       setObservacao("");
       setComprovantes([]);
     } finally {
@@ -85,7 +85,7 @@ export function RegistrarPagamentoDialog({ fatura, open, onOpenChange, onConfirm
               <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
               <SelectContent>
                 {formasAtivas.map((f) => (
-                  <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
+                  <SelectItem key={f.id} value={f.name}>{f.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

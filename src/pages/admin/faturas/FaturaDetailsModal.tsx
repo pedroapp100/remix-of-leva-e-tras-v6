@@ -21,7 +21,7 @@ import {
   FileText, Calendar, Receipt, ArrowDownUp, Pencil, History,
   Banknote, ArrowUpRight, ArrowDownRight, Download, Package,
   ChevronDown, ChevronRight, User, MapPin, Truck, Phone, DollarSign,
-  Lock, Trash2, Save, X,
+  Lock, Trash2, Save, X, CheckCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { generateFaturaPDF } from "@/lib/generateFaturaPDF";
@@ -45,9 +45,11 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onFaturaUpdate?: (updated: Fatura) => void;
+  /** Quando true, oculta todos os botões de ação — modo somente leitura para o portal do cliente */
+  viewOnly?: boolean;
 }
 
-export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate }: Props) {
+export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate, viewOnly = false }: Props) {
   const { user } = useAuth();
   const faturaId = fatura?.id ?? "";
 
@@ -217,11 +219,11 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate 
       await createHistorico.mutateAsync({
         fatura_id: fatura.id,
         tipo: "pagamento",
-        descricao: `Pagamento de ${formatCurrency(valor)} registrado${observacao ? ` — ${observacao}` : ""}`,
+        descricao: `Pagamento de ${formatCurrency(valor)} via ${formaPagamento} registrado${observacao ? ` — ${observacao}` : ""}`,
         usuario_id: user?.id ?? null,
         valor_anterior: saldo,
         valor_novo: novoSaldo,
-        metadata: null,
+        metadata: { forma_pagamento: formaPagamento, observacao: observacao || null },
       });
       setPagamentoOpen(false);
       toast.success(`Pagamento de ${formatCurrency(valor)} registrado com sucesso`);
@@ -339,6 +341,11 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate 
                 <div>
                   <p className="text-muted-foreground">Cliente</p>
                   <p className="font-medium">{fatura.cliente_nome}</p>
+                  {fatura.status_geral === "Finalizada" && (
+                    <Badge className="mt-1 bg-emerald-500/15 text-emerald-600 border border-emerald-500/30 text-xs gap-1 h-5">
+                      <CheckCircle className="h-3 w-3" /> Fatura Paga
+                    </Badge>
+                  )}
                 </div>
                 <div>
                   <p className="text-muted-foreground">Tipo</p>
@@ -411,7 +418,7 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate 
                               onToggle={() => setExpandedEntrega(expandedEntrega === e.solicitacao_id ? null : e.solicitacao_id)}
                               isEditing={editingEntrega === e.solicitacao_id}
                               editValue={editValues[e.solicitacao_id]}
-                              canEdit={fatura.status_geral !== "Finalizada"}
+                              canEdit={fatura.status_geral !== "Finalizada" && !viewOnly}
                               onStartEdit={() => {
                                 setEditingEntrega(e.solicitacao_id);
                                 setEditValues(prev => ({
@@ -518,11 +525,79 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate 
                 </CardContent>
               </Card>
 
+              {/* ── 5b. Comprovante de Pagamento (apenas faturas finalizadas) ── */}
+              {fatura.status_geral === "Finalizada" && (() => {
+                const pagamentos = historico.filter((h) => h.tipo === "pagamento");
+                const meta = (h: typeof historico[number]) => {
+                  const m = h.metadata as Record<string, string | null> | null;
+                  return m ?? {};
+                };
+                return (
+                  <Card className="border-emerald-500/30 bg-emerald-500/5">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base flex items-center gap-2 text-emerald-600">
+                        <CheckCircle className="h-4 w-4" /> Comprovante de Pagamento
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {pagamentos.length === 0 ? (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <CheckCircle className="h-4 w-4 text-emerald-500 shrink-0" />
+                          <span>Fatura quitada por ajuste manual — saldo zerado.</span>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {pagamentos.map((h) => {
+                            const m = meta(h);
+                            const formaPagamento = m.forma_pagamento ?? null;
+                            const obs = m.observacao ?? null;
+                            return (
+                              <div key={h.id} className="rounded-lg border border-emerald-500/20 bg-background p-4 space-y-2">
+                                <div className="flex items-center justify-between flex-wrap gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <Banknote className="h-4 w-4 text-emerald-500 shrink-0" />
+                                    <span className="font-semibold tabular-nums text-emerald-600">
+                                      {h.valor_anterior !== null && h.valor_novo !== null
+                                        ? formatCurrency(Math.abs(h.valor_anterior - h.valor_novo))
+                                        : "—"}
+                                    </span>
+                                  </div>
+                                  <Badge className="bg-emerald-500/15 text-emerald-600 border border-emerald-500/30 text-xs gap-1">
+                                    <CheckCircle className="h-3 w-3" /> Quitado
+                                  </Badge>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                                  {formaPagamento && (
+                                    <div>
+                                      <p className="text-xs text-muted-foreground">Forma de pagamento</p>
+                                      <p className="font-medium">{formaPagamento}</p>
+                                    </div>
+                                  )}
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">Data do pagamento</p>
+                                    <p className="font-medium">{formatDateTimeBR(h.created_at)}</p>
+                                  </div>
+                                  {obs && (
+                                    <div className="sm:col-span-2">
+                                      <p className="text-xs text-muted-foreground">Observação</p>
+                                      <p className="font-medium">{obs}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })()}
+
               {/* ── 6. Histórico ── */}
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-center gap-2"><History className="h-4 w-4" /> Histórico</CardTitle>
-                </CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2"><History className="h-4 w-4" /> Histórico</CardTitle>                </CardHeader>
                 <CardContent>
                   {historico.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Nenhum evento registrado.</p>
@@ -543,7 +618,7 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate 
               </Card>
 
               {/* ── 7. Ações ── */}
-              {fatura.status_geral !== "Finalizada" && (
+              {!viewOnly && fatura.status_geral !== "Finalizada" && (
                 <>
                   <Separator />
                   <div className="flex flex-wrap gap-2">
@@ -804,14 +879,27 @@ function RotaCard({ rota, index }: { rota: RotaEntregaFatura; index: number }) {
           <MapPin className="h-3 w-3 text-primary" />
           Rota {index + 1} — {rota.bairro_destino}
         </span>
-        <Badge variant={rota.status === "concluida" ? "default" : "destructive"} className="text-[10px] h-5">
-          {rota.status === "concluida" ? "Concluída" : "Cancelada"}
-        </Badge>
+        <div className="flex items-center gap-1.5">
+          {rota.pagamento_operacao === "pago_na_hora" && (
+            <Badge variant="outline" className="text-[10px] h-5 border-amber-500/50 text-amber-600 bg-amber-500/5">
+              Taxas pagas no ato
+            </Badge>
+          )}
+          <Badge variant={rota.status === "concluida" ? "default" : "destructive"} className="text-[10px] h-5">
+            {rota.status === "concluida" ? "Concluída" : "Cancelada"}
+          </Badge>
+        </div>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-muted-foreground">
         <span className="flex items-center gap-1 text-xs"><User className="h-3 w-3" />{rota.responsavel}</span>
         <span className="flex items-center gap-1 text-xs"><Phone className="h-3 w-3" />{rota.telefone}</span>
-        <span className="flex items-center gap-1 text-xs"><DollarSign className="h-3 w-3" />Taxa: {formatCurrency(rota.taxa)}</span>
+        <span className="flex items-center gap-1 text-xs">
+          <DollarSign className="h-3 w-3" />
+          Taxa: {formatCurrency(rota.taxa)}
+          {rota.pagamento_operacao === "pago_na_hora" && (
+            <span className="text-amber-600 ml-0.5">(no ato)</span>
+          )}
+        </span>
         {rota.valor_receber != null && (
           <span className="flex items-center gap-1 text-xs text-emerald-500"><DollarSign className="h-3 w-3" />Receber: {formatCurrency(rota.valor_receber)}</span>
         )}

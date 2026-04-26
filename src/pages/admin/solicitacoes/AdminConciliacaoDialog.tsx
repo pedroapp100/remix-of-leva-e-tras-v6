@@ -17,7 +17,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CurrencyInput } from "@/components/shared/CurrencyInput";
 import {
   Plus, Trash2, AlertTriangle, CheckCircle, Info,
-  Store, Building2, User, MapPin, Truck, ArrowRight,
+  Store, Building2, User, MapPin, Truck, ArrowRight, ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -84,6 +84,9 @@ export function AdminConciliacaoDialog({
     });
     return map;
   }, [driverPagamentos, rotas]);
+
+  // Controle de expansão do painel de configuração original por rota
+  const [expandedRotas, setExpandedRotas] = useState<Set<string>>(new Set());
 
   // Admin pagamentos state — synced from driver data when queries resolve
   const [pagamentosPorRota, setPagamentosPorRota] = useState<Record<string, PagamentoLinha[]>>({});
@@ -156,17 +159,27 @@ export function AdminConciliacaoDialog({
   const totalFaturarCents = allPagamentos
     .filter((p) => p.forma_pagamento_id === FATURAR_ID && p.pertence_a === "operacao")
     .reduce((s, p) => s + Math.round(p.valor * 100), 0);
-  const totalEsperadoTaxasCents = rotas.reduce(
-    (s, r) => s + Math.round((r.taxa_resolvida ?? 0) * 100),
-    0
-  );
+  // Only faturar routes generate an expected taxa; pago_na_hora is collected in cash at destination
+  const totalEsperadoTaxasCents = rotas
+    .filter((r) => r.pagamento_operacao === "faturar")
+    .reduce((s, r) => s + Math.round((r.taxa_resolvida ?? 0) * 100), 0);
+  // For pago_na_hora routes on faturado clients the driver also collects the operation fee
+  const totalEsperadoPagoNaHoraCents = rotas
+    .filter((r) => r.pagamento_operacao === "pago_na_hora")
+    .reduce((s, r) => s + Math.round((r.taxa_resolvida ?? 0) * 100), 0);
   const totalEsperadoReceberCents = rotas
     .filter((r) => r.receber_do_cliente)
     .reduce((s, r) => s + Math.round((r.valor_a_receber ?? 0) * 100), 0);
 
   const diffOperacaoCents = totalOperacaoCents - totalEsperadoTaxasCents;
   const diffLojaCents = totalLojaCents - totalEsperadoReceberCents;
-  const isBalanced = diffOperacaoCents === 0 && diffLojaCents === 0;
+  // Faturado: skip faturar taxa balance (not cash), but require pago_na_hora taxa balance
+  // Pre-pago: all operation fees are always required
+  const isBalanced = (
+    isPrePago ? diffOperacaoCents === 0
+    : isFaturado ? totalEsperadoPagoNaHoraCents === 0 || (totalOperacaoCents - totalEsperadoPagoNaHoraCents) >= 0
+    : diffOperacaoCents === 0
+  ) && diffLojaCents === 0;
 
   const totalOperacao = totalOperacaoCents / 100;
   const totalLoja = totalLojaCents / 100;
@@ -243,7 +256,7 @@ export function AdminConciliacaoDialog({
           p_total_taxas: totalTaxas,
           p_total_recebido: totalRecebido,
           p_sol_codigo: solicitacao.codigo,
-          p_num_rotas: rotas.length,
+          p_num_rotas: rotas.filter((r) => r.pagamento_operacao === "faturar").length,
         });
         if (!result.success) {
           toast.error(result.error ?? "Erro ao gerar/atualizar fatura.");
@@ -370,6 +383,7 @@ export function AdminConciliacaoDialog({
           {rotas.map((rota, i) => {
             const driverRotaPags = driverByRota[rota.id] || [];
             const driverRotaTotal = driverRotaPags.reduce((s, p) => s + p.valor, 0);
+            const isExpanded = expandedRotas.has(rota.id);
 
             return (
               <div key={rota.id} className="space-y-3">
@@ -394,6 +408,81 @@ export function AdminConciliacaoDialog({
                     )}
                   </div>
                 </div>
+
+                {/* ── Configuração original da rota (colapsável) ── */}
+                <button
+                  type="button"
+                  onClick={() =>
+                    setExpandedRotas((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(rota.id)) next.delete(rota.id);
+                      else next.add(rota.id);
+                      return next;
+                    })
+                  }
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors w-full text-left"
+                >
+                  <ChevronDown
+                    className={`h-3.5 w-3.5 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}
+                  />
+                  {isExpanded ? "Ocultar dados de faturamento" : "Dados de faturamento da solicitação"}
+                </button>
+
+                {isExpanded && (
+                  <div className="rounded-md border border-border/50 bg-muted/10 p-2.5 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                    <div className="space-y-1.5">
+                      <span className="flex items-center gap-1 font-semibold text-primary uppercase tracking-wide text-[10px]">
+                        <Building2 className="h-3 w-3" />
+                        Receita da Operação
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-muted-foreground">Taxa:</span>
+                        <span className="tabular-nums font-medium">{fmt(rota.taxa_resolvida ?? 0)}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-muted-foreground">Cobrança:</span>
+                        <Badge
+                          variant={rota.pagamento_operacao === "faturar" ? "default" : "secondary"}
+                          className="text-[10px] px-1.5 py-0"
+                        >
+                          {rota.pagamento_operacao === "faturar"
+                            ? "Faturar"
+                            : rota.pagamento_operacao === "pago_na_hora"
+                            ? "Pago na hora"
+                            : "Descontar saldo"}
+                        </Badge>
+                      </div>
+                      {rota.pagamento_operacao === "pago_na_hora" && rota.meios_pagamento_operacao.length > 0 && (
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <span className="text-muted-foreground">Meios aceitos:</span>
+                          {rota.meios_pagamento_operacao.map((id) => {
+                            const forma = formasPagamento.find((f) => f.id === id);
+                            return (
+                              <Badge key={id} variant="outline" className="text-[10px] px-1.5 py-0">
+                                {forma?.name ?? id}
+                              </Badge>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <span className="flex items-center gap-1 font-semibold text-amber-600 uppercase tracking-wide text-[10px]">
+                        <Store className="h-3 w-3" />
+                        Cobrança para a Loja
+                      </span>
+                      {rota.receber_do_cliente ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-muted-foreground">Cobrar no destino:</span>
+                          <span className="tabular-nums font-medium">{fmt(rota.valor_a_receber ?? 0)}</span>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground italic">Não cobrar do destinatário</span>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* What driver reported */}
                 {driverRotaPags.length > 0 && (

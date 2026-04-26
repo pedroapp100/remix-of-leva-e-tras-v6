@@ -136,7 +136,7 @@ describe("useConcluirComCaixa", () => {
     vi.mocked(useSolicitacoes).mockReturnValue({ data: [makeSol()] } as never);
     vi.mocked(useClientes).mockReturnValue({ data: [makeCliente({ modalidade: "pre_pago" })] } as never);
     vi.mocked(useClienteSaldoMap).mockReturnValue({ getClienteSaldo: () => 5 } as never);
-    vi.mocked(fetchRotasBySolicitacao).mockResolvedValueOnce([makeRota({ taxa_resolvida: 20 })] as never);
+    vi.mocked(fetchRotasBySolicitacao).mockResolvedValueOnce([makeRota({ taxa_resolvida: 20, pagamento_operacao: "faturar" })] as never);
 
     const { result } = renderHook(() => useConcluirComCaixa(), { wrapper });
     let res: { success: boolean; error?: string };
@@ -153,7 +153,7 @@ describe("useConcluirComCaixa", () => {
     vi.mocked(useClientes).mockReturnValue({ data: [makeCliente()] } as never);
     vi.mocked(useEntregadores).mockReturnValue({ data: [{ id: "ent-1", nome: "João" }] } as never);
     vi.mocked(useFaturas).mockReturnValue({ data: [] } as never);
-    vi.mocked(fetchRotasBySolicitacao).mockResolvedValueOnce([makeRota()] as never);
+    vi.mocked(fetchRotasBySolicitacao).mockResolvedValueOnce([makeRota({ pagamento_operacao: "faturar" })] as never);
     mockConcluirFaturaMutateAsync.mockResolvedValueOnce({ success: true });
 
     const { result } = renderHook(() => useConcluirComCaixa(), { wrapper });
@@ -187,7 +187,7 @@ describe("useConcluirComCaixa", () => {
   it("returns success with error message when fatura RPC fails", async () => {
     vi.mocked(useSolicitacoes).mockReturnValue({ data: [makeSol()] } as never);
     vi.mocked(useClientes).mockReturnValue({ data: [makeCliente()] } as never);
-    vi.mocked(fetchRotasBySolicitacao).mockResolvedValueOnce([makeRota()] as never);
+    vi.mocked(fetchRotasBySolicitacao).mockResolvedValueOnce([makeRota({ pagamento_operacao: "faturar" })] as never);
     mockConcluirFaturaMutateAsync.mockRejectedValueOnce(new Error("rpc error"));
 
     const { result } = renderHook(() => useConcluirComCaixa(), { wrapper });

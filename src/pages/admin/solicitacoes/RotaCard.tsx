@@ -1,14 +1,18 @@
+import { useState } from "react";
 import { useBairros, useTaxasExtras, useFormasPagamento } from "@/hooks/useSettings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { CurrencyInput } from "@/components/shared/CurrencyInput";
 import { PhoneInput } from "@/components/shared/PhoneInput";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Trash2, AlertTriangle, Briefcase, Store, Receipt, Wallet, CreditCard, Banknote, Smartphone, Building2, ArrowLeftRight } from "lucide-react";
+import { Trash2, AlertTriangle, Briefcase, Store, Receipt, Wallet, CreditCard, Banknote, Smartphone, Building2, ArrowLeftRight, Check, ChevronsUpDown, ChevronDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 import type { Modalidade } from "@/types/database";
 
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -74,25 +78,86 @@ export function RotaCard({
   const { data: formasPagamento = [] } = useFormasPagamento();
   const taxasExtrasDisponiveis = taxasExtrasData.filter((t) => t.ativo);
   const formasPagamentoAtivas = formasPagamento.filter((f) => f.enabled);
+  const [bairroOpen, setBairroOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  const bairroSelecionado = bairros.find((b) => b.id === rota.bairro_destino_id);
   return (
     <div className="rounded-lg border border-border p-4 space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium">Rota {index + 1}</span>
-        {canRemove && (
-          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => onRemove(rota.id)}>
-            <Trash2 className="h-3.5 w-3.5" />
+      <div
+        className="flex items-center justify-between cursor-pointer select-none"
+        onClick={() => setCollapsed((c) => !c)}
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-sm font-medium shrink-0">Rota {index + 1}</span>
+          {collapsed && (
+            <span className="text-xs text-muted-foreground truncate">
+              {bairroSelecionado ? bairroSelecionado.nome : "—"}
+              {rota.responsavel ? ` · ${rota.responsavel}` : ""}
+              {rota.taxa_resolvida != null ? ` · ${fmt(getRotaTotalEntregador(rota))}` : ""}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+          {canRemove && (
+            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => onRemove(rota.id)}>
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-muted-foreground"
+            onClick={(e) => { e.stopPropagation(); setCollapsed((c) => !c); }}
+          >
+            <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-200", collapsed ? "" : "rotate-180")} />
           </Button>
-        )}
+        </div>
       </div>
 
+      {!collapsed && (<>
       {/* Destination & Contact */}
       <div className="space-y-2">
         <Label className="text-xs">Bairro Destino *</Label>
-        <Select value={rota.bairro_destino_id} onValueChange={(v) => onUpdate(rota.id, "bairro_destino_id", v)}>
-          <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-          <SelectContent>{bairros.map((b) => (<SelectItem key={b.id} value={b.id}>{b.nome}</SelectItem>))}</SelectContent>
-        </Select>
+        <Popover open={bairroOpen} onOpenChange={setBairroOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              role="combobox"
+              aria-expanded={bairroOpen}
+              className={cn(
+                "w-full justify-between font-normal text-sm h-9",
+                !bairroSelecionado && "text-muted-foreground"
+              )}
+            >
+              {bairroSelecionado ? bairroSelecionado.nome : "Selecione o bairro..."}
+              <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+            <Command>
+              <CommandInput placeholder="Buscar bairro..." className="h-9" />
+              <CommandList>
+                <CommandEmpty>Nenhum bairro encontrado.</CommandEmpty>
+                <CommandGroup>
+                  {bairros.map((b) => (
+                    <CommandItem
+                      key={b.id}
+                      value={b.nome}
+                      onSelect={() => {
+                        onUpdate(rota.id, "bairro_destino_id", b.id);
+                        setBairroOpen(false);
+                      }}
+                    >
+                      <Check className={cn("mr-2 h-3.5 w-3.5 shrink-0", rota.bairro_destino_id === b.id ? "opacity-100" : "opacity-0")} />
+                      {b.nome}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -417,6 +482,7 @@ export function RotaCard({
           <span className="text-sm font-bold tabular-nums">{fmt(getRotaTotalEntregador(rota))}</span>
         </div>
       )}
+      </>)}
     </div>
   );
 }

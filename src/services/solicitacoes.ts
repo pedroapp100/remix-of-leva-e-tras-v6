@@ -196,6 +196,16 @@ export async function fetchSolicitacoesByIds(ids: string[]): Promise<Solicitacao
   return data as SolicitacaoRow[];
 }
 
+export async function fetchSolicitacoesByCodigos(codigos: string[]): Promise<SolicitacaoRow[]> {
+  if (codigos.length === 0) return [];
+  const { data, error } = await supabase
+    .from("solicitacoes")
+    .select("*")
+    .in("codigo", codigos);
+  if (error) throw new Error(error.message);
+  return data as SolicitacaoRow[];
+}
+
 export async function fetchRotasBySolicitacaoIds(ids: string[]): Promise<RotaRow[]> {
   if (ids.length === 0) return [];
   const { data, error } = await supabase

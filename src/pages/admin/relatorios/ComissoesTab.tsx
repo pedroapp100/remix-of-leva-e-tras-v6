@@ -20,7 +20,13 @@ export function ComissoesTab() {
       key: "tipo_comissao", header: "Tipo",
       cell: (c) => (
         <Badge variant="outline" className="text-xs">
-          {c.tipo_comissao === "percentual" ? `${c.taxa}%` : `R$ ${c.taxa}/entrega`}
+          {c.tipo_comissao === "percentual"
+            ? `${c.taxa}%`
+            : c.tipo_comissao === "fixo"
+            ? `R$ ${c.taxa}/entrega`
+            : c.meta_modo_calculo === "escalonado"
+            ? "Meta (Esc.)"
+            : "Meta (Fx.)"}
         </Badge>
       ),
     },
@@ -38,7 +44,15 @@ export function ComissoesTab() {
       </div>
       <div className="flex justify-between text-sm text-muted-foreground">
         <span>{c.entregas} entregas</span>
-        <Badge variant="outline" className="text-xs">{c.tipo_comissao === "percentual" ? `${c.taxa}%` : `R$ ${c.taxa}/ent.`}</Badge>
+        <Badge variant="outline" className="text-xs">
+          {c.tipo_comissao === "percentual"
+            ? `${c.taxa}%`
+            : c.tipo_comissao === "fixo"
+            ? `R$ ${c.taxa}/ent.`
+            : c.meta_modo_calculo === "escalonado"
+            ? "Meta (Esc.)"
+            : "Meta (Fx.)"}
+        </Badge>
       </div>
     </Card>
   );

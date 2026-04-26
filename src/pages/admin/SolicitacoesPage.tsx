@@ -205,6 +205,7 @@ export default function SolicitacoesPage() {
       taxa_resolvida: r.taxa_resolvida,
       regra_preco_id: null,
       pagamento_operacao: r.pagamento_operacao ?? "faturar",
+      meios_pagamento_operacao: r.meios_pagamento_operacao ?? [],
       status: isRetroativoConcluida ? "concluida" as const : "ativa" as const,
     }));
 
@@ -216,6 +217,7 @@ export default function SolicitacoesPage() {
           entregador_id: data.entregadorId || null,
           status,
           tipo_operacao: data.tipoOperacao,
+          tipo_coleta: data.tipoColeta ?? "loja_cliente",
           ponto_coleta: data.pontoColeta,
           data_solicitacao: now,
           data_inicio: dataInicio,

@@ -12,15 +12,16 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
-import { FileText, AlertTriangle, CheckCircle, Clock, Eye, Pencil, DollarSign, X } from "lucide-react";
+import { FileText, AlertTriangle, CheckCircle, Clock, Eye, Pencil, DollarSign, X, ListFilter } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExportDropdown } from "@/components/shared/ExportDropdown";
 import { exportCSV, exportPDF } from "@/lib/exportTable";
 import { lazy, Suspense } from "react";
 const FaturaDetailsModal = lazy(() => import("./faturas/FaturaDetailsModal").then(m => ({ default: m.FaturaDetailsModal })));
 
-type TabFilter = "ativas" | "finalizadas";
+type TabFilter = "ativas" | "em_aberto" | "vencidas" | "finalizadas";
 
 export default function FaturasPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -28,6 +29,7 @@ export default function FaturasPage() {
   const [search, setSearch] = useState(searchParams.get("q") ?? "");
   const [activeTab, setActiveTab] = useState<TabFilter>((searchParams.get("tab") as TabFilter) ?? "ativas");
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
+  const [tipoFilter, setTipoFilter] = useState<string>("todos");
   const [selectedFatura, setSelectedFatura] = useState<Fatura | null>(null);
 
   // Sync state → URL
@@ -56,20 +58,23 @@ export default function FaturasPage() {
   // ── Filtered data ──
   const filtered = useMemo(() => {
     return faturas.filter((f) => {
-      const matchTab = activeTab === "ativas"
-        ? f.status_geral !== "Finalizada"
-        : f.status_geral === "Finalizada";
+      const matchTab =
+        activeTab === "ativas"    ? f.status_geral !== "Finalizada" :
+        activeTab === "em_aberto" ? f.status_geral === "Aberta" :
+        activeTab === "vencidas"  ? f.status_geral === "Vencida" :
+        f.status_geral === "Finalizada";
       const matchSearch =
         f.numero.toLowerCase().includes(search.toLowerCase()) ||
         f.cliente_nome.toLowerCase().includes(search.toLowerCase());
+      const matchTipo = tipoFilter === "todos" || f.tipo_faturamento === tipoFilter;
       let matchDate = true;
       if (dateRange?.from) {
         const emissao = new Date(f.data_emissao);
         matchDate = emissao >= dateRange.from && (!dateRange.to || emissao <= dateRange.to);
       }
-      return matchTab && matchSearch && matchDate;
+      return matchTab && matchSearch && matchTipo && matchDate;
     });
-  }, [faturas, activeTab, search, dateRange]);
+  }, [faturas, activeTab, search, tipoFilter, dateRange]);
 
   // ── Columns ──
   const columns: Column<Fatura>[] = [
@@ -252,11 +257,23 @@ export default function FaturasPage() {
         <CardContent className="p-4 space-y-4">
           {/* Tabs */}
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabFilter)}>
-            <TabsList>
+            <TabsList className="flex-wrap h-auto">
               <TabsTrigger value="ativas" className="gap-1.5">
                 <FileText className="h-4 w-4" /> Ativas
                 <Badge variant="secondary" className="ml-1 text-xs h-5 px-1.5">
                   {metrics.ativas}
+                </Badge>
+              </TabsTrigger>
+              <TabsTrigger value="em_aberto" className="gap-1.5">
+                <Clock className="h-4 w-4" /> Em Aberto
+                <Badge variant="secondary" className="ml-1 text-xs h-5 px-1.5">
+                  {metrics.abertas}
+                </Badge>
+              </TabsTrigger>
+              <TabsTrigger value="vencidas" className="gap-1.5">
+                <AlertTriangle className="h-4 w-4" /> Vencidas
+                <Badge variant="secondary" className="ml-1 text-xs h-5 px-1.5 bg-destructive/15 text-destructive">
+                  {metrics.vencidas}
                 </Badge>
               </TabsTrigger>
               <TabsTrigger value="finalizadas" className="gap-1.5">
@@ -268,17 +285,33 @@ export default function FaturasPage() {
             </TabsList>
           </Tabs>
 
-          {/* Search + Date */}
+          {/* Search + Filters */}
           <div className="flex flex-col sm:flex-row gap-3 flex-wrap items-end">
             <SearchInput
               value={search}
               onChange={setSearch}
               placeholder="Buscar por número ou cliente..."
-              className="flex-1"
+              className="flex-1 min-w-[200px]"
             />
+            <Select value={tipoFilter} onValueChange={setTipoFilter}>
+              <SelectTrigger className="w-full sm:w-[180px]">
+                <div className="flex items-center gap-1.5">
+                  <ListFilter className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <SelectValue placeholder="Tipo de fatura" />
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos os tipos</SelectItem>
+                <SelectItem value="por_entrega">Por Entrega</SelectItem>
+                <SelectItem value="semanal">Semanal</SelectItem>
+                <SelectItem value="mensal">Mensal</SelectItem>
+                <SelectItem value="diario">Diário</SelectItem>
+                <SelectItem value="manual">Manual</SelectItem>
+              </SelectContent>
+            </Select>
             <DatePickerWithRange value={dateRange} onChange={setDateRange} />
-            {(search || activeTab !== "ativas" || dateRange?.from) && (
-              <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground w-full sm:w-auto" onClick={() => { setSearch(""); setActiveTab("ativas"); setDateRange(undefined); }}>
+            {(search || activeTab !== "ativas" || dateRange?.from || tipoFilter !== "todos") && (
+              <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground w-full sm:w-auto" onClick={() => { setSearch(""); setActiveTab("ativas"); setDateRange(undefined); setTipoFilter("todos"); }}>
                 <X className="h-3.5 w-3.5" /> Limpar filtros
               </Button>
             )}

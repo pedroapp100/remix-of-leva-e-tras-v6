@@ -2,7 +2,7 @@ import { useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useClientes, useTabelaPrecos, useClienteSaldoMap } from "@/hooks/useClientes";
-import { useBairros, useTaxasExtras, useTiposOperacao } from "@/hooks/useSettings";
+import { useBairros, useTaxasExtras, useTiposOperacao, useFormasPagamento } from "@/hooks/useSettings";
 import { useEntregadores } from "@/hooks/useEntregadores";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -123,6 +123,8 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit }: Launch
   const { data: bairros = [] } = useBairros();
   const { data: taxasExtrasData = [] } = useTaxasExtras();
   const { data: tiposOperacaoData = [] } = useTiposOperacao();
+  const { data: formasPagamentoData = [] } = useFormasPagamento();
+  const getFormaPagamentoNome = (id: string) => formasPagamentoData.find((f) => f.id === id)?.name ?? id;
   const clientesAtivos = clientesData.filter((c) => c.status === "ativo");
   const entregadoresAtivos = entregadoresData.filter((e) => e.status === "ativo");
   const tiposAtivos = tiposOperacaoData.filter((t) => t.ativo);
@@ -583,7 +585,7 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit }: Launch
                       </Badge>
                     )}
                   </span>
-                  <span className="text-muted-foreground">Prioridade</span><span><Badge variant="outline">{tipoOperacao}</Badge></span>
+                  <span className="text-muted-foreground">Prioridade</span><span><Badge variant="outline">{tiposAtivos.find((t) => t.id === tipoOperacao)?.nome ?? tipoOperacao}</Badge></span>
                   <span className="text-muted-foreground">Coleta</span><span>{pontoColeta}</span>
                   {entregadorId && entregadorId !== "none" && (
                     <>
@@ -631,6 +633,15 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit }: Launch
                         {r.pagamento_operacao === "faturar" ? "Faturado" : r.pagamento_operacao === "pago_na_hora" ? "Pago na hora" : "Descontar saldo"}
                       </Badge>
                     </div>
+                    {r.meios_pagamento_operacao.length > 0 && (
+                      <div className="flex flex-wrap gap-1 pt-0.5">
+                        {r.meios_pagamento_operacao.map((id) => (
+                          <Badge key={id} variant="outline" className="text-[10px] h-5">
+                            {getFormaPagamentoNome(id)}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
                     <div className="flex justify-between text-xs">
                       <span className="text-muted-foreground">Taxa de Entrega</span>
                       <span className="tabular-nums">{fmt(r.taxa_resolvida ?? 0)}</span>

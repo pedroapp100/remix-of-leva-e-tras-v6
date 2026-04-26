@@ -29,6 +29,12 @@ const HISTORICO_TIPO_CONFIG: Record<string, { icon: React.ElementType; color: st
 
 // tipoStyles removed — now using TipoOperacaoBadge component
 
+const PAGAMENTO_OPERACAO_BADGE: Record<string, { label: string; variant: "default" | "secondary" | "outline" }> = {
+  faturar:         { label: "Faturado",         variant: "default" },
+  pago_na_hora:    { label: "Pago na hora",      variant: "outline" },
+  descontar_saldo: { label: "Desconto em saldo", variant: "secondary" },
+};
+
 interface ViewSolicitacaoDialogProps {
   solicitacao: Solicitacao | null;
   onClose: () => void;
@@ -94,7 +100,8 @@ function RotaContactCard({ rota, clienteName, getBairroName, getRegiaoByBairro }
   );
 }
 
-function RotaPaymentPreview({ rota, isFaturado, isPrePago }: { rota: Rota; isFaturado: boolean; isPrePago: boolean }) {
+function RotaPaymentPreview({ rota, getFormaPagamentoName }: { rota: Rota; getFormaPagamentoName: (id: string) => string }) {
+  const badge = PAGAMENTO_OPERACAO_BADGE[rota.pagamento_operacao] ?? { label: rota.pagamento_operacao, variant: "outline" as const };
   return (
     <div className="space-y-2">
       {/* Card Operação */}
@@ -104,13 +111,28 @@ function RotaPaymentPreview({ rota, isFaturado, isPrePago }: { rota: Rota; isFat
             <Building2 className="h-3.5 w-3.5 text-primary" />
             Operação
           </span>
-          {isFaturado && <Badge variant="default" className="text-[10px] px-1.5 py-0">Faturado</Badge>}
-          {isPrePago && <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Pré-pago</Badge>}
+          <Badge
+            variant={badge.variant}
+            className={`text-[10px] px-1.5 py-0${
+              rota.pagamento_operacao === "pago_na_hora" ? " border-amber-500 text-amber-600" : ""
+            }`}
+          >
+            {badge.label}
+          </Badge>
         </div>
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">Taxa de Entrega</span>
           <span className="tabular-nums font-medium">{fmt(rota.taxa_resolvida)}</span>
         </div>
+        {rota.meios_pagamento_operacao.length > 0 && (
+          <div className="flex flex-wrap gap-1 pt-0.5">
+            {rota.meios_pagamento_operacao.map((id) => (
+              <Badge key={id} variant="secondary" className="text-[10px] px-1.5 py-0">
+                {getFormaPagamentoName(id)}
+              </Badge>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Card Loja */}
@@ -287,10 +309,31 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
             )}
           </div>
 
-          <div className="text-sm">
-            <span className="text-muted-foreground">Ponto de Coleta</span>
-            <p className="font-medium flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 text-muted-foreground" />{solicitacao.ponto_coleta}</p>
-          </div>
+          {solicitacao.tipo_coleta === "cliente_loja" ? (
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <span className="text-muted-foreground">Local de Coleta</span>
+                <p className="font-medium flex items-center gap-1.5 mt-0.5">
+                  <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  {solicitacao.ponto_coleta}
+                </p>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Local de Entrega</span>
+                <p className="font-medium flex items-center gap-1.5 mt-0.5">
+                  <Store className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  {clienteData ? `${clienteData.endereco}, ${clienteData.bairro}` : clienteName}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="text-sm">
+              <span className="text-muted-foreground">Ponto de Coleta</span>
+              <p className="font-medium flex items-center gap-1.5">
+                <MapPin className="h-3.5 w-3.5 text-muted-foreground" />{solicitacao.ponto_coleta}
+              </p>
+            </div>
+          )}
 
           <div className="grid grid-cols-3 gap-3 text-sm">
             <div><span className="text-muted-foreground">Criação</span><p className="tabular-nums">{fmtDate(solicitacao.data_solicitacao)}</p></div>
@@ -327,25 +370,53 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                   {!isConcluida && !isDriverView && (
                     <>
                       <RotaContactCard rota={rota} clienteName={clienteName} getBairroName={getBairroName} getRegiaoByBairro={getRegiaoByBairro} />
-                      <RotaPaymentPreview rota={rota} isFaturado={!!isFaturado} isPrePago={!!isPrePago} />
+                      <RotaPaymentPreview rota={rota} getFormaPagamentoName={getFormaPagamentoName} />
                     </>
                   )}
                   {!isConcluida && isDriverView && (
                     <>
                       <RotaContactCard rota={rota} clienteName={clienteName} getBairroName={getBairroName} getRegiaoByBairro={getRegiaoByBairro} />
-                      {rota.receber_do_cliente && (
+
+                      {/* pago_na_hora: entregador cobra o total (taxa + loja) — sem mencionar "taxa" */}
+                      {rota.pagamento_operacao === "pago_na_hora" && (
+                        <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="flex items-center gap-1.5 font-medium text-xs uppercase tracking-wide text-amber-600">
+                              <DollarSign className="h-3.5 w-3.5" />
+                              Cobrar no Destino
+                            </span>
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-500 text-amber-600">
+                              Pago na hora
+                            </Badge>
+                          </div>
+                          <div className="flex items-center justify-between text-sm font-semibold">
+                            <span className="text-muted-foreground">Total a cobrar</span>
+                            <span className="tabular-nums">
+                              {fmt((rota.taxa_resolvida ?? 0) + (rota.receber_do_cliente ? (rota.valor_a_receber ?? 0) : 0))}
+                            </span>
+                          </div>
+                          {rota.meios_pagamento_operacao.length > 0 && (
+                            <div className="flex flex-wrap gap-1 pt-0.5">
+                              {rota.meios_pagamento_operacao.map((id) => (
+                                <Badge key={id} variant="secondary" className="text-[10px] px-1.5 py-0">
+                                  {getFormaPagamentoName(id)}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* faturar/descontar: entregador só cobra o valor da loja se houver */}
+                      {rota.pagamento_operacao !== "pago_na_hora" && rota.receber_do_cliente && (
                         <div className="rounded-md border border-border bg-muted/30 p-3 space-y-1.5">
                           <span className="flex items-center gap-1.5 font-medium text-xs uppercase tracking-wide">
                             <Store className="h-3.5 w-3.5 text-status-pending" />
                             Cobrar do Cliente
                           </span>
                           <div className="flex items-center justify-between text-sm font-semibold">
-                            <span className="text-muted-foreground">
-                              {rota.pagamento_operacao === "pago_na_hora" ? "Total a cobrar" : "Valor a receber"}
-                            </span>
-                            <span className="tabular-nums">
-                              {fmt((rota.valor_a_receber ?? 0) + (rota.pagamento_operacao === "pago_na_hora" ? (rota.taxa_resolvida ?? 0) : 0))}
-                            </span>
+                            <span className="text-muted-foreground">Valor a receber</span>
+                            <span className="tabular-nums">{fmt(rota.valor_a_receber)}</span>
                           </div>
                         </div>
                       )}
@@ -363,18 +434,22 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                       getFormaPagamentoName={getFormaPagamentoName}
                     />
                   )}
-                  {isConcluida && isDriverView && rota.receber_do_cliente && (
+                  {isConcluida && isDriverView && (rota.receber_do_cliente || rota.pagamento_operacao === "pago_na_hora") && (
                     <div className="rounded-md border border-border bg-muted/30 p-3 space-y-1.5">
                       <span className="flex items-center gap-1.5 font-medium text-xs uppercase tracking-wide">
                         <Store className="h-3.5 w-3.5 text-status-pending" />
-                        Cobrar do Cliente
+                        {rota.pagamento_operacao === "pago_na_hora" ? "Cobrado no Destino" : "Cobrar do Cliente"}
                       </span>
                       <div className="flex items-center justify-between text-sm font-semibold">
                         <span className="text-muted-foreground">
                           {rota.pagamento_operacao === "pago_na_hora" ? "Total cobrado" : "Valor cobrado"}
                         </span>
                         <span className="tabular-nums">
-                          {fmt((rota.valor_a_receber ?? 0) + (rota.pagamento_operacao === "pago_na_hora" ? (rota.taxa_resolvida ?? 0) : 0))}
+                          {fmt(
+                            rota.pagamento_operacao === "pago_na_hora"
+                              ? (rota.taxa_resolvida ?? 0) + (rota.receber_do_cliente ? (rota.valor_a_receber ?? 0) : 0)
+                              : (rota.valor_a_receber ?? 0)
+                          )}
                         </span>
                       </div>
                     </div>

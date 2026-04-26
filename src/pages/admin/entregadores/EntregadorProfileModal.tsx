@@ -5,10 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Card, CardContent } from "@/components/ui/card";
-import { Pencil, Package, CheckCircle2, Clock, TrendingUp } from "lucide-react";
+import { Pencil, Package, CheckCircle2, Clock, TrendingUp, Target } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 import { AvatarWithFallback } from "@/components/shared";
+import { useMemo } from "react";
 import { useSolicitacoesByEntregador } from "@/hooks/useSolicitacoes";
 import { useComissao } from "@/hooks/useComissao";
+import { useComissaoFaixas, calcularProgressoFaixa } from "@/hooks/useComissaoFaixas";
 import { formatCurrency } from "@/lib/formatters";
 
 interface EntregadorProfileModalProps {
@@ -44,6 +47,14 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline" | "dest
 export function EntregadorProfileModal({ entregador, onClose, onEdit }: EntregadorProfileModalProps) {
   const { data: solicitacoes = [] } = useSolicitacoesByEntregador(entregador?.id ?? "");
   const comissao = useComissao(entregador?.id ?? null);
+  const { data: faixas = [] } = useComissaoFaixas(
+    entregador?.tipo_comissao === "meta" ? entregador.id : null
+  );
+
+  const progresso = useMemo(() => {
+    if (comissao?.tipo_comissao !== "meta" || !comissao.faixas?.length) return null;
+    return calcularProgressoFaixa(comissao.entregas, comissao.faixas);
+  }, [comissao]);
 
   if (!entregador) return null;
 
@@ -54,9 +65,14 @@ export function EntregadorProfileModal({ entregador, onClose, onEdit }: Entregad
     .sort((a, b) => new Date(b.data_solicitacao).getTime() - new Date(a.data_solicitacao).getTime())
     .slice(0, 5);
 
-  const tipoComissaoLabel = entregador.tipo_comissao === "percentual"
-    ? `${entregador.valor_comissao}%`
-    : fmt(entregador.valor_comissao);
+  const tipoComissaoLabel =
+    entregador.tipo_comissao === "percentual"
+      ? `${entregador.valor_comissao}%`
+      : entregador.tipo_comissao === "fixo"
+      ? fmt(entregador.valor_comissao)
+      : entregador.meta_modo_calculo === "escalonado"
+      ? "Meta (Escalonado)"
+      : "Meta (Faixa Máxima)";
 
   return (
     <Dialog open={!!entregador} onOpenChange={(open) => !open && onClose()}>
@@ -130,9 +146,79 @@ export function EntregadorProfileModal({ entregador, onClose, onEdit }: Entregad
               <div><span className="text-muted-foreground">Cidade:</span><span className="font-medium ml-1">{entregador.cidade || "—"}</span></div>
               <div><span className="text-muted-foreground">Bairro:</span><span className="font-medium ml-1">{entregador.bairro || "—"}</span></div>
               <div><span className="text-muted-foreground">Veículo:</span><span className="font-medium ml-1">{TIPO_VEICULO_LABELS[entregador.veiculo] ?? entregador.veiculo}</span></div>
-              <div><span className="text-muted-foreground">Comissão:</span><span className="font-medium ml-1">{tipoComissaoLabel} ({entregador.tipo_comissao === "percentual" ? "%" : "fixo"})</span></div>
+              <div>
+                <span className="text-muted-foreground">Comissão:</span>
+                <span className="font-medium ml-1">
+                  {tipoComissaoLabel}
+                  {entregador.tipo_comissao !== "meta" && (
+                    <span className="text-muted-foreground ml-1">({entregador.tipo_comissao === "percentual" ? "%" : "fixo"})</span>
+                  )}
+                </span>
+              </div>
               <div><span className="text-muted-foreground">Cadastrado em:</span><span className="font-medium ml-1">{fmtDate(entregador.created_at)}</span></div>
             </div>
+
+            {/* Progresso de meta — mês atual */}
+            {entregador.tipo_comissao === "meta" && comissao && (
+              <div className="mt-4 rounded-lg border border-border p-3 space-y-3 bg-muted/30">
+                <div className="flex items-center gap-2">
+                  <Target className="h-4 w-4 text-primary shrink-0" />
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Progresso do Mês Atual</p>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Entregas concluídas</span>
+                  <span className="font-bold tabular-nums">{comissao.entregas}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Comissão acumulada</span>
+                  <span className="font-semibold tabular-nums text-emerald-500">{fmt(comissao.comissao)}</span>
+                </div>
+                {progresso && (
+                  <>
+                    {progresso.faixaAtual && (
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>Faixa atual</span>
+                        <span className="font-medium tabular-nums">
+                          {progresso.faixaAtual.de}–{progresso.faixaAtual.ate} entregas · {fmt(progresso.faixaAtual.valor_por_entrega)}/entrega
+                        </span>
+                      </div>
+                    )}
+                    {progresso.proximaFaixa ? (
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>Próxima faixa em</span>
+                          <span className="font-medium tabular-nums text-primary">
+                            +{progresso.entregasFaltam} entrega{progresso.entregasFaltam !== 1 ? "s" : ""}
+                          </span>
+                        </div>
+                        <Progress value={progresso.percentualProxima} className="h-2" />
+                        <div className="flex justify-between text-[10px] text-muted-foreground">
+                          <span>{progresso.faixaAtual?.de ?? 0} entregas</span>
+                          <span>{progresso.proximaFaixa.de} entregas</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-emerald-500 font-medium">✓ Faixa máxima atingida!</p>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Faixas de comissão meta */}
+            {entregador.tipo_comissao === "meta" && faixas.length > 0 && (
+              <div className="mt-3">
+                <p className="text-xs font-medium text-muted-foreground mb-2">Faixas configuradas:</p>
+                <div className="space-y-1">
+                  {[...faixas].sort((a, b) => a.de - b.de).map((f) => (
+                    <div key={f.id} className="flex items-center justify-between text-xs rounded-md bg-muted/50 px-2 py-1">
+                      <span className="text-muted-foreground">{f.de} – {f.ate} entregas</span>
+                      <span className="font-medium tabular-nums">{formatCurrency(f.valor_por_entrega)}/entrega</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Últimas entregas */}
