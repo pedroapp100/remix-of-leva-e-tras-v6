@@ -14,6 +14,16 @@ interface State {
   copied: boolean;
 }
 
+const CHUNK_RELOAD_KEY = "chunk_reload_attempted";
+
+function isChunkLoadError(error: Error): boolean {
+  return (
+    error.message.includes("Failed to fetch dynamically imported module") ||
+    error.message.includes("Importing a module script failed") ||
+    error.name === "ChunkLoadError"
+  );
+}
+
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
@@ -27,6 +37,16 @@ export class ErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     this.setState({ errorInfo });
     console.error("[ErrorBoundary]", error, errorInfo);
+
+    // Auto-reload once when a chunk fails to load after a new deployment.
+    // The sessionStorage flag prevents an infinite reload loop.
+    if (isChunkLoadError(error)) {
+      const alreadyReloaded = sessionStorage.getItem(CHUNK_RELOAD_KEY);
+      if (!alreadyReloaded) {
+        sessionStorage.setItem(CHUNK_RELOAD_KEY, "1");
+        window.location.reload();
+      }
+    }
   }
 
   handleReset = () => {

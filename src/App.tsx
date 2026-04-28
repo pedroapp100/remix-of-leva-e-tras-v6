@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode, type ComponentType } from "react";
 import { QueryClient, QueryCache, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes, Navigate, useLocation } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -13,52 +13,72 @@ import { PWAInstallBanner } from "@/components/PWAInstallBanner";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import Index from "./pages/Index";
 
-const ProtectedAppShell = lazy(() =>
+// Retries the dynamic import once before giving up; on the second failure it
+// forces a full page reload so the browser fetches the new index.html and the
+// updated chunk hashes that come with a fresh deployment.
+function lazyWithRetry<T extends ComponentType<unknown>>(
+  factory: () => Promise<{ default: T }>
+): React.LazyExoticComponent<T> {
+  return lazy(() =>
+    factory().catch(() =>
+      factory().catch(() => {
+        const reloaded = sessionStorage.getItem("chunk_reload_attempted");
+        if (!reloaded) {
+          sessionStorage.setItem("chunk_reload_attempted", "1");
+          window.location.reload();
+        }
+        return Promise.reject(new Error("Failed to load module after retry"));
+      })
+    )
+  );
+}
+
+const ProtectedAppShell = lazyWithRetry(() =>
   import("./components/app/ProtectedAppShell").then((module) => ({ default: module.ProtectedAppShell }))
 );
 
-const AdminLayout = lazy(() =>
+const AdminLayout = lazyWithRetry(() =>
   import("./components/layouts/AdminLayout").then((module) => ({ default: module.AdminLayout }))
 );
-const ClientLayout = lazy(() =>
+const ClientLayout = lazyWithRetry(() =>
   import("./components/layouts/ClientLayout").then((module) => ({ default: module.ClientLayout }))
 );
-const DriverLayout = lazy(() =>
+const DriverLayout = lazyWithRetry(() =>
   import("./components/layouts/DriverLayout").then((module) => ({ default: module.DriverLayout }))
 );
 
-const LoginPage = lazy(() => import("./pages/auth/LoginPage"));
-const ForgotPasswordPage = lazy(() => import("./pages/auth/ForgotPasswordPage"));
-const ResetPasswordPage = lazy(() => import("./pages/auth/ResetPasswordPage"));
+const LoginPage = lazyWithRetry(() => import("./pages/auth/LoginPage"));
+const ForgotPasswordPage = lazyWithRetry(() => import("./pages/auth/ForgotPasswordPage"));
+const ResetPasswordPage = lazyWithRetry(() => import("./pages/auth/ResetPasswordPage"));
 
-const AdminDashboard = lazy(() => import("./pages/admin/Dashboard"));
-const SolicitacoesPage = lazy(() => import("./pages/admin/SolicitacoesPage"));
-const ClientesPage = lazy(() => import("./pages/admin/ClientesPage"));
-const EntregadoresPage = lazy(() => import("./pages/admin/EntregadoresPage"));
-const EntregasPage = lazy(() => import("./pages/admin/EntregasPage"));
-const CaixasEntregadoresPage = lazy(() => import("./pages/admin/CaixasEntregadoresPage"));
-const FaturasPage = lazy(() => import("./pages/admin/FaturasPage"));
-const FinanceiroPage = lazy(() => import("./pages/admin/FinanceiroPage"));
-const RelatoriosPage = lazy(() => import("./pages/admin/RelatoriosPage"));
-const LogsPage = lazy(() => import("./pages/admin/LogsPage"));
-const SettingsPage = lazy(() => import("./pages/admin/SettingsPage"));
-const NotificacoesPage = lazy(() => import("./pages/admin/NotificacoesPage"));
+const AdminDashboard = lazyWithRetry(() => import("./pages/admin/Dashboard"));
+const SolicitacoesPage = lazyWithRetry(() => import("./pages/admin/SolicitacoesPage"));
+const ClientesPage = lazyWithRetry(() => import("./pages/admin/ClientesPage"));
+const EntregadoresPage = lazyWithRetry(() => import("./pages/admin/EntregadoresPage"));
+const EntregasPage = lazyWithRetry(() => import("./pages/admin/EntregasPage"));
+const CaixasEntregadoresPage = lazyWithRetry(() => import("./pages/admin/CaixasEntregadoresPage"));
+const FaturasPage = lazyWithRetry(() => import("./pages/admin/FaturasPage"));
+const FinanceiroPage = lazyWithRetry(() => import("./pages/admin/FinanceiroPage"));
+const RelatoriosPage = lazyWithRetry(() => import("./pages/admin/RelatoriosPage"));
+const LogsPage = lazyWithRetry(() => import("./pages/admin/LogsPage"));
+const SettingsPage = lazyWithRetry(() => import("./pages/admin/SettingsPage"));
+const NotificacoesPage = lazyWithRetry(() => import("./pages/admin/NotificacoesPage"));
 
-const ClienteDashboard = lazy(() => import("./pages/cliente/ClienteDashboard"));
-const MinhasSolicitacoesPage = lazy(() => import("./pages/cliente/MinhasSolicitacoesPage"));
-const ClienteFinanceiroPage = lazy(() => import("./pages/cliente/ClienteFinanceiroPage"));
-const ClientePerfilPage = lazy(() => import("./pages/cliente/ClientePerfilPage"));
-const SimuladorClientePage = lazy(() => import("./pages/cliente/SimuladorClientePage"));
+const ClienteDashboard = lazyWithRetry(() => import("./pages/cliente/ClienteDashboard"));
+const MinhasSolicitacoesPage = lazyWithRetry(() => import("./pages/cliente/MinhasSolicitacoesPage"));
+const ClienteFinanceiroPage = lazyWithRetry(() => import("./pages/cliente/ClienteFinanceiroPage"));
+const ClientePerfilPage = lazyWithRetry(() => import("./pages/cliente/ClientePerfilPage"));
+const SimuladorClientePage = lazyWithRetry(() => import("./pages/cliente/SimuladorClientePage"));
 
-const EntregadorDashboard = lazy(() => import("./pages/entregador/EntregadorDashboard"));
-const EntregadorSolicitacoesPage = lazy(() => import("./pages/entregador/EntregadorSolicitacoesPage"));
-const EntregadorHistoricoPage = lazy(() => import("./pages/entregador/EntregadorHistoricoPage"));
-const EntregadorFinanceiroPage = lazy(() => import("./pages/entregador/EntregadorFinanceiroPage"));
-const EntregadorPerfilPage = lazy(() => import("./pages/entregador/EntregadorPerfilPage"));
-const EntregadorCorridasPage = lazy(() => import("./pages/entregador/EntregadorCorridasPage"));
-const EntregadorCaixaPage = lazy(() => import("./pages/entregador/EntregadorCaixaPage"));
+const EntregadorDashboard = lazyWithRetry(() => import("./pages/entregador/EntregadorDashboard"));
+const EntregadorSolicitacoesPage = lazyWithRetry(() => import("./pages/entregador/EntregadorSolicitacoesPage"));
+const EntregadorHistoricoPage = lazyWithRetry(() => import("./pages/entregador/EntregadorHistoricoPage"));
+const EntregadorFinanceiroPage = lazyWithRetry(() => import("./pages/entregador/EntregadorFinanceiroPage"));
+const EntregadorPerfilPage = lazyWithRetry(() => import("./pages/entregador/EntregadorPerfilPage"));
+const EntregadorCorridasPage = lazyWithRetry(() => import("./pages/entregador/EntregadorCorridasPage"));
+const EntregadorCaixaPage = lazyWithRetry(() => import("./pages/entregador/EntregadorCaixaPage"));
 
-const NotFound = lazy(() => import("./pages/NotFound"));
+const NotFound = lazyWithRetry(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient({
   queryCache: new QueryCache({
