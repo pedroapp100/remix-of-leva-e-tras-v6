@@ -152,17 +152,17 @@ export default function ClientesPage() {
             <Badge variant={r.modalidade === "faturado" ? "default" : "secondary"}>
               {MODALIDADE_LABELS[r.modalidade]}
             </Badge>
-            {saldoBaixo && (
+            {isPrePago && saldo !== null && (
               <TooltipProvider delayDuration={200}>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
-                      <AlertTriangle className="h-3 w-3" />
-                      {formatCurrency(saldo!)}
+                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${saldoBaixo ? "bg-destructive/10 text-destructive" : "bg-status-completed/10 text-status-completed"}`}>
+                      {saldoBaixo && <AlertTriangle className="h-3 w-3" />}
+                      {formatCurrency(saldo)}
                     </span>
                   </TooltipTrigger>
                   <TooltipContent>
-                    Saldo abaixo do limite mínimo de {formatCurrency(limiteMinimo)}
+                    {saldoBaixo ? `Saldo abaixo do limite mínimo de ${formatCurrency(limiteMinimo)}` : "Saldo disponível"}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
