@@ -4,7 +4,7 @@ import { fetchRotasBySolicitacao } from "@/services/solicitacoes";
 import { rowToRota } from "@/lib/mappers";
 import { useClientes, useClienteSaldoMap } from "@/hooks/useClientes";
 import { useEntregadores } from "@/hooks/useEntregadores";
-import { useFaturas, useConcluirFaturaEntrega } from "@/hooks/useFaturas";
+import { useFaturas, useConcluirFaturaEntrega, useUpdateFatura } from "@/hooks/useFaturas";
 import { useCaixaStore } from "@/contexts/CaixaStore";
 import { useSettingsStore } from "@/contexts/SettingsStore";
 import { notificarEntregaConcluida, notificarFaturaGerada, notificarFaturaFechada, notificarSaldoBaixo } from "@/services/whatsapp";
@@ -27,6 +27,7 @@ export function useConcluirComCaixa() {
   const updateSolMut = useUpdateSolicitacao();
   const updateRotasBulkMut = useUpdateRotasBulk();
   const concluirFaturaMut = useConcluirFaturaEntrega();
+  const updateFaturaMut = useUpdateFatura();
 
   const { addRecebimentoAutomatico } = useCaixaStore();
 
@@ -46,15 +47,21 @@ export function useConcluirComCaixa() {
         return { success: false, error: "Erro ao carregar rotas da solicitação." };
       }
 
-      const totalTaxas = solRotas
+      // For invoiced clients: routes marked 'faturar' go to fatura
+      const totalTaxasFaturar = solRotas
         .filter((r) => r.pagamento_operacao === "faturar")
+        .reduce((s, r) => s + (r.taxa_resolvida ?? 0), 0);
+
+      // For pre-paid clients: routes marked 'descontar_saldo' debit from balance
+      const totalTaxasPrePago = solRotas
+        .filter((r) => r.pagamento_operacao === "descontar_saldo")
         .reduce((s, r) => s + (r.taxa_resolvida ?? 0), 0);
 
       // ── Pre-paid balance validation ──
       if (cliente?.modalidade === "pre_pago") {
         const saldo = getClienteSaldo(sol.cliente_id);
-        if (saldo < totalTaxas) {
-          const faltante = (totalTaxas - saldo).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+        if (saldo < totalTaxasPrePago) {
+          const faltante = (totalTaxasPrePago - saldo).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
           const saldoFmt = saldo.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
           return {
             success: false,
@@ -63,7 +70,7 @@ export function useConcluirComCaixa() {
         }
 
         // Low balance warning
-        const saldoApos = saldo - totalTaxas;
+        const saldoApos = saldo - totalTaxasPrePago;
         const LIMITE_MINIMO = useSettingsStore.getState().limite_saldo_pre_pago;
         if (saldoApos < LIMITE_MINIMO && saldoApos >= 0) {
           setTimeout(() => {
@@ -133,12 +140,71 @@ export function useConcluirComCaixa() {
       // ── Fatura creation/update for faturado clients (persisted to DB) ──
       // skipFatura=true when called by the driver — invoicing is the admin's responsibility
       if (options?.skipFatura) return { success: true };
+
+      // ── Pre-paid: gera fatura por entrega (status Paga) + lançamento via RPC ──
+      if (cliente?.modalidade === "pre_pago") {
+        const numRotasPrePago = solRotas.filter((r) => r.pagamento_operacao === "descontar_saldo").length;
+        if (totalTaxasPrePago > 0) {
+          try {
+            const result = await concluirFaturaMut.mutateAsync({
+              p_fatura_id: null,         // sempre nova fatura por entrega
+              p_sol_id: solId,
+              p_cliente_id: sol.cliente_id,
+              p_cliente_nome: cliente.nome,
+              p_tipo_faturamento: "por_entrega",
+              p_total_taxas: totalTaxasPrePago,
+              p_total_recebido: 0,       // sem repasse em dinheiro — saldo pré-pago
+              p_sol_codigo: sol.codigo,
+              p_num_rotas: numRotasPrePago,
+            });
+
+            if (!result.success) {
+              return { success: true, error: result.error ?? "Erro ao gerar fatura pré-paga." };
+            }
+
+            // Marca a fatura como Paga imediatamente (saldo já foi debitado no ato)
+            if (result.fatura_id) {
+              await updateFaturaMut.mutateAsync({
+                id: result.fatura_id,
+                patch: { status_geral: "Paga", status_taxas: "Paga" },
+              });
+            }
+
+            // Notifica nova fatura pré-paga
+            if (result.fatura_numero) {
+              setTimeout(() => {
+                window.dispatchEvent(new CustomEvent("nova-fatura-gerada", {
+                  detail: {
+                    faturaNumero: result.fatura_numero,
+                    clienteNome: cliente.nome,
+                    message: `Fatura ${result.fatura_numero} gerada para ${cliente.nome} (Pré-pago — saldo debitado).`,
+                  },
+                }));
+              }, 0);
+
+              // WhatsApp: nova fatura pré-paga
+              if (cliente.telefone) {
+                const valorFmt = totalTaxasPrePago.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+                notificarFaturaGerada(cliente.telefone, {
+                  cliente_nome: cliente.nome,
+                  fatura_numero: result.fatura_numero,
+                  valor: valorFmt,
+                }).catch(() => {/* fire-and-forget */});
+              }
+            }
+          } catch {
+            return { success: true, error: "Solicitação concluída, mas houve erro ao gerar fatura pré-paga." };
+          }
+        }
+        return { success: true };
+      }
+
       if (!cliente || cliente.modalidade !== "faturado") return { success: true };
 
       const totalRecebido = solRotas.filter((r) => r.receber_do_cliente).reduce((s, r) => s + (r.valor_a_receber ?? 0), 0);
 
       // Guard: skip fatura creation when nothing to invoice (all routes are pago_na_hora)
-      if (totalTaxas === 0 && totalRecebido === 0) return { success: true };
+      if (totalTaxasFaturar === 0 && totalRecebido === 0) return { success: true };
 
       const activeFatura = faturas.find(
         (f) => f.cliente_id === sol.cliente_id && f.status_geral === "Aberta"
@@ -151,7 +217,7 @@ export function useConcluirComCaixa() {
           p_cliente_id: sol.cliente_id,
           p_cliente_nome: cliente.nome,
           p_tipo_faturamento: (cliente.frequencia_faturamento as string) ?? "manual",
-          p_total_taxas: totalTaxas,
+          p_total_taxas: totalTaxasFaturar,
           p_total_recebido: totalRecebido,
           p_sol_codigo: sol.codigo,
           p_num_rotas: solRotas.filter((r) => r.pagamento_operacao === "faturar").length,
@@ -214,7 +280,7 @@ export function useConcluirComCaixa() {
 
       return { success: true };
     },
-    [solicitacoes, clientes, entregadores, faturas, getClienteSaldo, updateSolMut, concluirFaturaMut, addRecebimentoAutomatico]
+    [solicitacoes, clientes, entregadores, faturas, getClienteSaldo, updateSolMut, updateRotasBulkMut, concluirFaturaMut, updateFaturaMut, addRecebimentoAutomatico]
   );
 
   return concluirComCaixa;

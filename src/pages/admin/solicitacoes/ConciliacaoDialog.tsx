@@ -123,9 +123,11 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
   const diffLoja = diffLojaCents / 100;
 
   const handleConcluir = async () => {
-    if (!isDriverView && allPagamentos.length === 0) { toast.error("Registre ao menos um pagamento."); return; }
+    // Pre-pago com saldo suficiente não exige pagamentos em dinheiro
+    const isPagoViaSaldo = isPrePago && saldoPrePago?.suficiente;
+    if (!isDriverView && !isPagoViaSaldo && allPagamentos.length === 0) { toast.error("Registre ao menos um pagamento."); return; }
     if (allPagamentos.some((p) => p.valor <= 0)) { toast.error("Todos os pagamentos devem ter valor positivo."); return; }
-    if (!isDriverView && !isBalanced) { toast.error("Os valores não estão balanceados. Verifique os pagamentos."); return; }
+    if (!isDriverView && !isPagoViaSaldo && !isBalanced) { toast.error("Os valores não estão balanceados. Verifique os pagamentos."); return; }
 
     // Persist payments to DB
     if (solicitacaoId) {

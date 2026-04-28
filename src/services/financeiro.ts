@@ -140,6 +140,36 @@ export async function createRecarga(input: RecargaInsert): Promise<RecargaRow> {
   return data[0] as RecargaRow;
 }
 
+/** Registra um débito de taxas no saldo pré-pago do cliente (sem criar fatura). */
+export async function createLancamentoPrePago(params: {
+  clienteId: string;
+  solicitacaoId: string;
+  solCodigo: string;
+  totalTaxas: number;
+  numRotas: number;
+}): Promise<void> {
+  const { clienteId, solicitacaoId, solCodigo, totalTaxas, numRotas } = params;
+  if (totalTaxas <= 0) return;
+  const { error } = await supabase.from("lancamentos_financeiros").insert({
+    cliente_id: clienteId,
+    solicitacao_id: solicitacaoId,
+    tipo: "debito_loja",
+    valor: totalTaxas,
+    sinal: "debito",
+    status_liquidacao: "pendente",
+    descricao:
+      "Taxas de entrega — " +
+      solCodigo +
+      " (" +
+      numRotas +
+      " rota" +
+      (numRotas !== 1 ? "s" : "") +
+      ")",
+    referencia_origem: solCodigo,
+  });
+  if (error) throw new Error(error.message);
+}
+
 // ── Despesas Recorrentes ──────────────────────────────────────────────────────
 
 export async function fetchDespesasRecorrentes(): Promise<DespesaRecorrenteRow[]> {

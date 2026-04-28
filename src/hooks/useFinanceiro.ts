@@ -15,6 +15,7 @@ import {
   fetchCategorias,
   fetchRecargasByCliente,
   createRecarga,
+  createLancamentoPrePago,
   fetchDespesasRecorrentes,
   createDespesaRecorrente,
   updateDespesaRecorrente,
@@ -128,6 +129,18 @@ export function useCreateRecarga() {
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["recargas", data.cliente_id] });
       qc.invalidateQueries({ queryKey: ["saldo_pre_pago", data.cliente_id] });
+      qc.invalidateQueries({ queryKey: ["saldos_pre_pago_all"] });
+    },
+  });
+}
+
+export function useCreateLancamentoPrePago() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (params: Parameters<typeof createLancamentoPrePago>[0]) =>
+      createLancamentoPrePago(params),
+    onSuccess: (_, params) => {
+      qc.invalidateQueries({ queryKey: ["saldo_pre_pago", params.clienteId] });
       qc.invalidateQueries({ queryKey: ["saldos_pre_pago_all"] });
     },
   });

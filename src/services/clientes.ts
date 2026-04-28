@@ -4,13 +4,13 @@
  * Usa TableRow/Insert/Update do supabase.ts (tipos que espelham o DB real).
  */
 import { supabase } from "@/lib/supabase";
-import type { TableRow, TableInsert, TableUpdate } from "@/types/supabase";
+import type { Tables, TablesInsert, TablesUpdate } from "@/types/supabase";
 
-export type ClienteRow = TableRow<"clientes">;
-export type ClienteInsert = TableInsert<"clientes">;
-export type ClienteUpdate = TableUpdate<"clientes">;
-export type TabelaPrecoRow = TableRow<"tabela_precos_cliente">;
-export type TabelaPrecoInsert = TableInsert<"tabela_precos_cliente">;
+export type ClienteRow = Tables<"clientes">;
+export type ClienteInsert = TablesInsert<"clientes">;
+export type ClienteUpdate = TablesUpdate<"clientes">;
+export type TabelaPrecoRow = Tables<"tabela_precos_cliente">;
+export type TabelaPrecoInsert = TablesInsert<"tabela_precos_cliente">;
 
 // ── Listagem ──────────────────────────────────────────────────────────────────
 
@@ -101,28 +101,48 @@ export async function deleteTabelaPreco(id: string): Promise<void> {
 // ── Saldo pré-pago ────────────────────────────────────────────────────────────
 
 export async function fetchSaldoPrePago(clienteId: string): Promise<number> {
-  const { data, error } = await supabase
-    .from("lancamentos_financeiros")
-    .select("valor, sinal")
-    .eq("cliente_id", clienteId)
-    .eq("status_liquidacao", "liquidado");
-  if (error) throw new Error(error.message);
-  return (data ?? []).reduce(
-    (acc, l) => acc + (l.sinal === "credito" ? l.valor : -l.valor),
-    0
-  );
+  const [recargasRes, debitosRes] = await Promise.all([
+    supabase
+      .from("recargas_pre_pago")
+      .select("valor")
+      .eq("cliente_id", clienteId),
+    supabase
+      .from("lancamentos_financeiros")
+      .select("valor")
+      .eq("cliente_id", clienteId)
+      .eq("sinal", "debito")
+      .eq("tipo", "debito_loja")
+      .neq("status_liquidacao", "estornado"),
+  ]);
+  if (recargasRes.error) throw new Error(recargasRes.error.message);
+  if (debitosRes.error) throw new Error(debitosRes.error.message);
+  const totalRecargas = (recargasRes.data ?? []).reduce((acc, r) => acc + Number(r.valor), 0);
+  const totalDebitos = (debitosRes.data ?? []).reduce((acc, l) => acc + Number(l.valor), 0);
+  return totalRecargas - totalDebitos;
 }
 
 /** Batch fetch saldos for ALL clients (single query, grouped by cliente_id). */
 export async function fetchAllSaldosPrePago(): Promise<Record<string, number>> {
-  const { data, error } = await supabase
-    .from("lancamentos_financeiros")
-    .select("cliente_id, valor, sinal")
-    .eq("status_liquidacao", "liquidado");
-  if (error) throw new Error(error.message);
+  const [recargasRes, debitosRes] = await Promise.all([
+    supabase
+      .from("recargas_pre_pago")
+      .select("cliente_id, valor"),
+    supabase
+      .from("lancamentos_financeiros")
+      .select("cliente_id, valor")
+      .eq("sinal", "debito")
+      .eq("tipo", "debito_loja")
+      .neq("status_liquidacao", "estornado"),
+  ]);
+  if (recargasRes.error) throw new Error(recargasRes.error.message);
+  if (debitosRes.error) throw new Error(debitosRes.error.message);
+
   const map: Record<string, number> = {};
-  for (const l of data ?? []) {
-    map[l.cliente_id] = (map[l.cliente_id] ?? 0) + (l.sinal === "credito" ? l.valor : -l.valor);
+  for (const r of recargasRes.data ?? []) {
+    map[r.cliente_id] = (map[r.cliente_id] ?? 0) + Number(r.valor);
+  }
+  for (const l of debitosRes.data ?? []) {
+    map[l.cliente_id] = (map[l.cliente_id] ?? 0) - Number(l.valor);
   }
   return map;
 }

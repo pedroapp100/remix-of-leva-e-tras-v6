@@ -142,6 +142,9 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit }: Launch
     const cliente = clientesAtivos.find((c) => c.id === id);
     if (cliente) {
       setPontoColeta(`${cliente.endereco}, ${cliente.bairro}`);
+      // Ajusta a operação padrão das rotas conforme a modalidade do cliente
+      const defaultOp = cliente.modalidade === "pre_pago" ? "descontar_saldo" : "faturar";
+      setRotas((prev) => prev.map((r) => ({ ...r, pagamento_operacao: defaultOp })));
     }
   };
   const [tipoOperacao, setTipoOperacao] = useState(tiposAtivos[0]?.id ?? "");
@@ -160,7 +163,11 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit }: Launch
     setRotas([emptyRota()]);
   };
 
-  const addRota = () => setRotas((prev) => [...prev, emptyRota()]);
+  const addRota = () => {
+    const cliente = clientesAtivos.find((c) => c.id === clienteId);
+    const defaultOp = cliente?.modalidade === "pre_pago" ? "descontar_saldo" : "faturar";
+    setRotas((prev) => [...prev, { ...emptyRota(), pagamento_operacao: defaultOp }]);
+  };
 
   const removeRota = (id: string) => {
     if (rotas.length <= 1) return;
