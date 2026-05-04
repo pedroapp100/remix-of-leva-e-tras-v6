@@ -2,7 +2,9 @@
  * hooks/useSolicitacoes.ts
  * React Query hooks para Solicitações, Rotas e Pagamentos.
  */
+import { useEffect } from "react";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabase";
 import { rowToSolicitacao, rowToRota, rowToPagamento } from "@/lib/mappers";
 import {
   fetchSolicitacoes,
@@ -22,6 +24,8 @@ import {
   fetchPagamentosBySolicitacao,
   fetchAllPagamentos,
   createPagamentos,
+  deletePagamentosBySolicitacao,
+  deletePagamentosByRota,
   fetchHistoricoBySolicitacao,
   appendHistorico,
   type SolicitacaoRow,
@@ -87,13 +91,48 @@ export function useSolicitacoesByCliente(clienteId: string) {
 /**
  * Scoped to a single entregador — returns Solicitacao[] (drop-in replacement).
  * Used by EntregadorSolicitacoesPage, EntregadorCorridasPage, EntregadorHistoricoPage.
+ *
+ * — Realtime subscription para atualizações instantâneas quando o BD muda.
+ * — Polling a cada 30s como segurança para conexões instáveis (PWA).
+ * — refetchOnWindowFocus: true para atualizar ao voltar ao app no celular.
  */
 export function useSolicitacoesByEntregador(entregadorId: string) {
+  const qc = useQueryClient();
+  const queryKey = ["solicitacoes", "entregador", entregadorId];
+
+  // ── Realtime subscription ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (!entregadorId) return;
+
+    const channel = supabase
+      .channel(`solicitacoes-entregador-${entregadorId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "solicitacoes",
+          filter: `entregador_id=eq.${entregadorId}`,
+        },
+        () => {
+          void qc.invalidateQueries({ queryKey });
+        },
+      )
+      .subscribe();
+
+    return () => { void supabase.removeChannel(channel); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entregadorId]);
+
   return useQuery({
-    queryKey: ["solicitacoes", "entregador", entregadorId],
+    queryKey,
     queryFn: () => fetchSolicitacoesByEntregador(entregadorId),
     select: (data: SolicitacaoRow[]) => data.map(rowToSolicitacao),
     enabled: Boolean(entregadorId),
+    staleTime: 20_000,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -267,6 +306,24 @@ export function useCreatePagamentos() {
         });
       }
     },
+  });
+}
+
+export function useDeletePagamentosBySolicitacao() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (solId: string) => deletePagamentosBySolicitacao(solId),
+    onSuccess: (_, solId) => qc.invalidateQueries({ queryKey: ["pagamentos", solId] }),
+  });
+}
+
+export function useDeletePagamentosByRota() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ rotaId, solicitacaoId }: { rotaId: string; solicitacaoId: string }) =>
+      deletePagamentosByRota(rotaId),
+    onSuccess: (_data, { solicitacaoId }) =>
+      qc.invalidateQueries({ queryKey: ["pagamentos", solicitacaoId] }),
   });
 }
 

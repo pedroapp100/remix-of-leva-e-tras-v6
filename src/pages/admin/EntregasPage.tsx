@@ -31,6 +31,7 @@ interface EntregaView {
   id: string;
   rota: Rota;
   solicitacao_id: string;
+  sol_status: string;
   codigo: string;
   cliente_id: string;
   entregador_id: string | null | undefined;
@@ -39,6 +40,14 @@ interface EntregaView {
   data_conclusao: string | null | undefined;
   bairro_nome: string;
 }
+
+// Status efetivo: usa o status da solicitação como fonte confiável.
+// rota.status pode ficar desatualizado (update fire-and-forget).
+const statusEfetivo = (e: EntregaView): StatusRota => {
+  if (e.sol_status === "concluida") return "concluida";
+  if (e.sol_status === "cancelada") return "cancelada";
+  return e.rota.status as StatusRota;
+};
 
 const STATUS_ROTA_LABELS: Record<StatusRota, string> = {
   ativa: "Ativa",
@@ -97,6 +106,7 @@ export default function EntregasPage() {
         id: rota.id,
         rota,
         solicitacao_id: rota.solicitacao_id,
+        sol_status: sol.status,
         codigo: sol.codigo,
         cliente_id: sol.cliente_id,
         entregador_id: sol.entregador_id,
@@ -121,7 +131,7 @@ export default function EntregasPage() {
       const entregadorId = (e.entregador_id ?? "").trim();
       if (entregadorId) entregadorSet.add(entregadorId);
 
-      const st = e.rota.status;
+      const st = statusEfetivo(e);
       if (st === "ativa") ativas++;
       else if (st === "concluida") {
         concluidas++;
@@ -146,7 +156,7 @@ export default function EntregasPage() {
         getClienteNome(e.cliente_id).toLowerCase().includes(search.toLowerCase()) ||
         e.rota.responsavel.toLowerCase().includes(search.toLowerCase()) ||
         e.bairro_nome.toLowerCase().includes(search.toLowerCase());
-      const matchTab = activeTab === "todas" || e.rota.status === activeTab;
+      const matchTab = activeTab === "todas" || statusEfetivo(e) === activeTab;
       const matchTipo = filterTipo === "todos" || e.tipo_operacao === filterTipo;
       const matchEntregador = filterEntregador === "todos" || e.entregador_id === filterEntregador;
 
@@ -223,17 +233,23 @@ export default function EntregasPage() {
     {
       key: "valor_a_receber",
       header: "Valor de Repasse",
-      cell: (r) =>
-        r.rota.receber_do_cliente ? (
-          <span className="tabular-nums font-medium text-destructive">{fmt(r.rota.valor_a_receber)}</span>
+      cell: (r) => {
+        const rota = r.rota;
+        const temRepasse =
+          rota.receber_do_cliente &&
+          (rota.meio_cobranca_destino === "pix_empresa" ||
+            (rota.meio_cobranca_destino === "dinheiro" && rota.destino_dinheiro === "repassar_empresa"));
+        return temRepasse ? (
+          <span className="tabular-nums font-medium text-destructive">{fmt(rota.valor_a_receber)}</span>
         ) : (
           <span className="text-muted-foreground text-sm">—</span>
-        ),
+        );
+      },
     },
     {
       key: "status",
       header: "Status",
-      cell: (r) => <StatusBadge status={r.rota.status} label={STATUS_ROTA_LABELS[r.rota.status]} />,
+      cell: (r) => <StatusBadge status={statusEfetivo(r)} label={STATUS_ROTA_LABELS[statusEfetivo(r)]} />,
     },
     {
       key: "data_solicitacao",
@@ -276,7 +292,7 @@ export default function EntregasPage() {
       getTipoOperacaoLabel(e.tipo_operacao),
       e.rota.taxa_resolvida != null ? formatCurrency(e.rota.taxa_resolvida) : "—",
       e.rota.receber_do_cliente && e.rota.valor_a_receber != null ? formatCurrency(e.rota.valor_a_receber) : "—",
-      STATUS_ROTA_LABELS[e.rota.status],
+      STATUS_ROTA_LABELS[statusEfetivo(e)],
       e.data_solicitacao ? formatDateBR(e.data_solicitacao) : "—",
     ]);
   const handleExportCSV = () => exportCSV({ title: "Entregas", headers: exportHeaders, rows: buildExportRows(), filename: "entregas" });
@@ -371,7 +387,7 @@ export default function EntregasPage() {
               <div className="rounded-lg border border-border bg-card p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-sm font-medium">{r.codigo}</span>
-                  <StatusBadge status={r.rota.status} label={STATUS_ROTA_LABELS[r.rota.status]} />
+                  <StatusBadge status={statusEfetivo(r)} label={STATUS_ROTA_LABELS[statusEfetivo(r)]} />
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="font-medium">{getClienteNome(r.cliente_id)}</span>
@@ -429,8 +445,8 @@ export default function EntregasPage() {
               <div className="flex items-center justify-between">
                 <span className="font-mono text-sm">{viewEntrega.codigo}</span>
                 <StatusBadge
-                  status={viewEntrega.rota.status}
-                  label={STATUS_ROTA_LABELS[viewEntrega.rota.status]}
+                  status={statusEfetivo(viewEntrega)}
+                  label={STATUS_ROTA_LABELS[statusEfetivo(viewEntrega)]}
                 />
               </div>
               <Separator />

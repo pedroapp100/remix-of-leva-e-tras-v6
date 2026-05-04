@@ -1460,7 +1460,9 @@ export type Database = {
         Row: {
           bairro_destino_id: string
           created_at: string
+          destino_dinheiro: string | null
           id: string
+          meio_cobranca_destino: string | null
           meios_pagamento_operacao: string[]
           observacoes: string | null
           pagamento_operacao: string
@@ -1477,7 +1479,9 @@ export type Database = {
         Insert: {
           bairro_destino_id: string
           created_at?: string
+          destino_dinheiro?: string | null
           id?: string
+          meio_cobranca_destino?: string | null
           meios_pagamento_operacao?: string[]
           observacoes?: string | null
           pagamento_operacao?: string
@@ -1494,7 +1498,9 @@ export type Database = {
         Update: {
           bairro_destino_id?: string
           created_at?: string
+          destino_dinheiro?: string | null
           id?: string
+          meio_cobranca_destino?: string | null
           meios_pagamento_operacao?: string[]
           observacoes?: string | null
           pagamento_operacao?: string

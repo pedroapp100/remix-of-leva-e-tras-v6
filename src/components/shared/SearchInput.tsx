@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -19,24 +19,30 @@ export function SearchInput({
   className,
 }: SearchInputProps) {
   const [internalValue, setInternalValue] = useState(controlledValue || "");
-  const [timer, setTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const displayValue = controlledValue !== undefined ? controlledValue : internalValue;
+  // Sync when the parent resets externally (e.g. "Limpar filtros" sets value to "")
+  useEffect(() => {
+    if (controlledValue !== undefined && controlledValue !== internalValue) {
+      setInternalValue(controlledValue);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controlledValue]);
 
   const handleChange = useCallback(
     (newValue: string) => {
       setInternalValue(newValue);
-      if (timer) clearTimeout(timer);
-      const newTimer = setTimeout(() => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
         onChange?.(newValue);
       }, debounceMs);
-      setTimer(newTimer);
     },
-    [onChange, debounceMs, timer]
+    [onChange, debounceMs]
   );
 
   const handleClear = () => {
     setInternalValue("");
+    if (timerRef.current) clearTimeout(timerRef.current);
     onChange?.("");
   };
 
@@ -46,11 +52,11 @@ export function SearchInput({
       <Input
         type="text"
         placeholder={placeholder}
-        value={displayValue}
+        value={internalValue}
         onChange={(e) => handleChange(e.target.value)}
         className="pl-9 pr-8 h-9"
       />
-      {displayValue && (
+      {internalValue && (
         <button
           onClick={handleClear}
           className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"

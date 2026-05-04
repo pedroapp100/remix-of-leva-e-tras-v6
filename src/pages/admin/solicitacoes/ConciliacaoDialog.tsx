@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import type { Rota } from "@/types/database";
+import type { Rota, PagamentoSolicitacao } from "@/types/database";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFormasPagamento, useBairros } from "@/hooks/useSettings";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -12,7 +12,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CurrencyInput } from "@/components/shared/CurrencyInput";
 import { Plus, Trash2, AlertTriangle, CheckCircle, Info, Store, User } from "lucide-react";
 import { toast } from "sonner";
-import { useCreatePagamentos, useAppendHistorico } from "@/hooks/useSolicitacoes";
+import { useCreatePagamentos, useAppendHistorico, useDeletePagamentosByRota } from "@/hooks/useSolicitacoes";
 import { useClienteSaldoMap, useClientes } from "@/hooks/useClientes";
 
 interface PagamentoLinha {
@@ -23,6 +23,7 @@ interface PagamentoLinha {
 }
 
 const FATURAR_ID = "__faturar__";
+const DEVOLVER_LOJA_ID = "__devolver_loja__";
 
 interface ConciliacaoDialogProps {
   open: boolean;
@@ -34,13 +35,15 @@ interface ConciliacaoDialogProps {
   isEditing?: boolean;
   isConcluding?: boolean;
   isDriverView?: boolean;
+  existingPagamentos?: PagamentoSolicitacao[];
 }
 
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clienteId, solicitacaoId, isEditing = false, isConcluding = false, isDriverView = false }: ConciliacaoDialogProps) {
+export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clienteId, solicitacaoId, isEditing = false, isConcluding = false, isDriverView = false, existingPagamentos = [] }: ConciliacaoDialogProps) {
   const { user } = useAuth();
   const createPagamentosMut = useCreatePagamentos();
+  const deletePagamentosByRotaMut = useDeletePagamentosByRota();
   const appendHistoricoMut = useAppendHistorico();
   const { getClienteSaldo } = useClienteSaldoMap();
   const { data: clientes = [] } = useClientes();
@@ -64,7 +67,17 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
   }, [isPrePago, clienteId, getClienteSaldo, rotas]);
   const [pagamentosPorRota, setPagamentosPorRota] = useState<Record<string, PagamentoLinha[]>>(() => {
     const initial: Record<string, PagamentoLinha[]> = {};
-    rotas.forEach((r) => { initial[r.id] = []; });
+    rotas.forEach((r) => {
+      const existing = existingPagamentos.filter((p) => p.rota_id === r.id);
+      initial[r.id] = existing.length > 0
+        ? existing.map((p) => ({
+            id: p.id,
+            forma_pagamento_id: p.forma_pagamento_id,
+            valor: p.valor,
+            pertence_a: p.pertence_a,
+          }))
+        : [];
+    });
     return initial;
   });
 
@@ -85,7 +98,14 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
   const updatePagamento = (rotaId: string, pagId: string, field: keyof PagamentoLinha, value: string | number) => {
     setPagamentosPorRota((prev) => ({
       ...prev,
-      [rotaId]: (prev[rotaId] || []).map((p) => p.id === pagId ? { ...p, [field]: value } : p),
+      [rotaId]: (prev[rotaId] || []).map((p) => {
+        if (p.id !== pagId) return p;
+        const updated = { ...p, [field]: value };
+        if (field === "forma_pagamento_id" && value === DEVOLVER_LOJA_ID) {
+          updated.pertence_a = "loja";
+        }
+        return updated;
+      }),
     }));
   };
 
@@ -93,7 +113,9 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
   const allPagamentos = Object.values(pagamentosPorRota).flat();
   const totalFaturarCents = allPagamentos.filter((p) => p.forma_pagamento_id === FATURAR_ID && p.pertence_a === "operacao").reduce((s, p) => s + Math.round(p.valor * 100), 0);
   const totalOperacaoCents = allPagamentos.filter((p) => p.pertence_a === "operacao").reduce((s, p) => s + Math.round(p.valor * 100), 0);
-  const totalLojaCents = allPagamentos.filter((p) => p.pertence_a === "loja").reduce((s, p) => s + Math.round(p.valor * 100), 0);
+  const totalDevolvidoCents = allPagamentos.filter((p) => p.forma_pagamento_id === DEVOLVER_LOJA_ID).reduce((s, p) => s + Math.round(p.valor * 100), 0);
+  const totalCreditoLojaCents = allPagamentos.filter((p) => p.pertence_a === "loja" && p.forma_pagamento_id !== DEVOLVER_LOJA_ID).reduce((s, p) => s + Math.round(p.valor * 100), 0);
+  const totalLojaCents = totalCreditoLojaCents + totalDevolvidoCents;
   // Only faturar routes generate an expected taxa; pago_na_hora is collected in cash at destination
   const totalEsperadoTaxasCents = rotas
     .filter((r) => r.pagamento_operacao === "faturar")
@@ -116,6 +138,8 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
 
   const totalOperacao = totalOperacaoCents / 100;
   const totalLoja = totalLojaCents / 100;
+  const totalCreditoLoja = totalCreditoLojaCents / 100;
+  const totalDevolvido = totalDevolvidoCents / 100;
   const totalFaturar = totalFaturarCents / 100;
   const totalEsperadoTaxas = totalEsperadoTaxasCents / 100;
   const totalEsperadoReceber = totalEsperadoReceberCents / 100;
@@ -132,7 +156,7 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
     // Persist payments to DB
     if (solicitacaoId) {
       const persistedPagamentos = allPagamentos
-        .filter((pag) => pag.forma_pagamento_id !== FATURAR_ID)
+        .filter((pag) => pag.forma_pagamento_id !== FATURAR_ID && pag.forma_pagamento_id !== DEVOLVER_LOJA_ID)
         .map((pag) => ({
           solicitacao_id: solicitacaoId,
           rota_id: Object.entries(pagamentosPorRota).find(([, pags]) => pags.some((p) => p.id === pag.id))?.[0] ?? "",
@@ -142,9 +166,25 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
           observacao: null as string | null,
           created_by: null as string | null,
         }));
-      if (persistedPagamentos.length > 0) {
+      if (persistedPagamentos.length > 0 || isEditing) {
         try {
-          await createPagamentosMut.mutateAsync(persistedPagamentos);
+          // When editing, delete existing pagamentos for each affected rota before re-inserting
+          if (isEditing) {
+            const affectedRotaIds = [...new Set(persistedPagamentos.map((p) => p.rota_id).filter(Boolean))];
+            // Also delete for rotas that had existing pagamentos (even if user cleared them)
+            const rotasWithExisting = rotas
+              .filter((r) => existingPagamentos.some((p) => p.rota_id === r.id))
+              .map((r) => r.id);
+            const allRotaIdsToDelete = [...new Set([...affectedRotaIds, ...rotasWithExisting])];
+            await Promise.all(
+              allRotaIdsToDelete.map((rotaId) =>
+                deletePagamentosByRotaMut.mutateAsync({ rotaId, solicitacaoId })
+              )
+            );
+          }
+          if (persistedPagamentos.length > 0) {
+            await createPagamentosMut.mutateAsync(persistedPagamentos);
+          }
         } catch {
           toast.error("Erro ao salvar pagamentos. Tente novamente.");
           return;
@@ -335,6 +375,7 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
                           <SelectContent>
                             {formasAtivas.map((f) => (<SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>))}
                             {isFaturado && <SelectItem value={FATURAR_ID}>Faturar</SelectItem>}
+                            <SelectItem value={DEVOLVER_LOJA_ID}>Dinheiro Devolvido à Loja</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -344,7 +385,7 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
                       </div>
                       <div className="space-y-1">
                         <Label className="text-xs">Pertence a</Label>
-                        <Select value={pag.pertence_a} onValueChange={(v) => updatePagamento(rota.id, pag.id, "pertence_a", v)}>
+                        <Select value={pag.pertence_a} onValueChange={(v) => updatePagamento(rota.id, pag.id, "pertence_a", v)} disabled={pag.forma_pagamento_id === DEVOLVER_LOJA_ID}>
                           <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="operacao">Operação</SelectItem>
@@ -407,7 +448,13 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
                   </>
                 )}
                 <span className="text-muted-foreground">Crédito Loja</span>
-                <span className="tabular-nums text-right">{fmt(totalLoja)} <span className="text-xs text-muted-foreground">/ {fmt(totalEsperadoReceber)}</span></span>
+                <span className="tabular-nums text-right">{fmt(totalCreditoLoja)} <span className="text-xs text-muted-foreground">/ {fmt(totalEsperadoReceber)}</span></span>
+                {totalDevolvido > 0 && (
+                  <>
+                    <span className="text-muted-foreground pl-4">↳ Devolvido à Loja</span>
+                    <span className="tabular-nums text-right">{fmt(totalDevolvido)}</span>
+                  </>
+                )}
               </div>
               <Separator />
               <div className={`flex items-center gap-2 text-sm font-medium ${isBalanced ? "text-emerald-500" : "text-amber-500"}`}>

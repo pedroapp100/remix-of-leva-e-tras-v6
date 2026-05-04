@@ -871,6 +871,13 @@ function EntregaCard({ entrega, expanded, onToggle, isEditing, editValue, canEdi
   );
 }
 
+const MEIO_COBRANCA_LABELS: Record<string, { label: string; className: string }> = {
+  dinheiro:     { label: "Dinheiro",        className: "border-yellow-500/50 text-yellow-600 bg-yellow-500/5" },
+  maquina_loja: { label: "Máquina da Loja", className: "border-blue-500/50 text-blue-600 bg-blue-500/5" },
+  pix_loja:     { label: "PIX da Loja",     className: "border-violet-500/50 text-violet-600 bg-violet-500/5" },
+  pix_empresa:  { label: "PIX Empresa",     className: "border-emerald-500/50 text-emerald-600 bg-emerald-500/5" },
+};
+
 function RotaCard({ rota, index }: { rota: RotaEntregaFatura; index: number }) {
   return (
     <div className="rounded-md border border-border/40 bg-background/50 p-2.5 text-sm">
@@ -885,6 +892,11 @@ function RotaCard({ rota, index }: { rota: RotaEntregaFatura; index: number }) {
               Taxas pagas no ato
             </Badge>
           )}
+          {rota.valor_receber != null && rota.meio_cobranca_destino && MEIO_COBRANCA_LABELS[rota.meio_cobranca_destino] && (
+            <Badge variant="outline" className={`text-[10px] h-5 ${MEIO_COBRANCA_LABELS[rota.meio_cobranca_destino].className}`}>
+              {MEIO_COBRANCA_LABELS[rota.meio_cobranca_destino].label}
+            </Badge>
+          )}
           <Badge variant={rota.status === "concluida" ? "default" : "destructive"} className="text-[10px] h-5">
             {rota.status === "concluida" ? "Concluída" : "Cancelada"}
           </Badge>
@@ -896,12 +908,12 @@ function RotaCard({ rota, index }: { rota: RotaEntregaFatura; index: number }) {
         <span className="flex items-center gap-1 text-xs">
           <DollarSign className="h-3 w-3" />
           Taxa: {formatCurrency(rota.taxa)}
-          {rota.pagamento_operacao === "pago_na_hora" && (
-            <span className="text-amber-600 ml-0.5">(no ato)</span>
-          )}
         </span>
         {rota.valor_receber != null && (
-          <span className="flex items-center gap-1 text-xs text-emerald-500"><DollarSign className="h-3 w-3" />Receber: {formatCurrency(rota.valor_receber)}</span>
+          <span className="flex items-center gap-1 text-xs text-emerald-500">
+            <DollarSign className="h-3 w-3" />
+            Receber: {formatCurrency(rota.valor_receber)}
+          </span>
         )}
       </div>
     </div>

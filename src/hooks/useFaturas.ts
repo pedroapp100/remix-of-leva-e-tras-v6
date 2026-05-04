@@ -246,6 +246,7 @@ export function useEntregasByFatura(faturaId: string) {
           valor_receber: r.receber_do_cliente ? (r.valor_a_receber ?? null) : null,
           status: r.status === "cancelada" ? "cancelada" : "concluida",
           pagamento_operacao: r.pagamento_operacao,
+          meio_cobranca_destino: r.meio_cobranca_destino ?? null,
         }));
 
         return {

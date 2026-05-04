@@ -206,6 +206,8 @@ export default function SolicitacoesPage() {
       regra_preco_id: null,
       pagamento_operacao: r.pagamento_operacao ?? "faturar",
       meios_pagamento_operacao: r.meios_pagamento_operacao ?? [],
+      meio_cobranca_destino: r.meio_cobranca_destino || null,
+      destino_dinheiro: r.destino_dinheiro || null,
       status: isRetroativoConcluida ? "concluida" as const : "ativa" as const,
     }));
 

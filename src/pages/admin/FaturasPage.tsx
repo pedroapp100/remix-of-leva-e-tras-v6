@@ -21,12 +21,14 @@ import { exportCSV, exportPDF } from "@/lib/exportTable";
 import { lazy, Suspense } from "react";
 const FaturaDetailsModal = lazy(() => import("./faturas/FaturaDetailsModal").then(m => ({ default: m.FaturaDetailsModal })));
 
-type TabFilter = "ativas" | "em_aberto" | "vencidas" | "finalizadas";
+type TabFilter = "ativas" | "em_aberto" | "vencidas" | "fechadas" | "finalizadas";
 
 export default function FaturasPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { data: faturas = [] } = useFaturas();
-  const [search, setSearch] = useState(searchParams.get("q") ?? "");
+  const [searchInput, setSearchInput] = useState(searchParams.get("q") ?? "");
+  // Só aplica o filtro com campo vazio (mostra tudo) ou a partir de 4 caracteres
+  const search = searchInput.length === 0 || searchInput.length >= 4 ? searchInput : "";
   const [activeTab, setActiveTab] = useState<TabFilter>((searchParams.get("tab") as TabFilter) ?? "ativas");
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [tipoFilter, setTipoFilter] = useState<string>("todos");
@@ -42,26 +44,28 @@ export default function FaturasPage() {
 
   // ── Single-pass metrics ──
   const metrics = useMemo(() => {
-    let abertas = 0, vencidas = 0, valorVencido = 0, finalizadas = 0, saldoTotal = 0;
+    let abertas = 0, vencidas = 0, valorVencido = 0, fechadas = 0, finalizadas = 0, saldoTotal = 0;
 
     for (const f of faturas) {
       const st = f.status_geral;
       if (st === "Aberta") abertas++;
       else if (st === "Vencida") { vencidas++; valorVencido += f.saldo_liquido ?? 0; }
+      else if (st === "Fechada" || st === "Paga") { fechadas++; }
       else if (st === "Finalizada") { finalizadas++; continue; }
       saldoTotal += f.saldo_liquido ?? 0;
     }
 
-    return { abertas, vencidas, valorVencido, finalizadas, saldoTotal, ativas: abertas + vencidas };
+    return { abertas, vencidas, valorVencido, fechadas, finalizadas, saldoTotal, ativas: abertas + vencidas };
   }, [faturas]);
 
   // ── Filtered data ──
   const filtered = useMemo(() => {
     return faturas.filter((f) => {
       const matchTab =
-        activeTab === "ativas"    ? f.status_geral !== "Finalizada" :
+        activeTab === "ativas"    ? (f.status_geral === "Aberta" || f.status_geral === "Vencida") :
         activeTab === "em_aberto" ? f.status_geral === "Aberta" :
         activeTab === "vencidas"  ? f.status_geral === "Vencida" :
+        activeTab === "fechadas"  ? (f.status_geral === "Fechada" || f.status_geral === "Paga") :
         f.status_geral === "Finalizada";
       const matchSearch =
         f.numero.toLowerCase().includes(search.toLowerCase()) ||
@@ -270,6 +274,12 @@ export default function FaturasPage() {
                   {metrics.abertas}
                 </Badge>
               </TabsTrigger>
+              <TabsTrigger value="fechadas" className="gap-1.5">
+                <FileText className="h-4 w-4" /> Fechadas
+                <Badge variant="secondary" className="ml-1 text-xs h-5 px-1.5">
+                  {metrics.fechadas}
+                </Badge>
+              </TabsTrigger>
               <TabsTrigger value="vencidas" className="gap-1.5">
                 <AlertTriangle className="h-4 w-4" /> Vencidas
                 <Badge variant="secondary" className="ml-1 text-xs h-5 px-1.5 bg-destructive/15 text-destructive">
@@ -288,8 +298,8 @@ export default function FaturasPage() {
           {/* Search + Filters */}
           <div className="flex flex-col sm:flex-row gap-3 flex-wrap items-end">
             <SearchInput
-              value={search}
-              onChange={setSearch}
+              value={searchInput}
+              onChange={setSearchInput}
               placeholder="Buscar por número ou cliente..."
               className="flex-1 min-w-[200px]"
             />

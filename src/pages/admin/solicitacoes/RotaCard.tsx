@@ -166,7 +166,7 @@ export function RotaCard({
           <Input value={rota.responsavel} onChange={(e) => onUpdate(rota.id, "responsavel", e.target.value)} placeholder="Nome" />
         </div>
         <div className="space-y-1">
-          <Label className="text-xs">Telefone *</Label>
+          <Label className="text-xs">Telefone</Label>
           <PhoneInput value={rota.telefone} onChange={(v) => onUpdate(rota.id, "telefone", v)} />
         </div>
       </div>
@@ -310,7 +310,7 @@ export function RotaCard({
                         key={fp.id}
                         variant={selected ? "default" : "outline"}
                         className={`cursor-pointer text-xs transition-colors ${selected ? "" : "opacity-60 hover:opacity-100"}`}
-                        onClick={() => onToggleMeioPagamentoOperacao(rota.id, fp.id)}
+                        onClick={() => onUpdate(rota.id, "meios_pagamento_operacao", [fp.id])}
                       >
                         {fp.name}
                       </Badge>

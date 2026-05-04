@@ -46,6 +46,8 @@ export function rowToRota(row: RotaRow): Rota {
     pagamento_operacao: (row.pagamento_operacao as "faturar" | "pago_na_hora" | "descontar_saldo") ?? "faturar",
     meios_pagamento_operacao: (row.meios_pagamento_operacao as string[]) ?? [],
     status: row.status,
+    meio_cobranca_destino: (row.meio_cobranca_destino as "dinheiro" | "maquina_loja" | "pix_loja" | "pix_empresa" | null) ?? null,
+    destino_dinheiro: (row.destino_dinheiro as "devolver_loja" | "repassar_empresa" | null) ?? null,
   };
 }
 

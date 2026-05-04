@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import type { Rota, PagamentoSolicitacao, Solicitacao } from "@/types/database";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFormasPagamento, useBairros } from "@/hooks/useSettings";
-import { useRotasBySolicitacao, usePagamentosBySolicitacao, useCreatePagamentos, useUpdateSolicitacao, useAppendHistorico } from "@/hooks/useSolicitacoes";
+import { useRotasBySolicitacao, usePagamentosBySolicitacao, useCreatePagamentos, useDeletePagamentosBySolicitacao, useUpdateSolicitacao, useAppendHistorico } from "@/hooks/useSolicitacoes";
 import { useClientes } from "@/hooks/useClientes";
 import { useEntregadores } from "@/hooks/useEntregadores";
 import { useConcluirComCaixa } from "@/hooks/useConcluirComCaixa";
@@ -29,6 +29,7 @@ interface PagamentoLinha {
 }
 
 const FATURAR_ID = "__faturar__";
+const DEVOLVER_LOJA_ID = "__devolver_loja__";
 
 interface AdminConciliacaoDialogProps {
   open: boolean;
@@ -49,6 +50,7 @@ export function AdminConciliacaoDialog({
   const { data: rotas = [] } = useRotasBySolicitacao(solicitacao.id);
   const { data: driverPagamentos = [], isLoading: isLoadingPagamentos } = usePagamentosBySolicitacao(solicitacao.id);
   const createPagamentosMut = useCreatePagamentos();
+  const deletePagamentosMut = useDeletePagamentosBySolicitacao();
   const { data: clientes = [] } = useClientes();
   const { data: entregadores = [] } = useEntregadores();
   const concluirComCaixa = useConcluirComCaixa();
@@ -142,9 +144,14 @@ export function AdminConciliacaoDialog({
   ) => {
     setPagamentosPorRota((prev) => ({
       ...prev,
-      [rotaId]: (prev[rotaId] || []).map((p) =>
-        p.id === pagId ? { ...p, [field]: value } : p
-      ),
+      [rotaId]: (prev[rotaId] || []).map((p) => {
+        if (p.id !== pagId) return p;
+        const updated = { ...p, [field]: value };
+        if (field === "forma_pagamento_id" && value === DEVOLVER_LOJA_ID) {
+          updated.pertence_a = "loja";
+        }
+        return updated;
+      }),
     }));
   };
 
@@ -153,9 +160,13 @@ export function AdminConciliacaoDialog({
   const totalOperacaoCents = allPagamentos
     .filter((p) => p.pertence_a === "operacao")
     .reduce((s, p) => s + Math.round(p.valor * 100), 0);
-  const totalLojaCents = allPagamentos
-    .filter((p) => p.pertence_a === "loja")
+  const totalDevolvidoCents = allPagamentos
+    .filter((p) => p.forma_pagamento_id === DEVOLVER_LOJA_ID)
     .reduce((s, p) => s + Math.round(p.valor * 100), 0);
+  const totalCreditoLojaCents = allPagamentos
+    .filter((p) => p.pertence_a === "loja" && p.forma_pagamento_id !== DEVOLVER_LOJA_ID)
+    .reduce((s, p) => s + Math.round(p.valor * 100), 0);
+  const totalLojaCents = totalCreditoLojaCents + totalDevolvidoCents;
   const totalFaturarCents = allPagamentos
     .filter((p) => p.forma_pagamento_id === FATURAR_ID && p.pertence_a === "operacao")
     .reduce((s, p) => s + Math.round(p.valor * 100), 0);
@@ -183,8 +194,11 @@ export function AdminConciliacaoDialog({
 
   const totalOperacao = totalOperacaoCents / 100;
   const totalLoja = totalLojaCents / 100;
+  const totalCreditoLoja = totalCreditoLojaCents / 100;
+  const totalDevolvido = totalDevolvidoCents / 100;
   const totalFaturar = totalFaturarCents / 100;
   const totalEsperadoTaxas = totalEsperadoTaxasCents / 100;
+  const totalEsperadoOperacao = (totalEsperadoTaxasCents + totalEsperadoPagoNaHoraCents) / 100;
   const totalEsperadoReceber = totalEsperadoReceberCents / 100;
   const diffOperacao = diffOperacaoCents / 100;
   const diffLoja = diffLojaCents / 100;
@@ -206,7 +220,7 @@ export function AdminConciliacaoDialog({
 
     // Save admin-validated payments (exclude FATURAR_ID sentinel — handled by the fatura system)
     const persistedPagamentos = allPagamentos
-      .filter((pag) => pag.forma_pagamento_id !== FATURAR_ID)
+      .filter((pag) => pag.forma_pagamento_id !== FATURAR_ID && pag.forma_pagamento_id !== DEVOLVER_LOJA_ID)
       .map((pag) => ({
       solicitacao_id: solicitacao.id,
       rota_id:
@@ -220,6 +234,7 @@ export function AdminConciliacaoDialog({
       created_by: user?.id ?? null,
     }));
     if (persistedPagamentos.length > 0) {
+      await deletePagamentosMut.mutateAsync(solicitacao.id);
       createPagamentosMut.mutate(persistedPagamentos);
     }
 
@@ -237,11 +252,23 @@ export function AdminConciliacaoDialog({
       }
     } else if (solicitacao.status === "concluida" && cliente?.modalidade === "faturado") {
       // Already concluded + faturado client: call fatura RPC directly (avoid double-caixa)
+      // Inclui rotas 'faturar' e rotas 'pago_na_hora' pagas via maquina_loja —
+      // neste caso a loja ficou com a taxa de operação e deve à empresa.
+      const isFaturavelRota = (r: (typeof rotas)[0]) =>
+        r.pagamento_operacao === "faturar" ||
+        (r.pagamento_operacao === "pago_na_hora" && r.meios_pagamento_operacao?.includes("maquina_loja"));
       const totalTaxas = rotas
-        .filter((r) => r.pagamento_operacao === "faturar")
+        .filter(isFaturavelRota)
         .reduce((s, r) => s + (r.taxa_resolvida ?? 0), 0);
+      // Apenas rotas onde o dinheiro passou pela empresa geram credito_loja.
+      // maquina_loja, pix_loja e dinheiro+devolver_loja → lojista já recebeu direto.
       const totalRecebido = rotas
-        .filter((r) => r.receber_do_cliente)
+        .filter((r) => {
+          if (!r.receber_do_cliente) return false;
+          if (r.meio_cobranca_destino === "pix_empresa") return true;
+          if (r.meio_cobranca_destino === "dinheiro" && r.destino_dinheiro === "repassar_empresa") return true;
+          return false;
+        })
         .reduce((s, r) => s + (r.valor_a_receber ?? 0), 0);
       const activeFatura = faturas.find(
         (f) => f.cliente_id === solicitacao.cliente_id && f.status_geral === "Aberta"
@@ -256,7 +283,7 @@ export function AdminConciliacaoDialog({
           p_total_taxas: totalTaxas,
           p_total_recebido: totalRecebido,
           p_sol_codigo: solicitacao.codigo,
-          p_num_rotas: rotas.filter((r) => r.pagamento_operacao === "faturar").length,
+          p_num_rotas: rotas.filter(isFaturavelRota).length,
         });
         if (!result.success) {
           toast.error(result.error ?? "Erro ao gerar/atualizar fatura.");
@@ -341,8 +368,18 @@ export function AdminConciliacaoDialog({
                 </p>
               </div>
               <div>
-                <span className="text-muted-foreground text-xs">Taxas Esperadas</span>
-                <p className="font-semibold tabular-nums">{fmt(totalEsperadoTaxas)}</p>
+                <span className="text-muted-foreground text-xs">Total Esperado Operação</span>
+                <p className="font-semibold tabular-nums">{fmt(totalEsperadoOperacao)}</p>
+                {totalEsperadoTaxasCents > 0 && totalEsperadoPagoNaHoraCents > 0 && (
+                  <div className="mt-1 space-y-0.5">
+                    <p className="text-[10px] text-muted-foreground tabular-nums">
+                      Via fatura: {fmt(totalEsperadoTaxas)}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground tabular-nums">
+                      Pago na hora: {fmt(totalEsperadoPagoNaHoraCents / 100)}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -539,6 +576,7 @@ export function AdminConciliacaoDialog({
                             {isFaturado && (
                               <SelectItem value={FATURAR_ID}>Faturar</SelectItem>
                             )}
+                            <SelectItem value={DEVOLVER_LOJA_ID}>Dinheiro Devolvido à Loja</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -558,6 +596,7 @@ export function AdminConciliacaoDialog({
                           onValueChange={(v) =>
                             updatePagamento(rota.id, pag.id, "pertence_a", v)
                           }
+                          disabled={pag.forma_pagamento_id === DEVOLVER_LOJA_ID}
                         >
                           <SelectTrigger className="h-9">
                             <SelectValue />
@@ -619,35 +658,49 @@ export function AdminConciliacaoDialog({
             )}
 
             {/* Breakdown */}
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <span className="text-muted-foreground flex items-center gap-1.5">
-                <Building2 className="h-3.5 w-3.5" />
-                Receita Operação
-              </span>
-              <span className="tabular-nums text-right">
-                {fmt(totalOperacao)}{" "}
-                <span className="text-xs text-muted-foreground">
-                  / {fmt(totalEsperadoTaxas)}
+            <div className="space-y-1.5 text-sm">
+              {/* Header */}
+              <div className="grid grid-cols-[1fr_auto_auto] gap-x-4 text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+                <span />
+                <span className="text-right w-24">Conferido</span>
+                <span className="text-right w-24">Esperado</span>
+              </div>
+
+              {/* Receita Operação */}
+              <div className="grid grid-cols-[1fr_auto_auto] gap-x-4 items-center">
+                <span className="text-muted-foreground flex items-center gap-1.5">
+                  <Building2 className="h-3.5 w-3.5" />
+                  Receita Operação
                 </span>
-              </span>
+                <span className="tabular-nums text-right w-24 font-medium">{fmt(totalOperacao)}</span>
+                <span className="tabular-nums text-right w-24 text-muted-foreground">{fmt(totalEsperadoOperacao)}</span>
+              </div>
 
               {isFaturado && totalFaturar > 0 && (
-                <>
+                <div className="grid grid-cols-[1fr_auto_auto] gap-x-4 items-center">
                   <span className="text-muted-foreground pl-5">↳ A Faturar</span>
-                  <span className="tabular-nums text-right">{fmt(totalFaturar)}</span>
-                </>
+                  <span className="tabular-nums text-right w-24 font-medium">{fmt(totalFaturar)}</span>
+                  <span className="w-24" />
+                </div>
               )}
 
-              <span className="text-muted-foreground flex items-center gap-1.5">
-                <Store className="h-3.5 w-3.5" />
-                Crédito Loja
-              </span>
-              <span className="tabular-nums text-right">
-                {fmt(totalLoja)}{" "}
-                <span className="text-xs text-muted-foreground">
-                  / {fmt(totalEsperadoReceber)}
+              {/* Crédito Loja */}
+              <div className="grid grid-cols-[1fr_auto_auto] gap-x-4 items-center">
+                <span className="text-muted-foreground flex items-center gap-1.5">
+                  <Store className="h-3.5 w-3.5" />
+                  Crédito Loja
                 </span>
-              </span>
+                <span className="tabular-nums text-right w-24 font-medium">{fmt(totalCreditoLoja)}</span>
+                <span className="tabular-nums text-right w-24 text-muted-foreground">{fmt(totalEsperadoReceber)}</span>
+              </div>
+
+              {totalDevolvido > 0 && (
+                <div className="grid grid-cols-[1fr_auto_auto] gap-x-4 items-center">
+                  <span className="text-muted-foreground pl-5">↳ Devolvido à Loja</span>
+                  <span className="tabular-nums text-right w-24 font-medium">{fmt(totalDevolvido)}</span>
+                  <span className="w-24" />
+                </div>
+              )}
             </div>
 
             <Separator />

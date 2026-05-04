@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState, useCallback, lazy, Suspense } from "react";
 import type { Solicitacao, Rota, PagamentoSolicitacao } from "@/types/database";
 import { STATUS_SOLICITACAO_LABELS } from "@/types/database";
 import { TipoOperacaoBadge } from "@/components/shared/TipoOperacaoBadge";
@@ -9,11 +9,16 @@ import { useAdminProfiles } from "@/hooks/useUsers";
 import { useBairros, useRegioes, useFormasPagamento } from "@/hooks/useSettings";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { MapPin, Phone, User, Clock, DollarSign, MessageCircle, Store, Building2, Plus, Truck, CheckCircle, Receipt, X, XCircle, ArrowRight } from "lucide-react";
+import { MapPin, Phone, User, Clock, DollarSign, MessageCircle, Store, Building2, Plus, Truck, CheckCircle, Receipt, X, XCircle, ArrowRight, Coins, CheckCircle2, CheckCheck, ChevronDown } from "lucide-react";
 
 const FATURAR_ID = "__faturar__";
+
+const ConciliacaoDialogLazy = lazy(() =>
+  import("@/pages/admin/solicitacoes/ConciliacaoDialog").then((m) => ({ default: m.ConciliacaoDialog }))
+);
 
 const HISTORICO_TIPO_CONFIG: Record<string, { icon: React.ElementType; color: string }> = {
   criacao:          { icon: Plus,         color: "text-emerald-500" },
@@ -39,6 +44,7 @@ interface ViewSolicitacaoDialogProps {
   solicitacao: Solicitacao | null;
   onClose: () => void;
   isDriverView?: boolean;
+  onConcluir?: () => void;
 }
 
 const fmt = (v: number | null | undefined) => v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
@@ -227,7 +233,7 @@ function RotaConciliationCard({ rota, pagamentos, isFaturado, getBairroName, get
 
 /* ── Main Dialog ── */
 
-export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = false }: ViewSolicitacaoDialogProps) {
+export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = false, onConcluir }: ViewSolicitacaoDialogProps) {
   const { data: rotas = [] } = useRotasBySolicitacao(solicitacao?.id ?? "");
   const { data: allPagamentos = [] } = usePagamentosBySolicitacao(solicitacao?.id ?? "");
   const { data: historicoRows = [] } = useHistoricoBySolicitacao(solicitacao?.id ?? "");
@@ -276,10 +282,49 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
     return { totalTaxas, totalLoja, totalEntregadorRecebe };
   }, [isConcluida, rotas, isFaturado, isPrePago]);
 
+  // Per-rota registration state (driver view) — merged: BD real data + local session
+  const rotasComPagamentoBD = useMemo(
+    () => new Set(allPagamentos.map((p) => p.rota_id).filter((id): id is string => !!id)),
+    [allPagamentos]
+  );
+  const [rotasRegistradasLocal, setRotasRegistradasLocal] = useState<Set<string>>(new Set());
+  const rotasRegistradas = useMemo(
+    () => new Set([...rotasComPagamentoBD, ...rotasRegistradasLocal]),
+    [rotasComPagamentoBD, rotasRegistradasLocal]
+  );
+  const [rotaSelecionada, setRotaSelecionada] = useState<Rota | null>(null);
+  const [expandedRotas, setExpandedRotas] = useState<Set<string>>(new Set());
+  const [rotasFaturadaVisitadas, setRotasFaturadaVisitadas] = useState<Set<string>>(new Set());
+  const [historicoAberto, setHistoricoAberto] = useState(!isDriverView);
+  const [cabecalhoAberto, setCabecalhoAberto] = useState(!isDriverView);
+  const marcarRotaFaturadaConcluida = useCallback((rotaId: string) => {
+    setRotasFaturadaVisitadas((prev) => new Set([...prev, rotaId]));
+    setExpandedRotas((prev) => { const next = new Set(prev); next.delete(rotaId); return next; });
+  }, []);
+  const toggleExpandRota = useCallback((rotaId: string) => {
+    setExpandedRotas((prev) => {
+      const next = new Set(prev);
+      if (next.has(rotaId)) next.delete(rotaId); else next.add(rotaId);
+      return next;
+    });
+  }, []);
+  const marcarRotaRegistrada = useCallback((rotaId: string) => {
+    setRotasRegistradasLocal((prev) => new Set([...prev, rotaId]));
+    setExpandedRotas((prev) => { const next = new Set(prev); next.delete(rotaId); return next; });
+  }, []);
+
   if (!solicitacao) return null;
 
+  const rotasObrigatorias = rotas.filter(
+    (r) => r.pagamento_operacao === "pago_na_hora" || r.receber_do_cliente
+  );
+  const qtdRegistradas = rotasObrigatorias.filter((r) => rotasRegistradas.has(r.id)).length;
+  const todasRegistradas = rotasObrigatorias.length === 0 || qtdRegistradas === rotasObrigatorias.length;
+  const rotasFaltando = rotasObrigatorias.filter((r) => !rotasRegistradas.has(r.id));
+
   return (
-    <Dialog open={!!solicitacao} onOpenChange={(open) => !open && onClose()}>
+    <>
+      <Dialog open={!!solicitacao} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex flex-col gap-1">
@@ -292,23 +337,17 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          {/* Info Geral */}
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <span className="text-muted-foreground">Cliente</span>
-              <p className="font-medium flex items-center gap-1.5">
-                {clienteName}
-                {isFaturado && <Badge variant="default" className="text-[10px] px-1.5 py-0">Faturado</Badge>}
-                {isPrePago && <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Pré-pago</Badge>}
-              </p>
-            </div>
-            <div><span className="text-muted-foreground">Entregador</span><p className="font-medium">{entregadorName}</p></div>
-            <div><span className="text-muted-foreground">Tipo</span><p><TipoOperacaoBadge tipoOperacao={solicitacao.tipo_operacao} /></p></div>
-            {!isDriverView && (
-              <div><span className="text-muted-foreground">Taxas</span><p className="font-medium tabular-nums">{fmt(solicitacao.valor_total_taxas)}</p></div>
-            )}
+          {/* Info Geral — sempre visível */}
+          <div className="text-sm">
+            <span className="text-muted-foreground">Cliente</span>
+            <p className="font-medium flex items-center gap-1.5">
+              {clienteName}
+              {isFaturado && <Badge variant="default" className="text-[10px] px-1.5 py-0">Faturado</Badge>}
+              {isPrePago && <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Pré-pago</Badge>}
+            </p>
           </div>
 
+          {/* Ponto de Coleta — sempre visível */}
           {solicitacao.tipo_coleta === "cliente_loja" ? (
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div>
@@ -335,17 +374,42 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
             </div>
           )}
 
-          <div className="grid grid-cols-3 gap-3 text-sm">
-            <div><span className="text-muted-foreground">Criação</span><p className="tabular-nums">{fmtDate(solicitacao.data_solicitacao)}</p></div>
-            <div><span className="text-muted-foreground">Início</span><p className="tabular-nums">{fmtDate(solicitacao.data_inicio)}</p></div>
-            <div><span className="text-muted-foreground">Conclusão</span><p className="tabular-nums">{fmtDate(solicitacao.data_conclusao)}</p></div>
-          </div>
+          {/* Botão toggle — só para entregador */}
+          {isDriverView && (
+            <button
+              type="button"
+              onClick={() => setCabecalhoAberto((v) => !v)}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${cabecalhoAberto ? "rotate-180" : ""}`} />
+              {cabecalhoAberto ? "Ocultar detalhes" : "Ver mais detalhes da entrega"}
+            </button>
+          )}
 
-          {solicitacao.justificativa && (
-            <div className="text-sm rounded-md border border-destructive/30 bg-destructive/5 p-3">
-              <span className="text-muted-foreground font-medium">Justificativa</span>
-              <p>{solicitacao.justificativa}</p>
-            </div>
+          {/* Informações secundárias — retraídas para entregador */}
+          {(!isDriverView || cabecalhoAberto) && (
+            <>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div><span className="text-muted-foreground">Entregador</span><p className="font-medium">{entregadorName}</p></div>
+                <div><span className="text-muted-foreground">Tipo</span><p><TipoOperacaoBadge tipoOperacao={solicitacao.tipo_operacao} /></p></div>
+                {!isDriverView && (
+                  <div><span className="text-muted-foreground">Taxas</span><p className="font-medium tabular-nums">{fmt(solicitacao.valor_total_taxas)}</p></div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-3 gap-3 text-sm">
+                <div><span className="text-muted-foreground">Criação</span><p className="tabular-nums">{fmtDate(solicitacao.data_solicitacao)}</p></div>
+                <div><span className="text-muted-foreground">Início</span><p className="tabular-nums">{fmtDate(solicitacao.data_inicio)}</p></div>
+                <div><span className="text-muted-foreground">Conclusão</span><p className="tabular-nums">{fmtDate(solicitacao.data_conclusao)}</p></div>
+              </div>
+
+              {solicitacao.justificativa && (
+                <div className="text-sm rounded-md border border-destructive/30 bg-destructive/5 p-3">
+                  <span className="text-muted-foreground font-medium">Justificativa</span>
+                  <p>{solicitacao.justificativa}</p>
+                </div>
+              )}
+            </>
           )}
 
           <Separator />
@@ -354,18 +418,98 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
           <div>
             <h4 className="text-sm font-semibold mb-3">Rotas ({rotas.length})</h4>
             <div className="space-y-3">
-              {rotas.map((rota, i) => (
-                <div key={rota.id} className="rounded-lg border border-border p-3 space-y-3 text-sm">
+              {rotas.map((rota, i) => {
+                const temCobranca = rota.pagamento_operacao !== "faturar" || rota.receber_do_cliente;
+                const isFaturadaSemCobrar = isDriverView && !temCobranca;
+                const isRegistrada = isDriverView && temCobranca && rotasRegistradas.has(rota.id);
+                const isMarcadaConcluida = isFaturadaSemCobrar && rotasFaturadaVisitadas.has(rota.id);
+                const isVerde = isRegistrada || isMarcadaConcluida;
+                const isExpandable = temCobranca || isMarcadaConcluida;
+                const isExpanded = !isVerde || expandedRotas.has(rota.id);
+                return (
+                <div
+                  key={rota.id}
+                  className={`rounded-lg border p-3 space-y-3 text-sm transition-colors duration-200 ${
+                    isVerde ? "border-emerald-500/30 bg-emerald-500/5" : "border-border"
+                  }`}
+                >
                   {/* Header */}
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium">
-                      Rota {i + 1}: {getBairroName(rota.bairro_destino_id)} → {rota.responsavel}
-                    </span>
-                    <Badge variant={rota.status === "concluida" ? "default" : rota.status === "cancelada" ? "destructive" : "outline"}>
-                      {rota.status}
-                    </Badge>
+                  <div
+                    className={`flex items-center justify-between gap-2 ${isDriverView && isExpandable ? "cursor-pointer select-none" : ""}`}
+                    onClick={() => isDriverView && isExpandable && toggleExpandRota(rota.id)}
+                  >
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <span className="font-medium truncate">
+                        Rota {i + 1}: {getBairroName(rota.bairro_destino_id)} → {rota.responsavel}
+                      </span>
+                      {isMarcadaConcluida && (
+                        <span className="inline-flex items-center gap-1 shrink-0 text-[10px] font-semibold text-emerald-500 bg-emerald-500/10 border border-emerald-500/25 rounded-full px-2 py-0.5">
+                          <CheckCircle2 className="h-3 w-3" /> Concluída
+                        </span>
+                      )}
+                      {isRegistrada && (
+                        <span className="inline-flex items-center gap-1 shrink-0 text-[10px] font-semibold text-emerald-500 bg-emerald-500/10 border border-emerald-500/25 rounded-full px-2 py-0.5">
+                          <CheckCircle2 className="h-3 w-3" /> Recebido
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {/* Botão marcar faturada como entregue */}
+                      {isFaturadaSemCobrar && !isConcluida && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); if (!isMarcadaConcluida) marcarRotaFaturadaConcluida(rota.id); }}
+                              disabled={isMarcadaConcluida}
+                              className={`inline-flex items-center justify-center rounded-full h-6 w-6 transition-colors ${
+                                isMarcadaConcluida
+                                  ? "text-emerald-500 cursor-default"
+                                  : "text-muted-foreground hover:text-emerald-500 hover:bg-emerald-500/10"
+                              }`}
+                            >
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">
+                            {isMarcadaConcluida ? "Entregue" : "Marcar como entregue"}
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                      {/* Ícone de conciliação */}
+                      {isDriverView && temCobranca && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); setRotaSelecionada(rota); }}
+                              className={`inline-flex items-center justify-center rounded-full h-6 w-6 transition-colors ${
+                                isRegistrada
+                                  ? "text-emerald-500 hover:bg-emerald-500/10"
+                                  : "text-amber-500 hover:bg-amber-500/10 animate-pulse"
+                              }`}
+                            >
+                              <Coins className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">
+                            {isRegistrada ? "Visualizar / Corrigir recebimento" : "Registrar recebimento"}
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                      {isDriverView && isExpandable && (
+                        <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />
+                      )}
+                      {!isDriverView && (
+                        <Badge variant={rota.status === "concluida" ? "default" : rota.status === "cancelada" ? "destructive" : "outline"}>
+                          {rota.status}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
 
+                  {isExpanded && (
+                  <>
                   {/* ── Modo Operacional (pendente/aceita/em_andamento) ── */}
                   {!isConcluida && !isDriverView && (
                     <>
@@ -420,6 +564,26 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                           </div>
                         </div>
                       )}
+
+                      {/* faturada sem cobrança: card informativo + botão marcar entregue */}
+                      {isFaturadaSemCobrar && (
+                        <div className="rounded-md border border-border bg-muted/30 p-3 flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Receipt className="h-3.5 w-3.5 shrink-0" />
+                            <span>Faturado — sem cobrança no destino</span>
+                          </div>
+                          {!isMarcadaConcluida && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="shrink-0 border-emerald-500/50 text-emerald-600 hover:bg-emerald-500/10 text-xs h-7 px-2"
+                              onClick={() => marcarRotaFaturadaConcluida(rota.id)}
+                            >
+                              <CheckCircle2 className="h-3 w-3 mr-1" /> Marcar entregue
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </>
                   )}
 
@@ -438,7 +602,7 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                     <div className="rounded-md border border-border bg-muted/30 p-3 space-y-1.5">
                       <span className="flex items-center gap-1.5 font-medium text-xs uppercase tracking-wide">
                         <Store className="h-3.5 w-3.5 text-status-pending" />
-                        {rota.pagamento_operacao === "pago_na_hora" ? "Cobrado no Destino" : "Cobrar do Cliente"}
+                        {rota.pagamento_operacao === "pago_na_hora" ? "Cobrado no Destino" : "Cobrado do Cliente"}
                       </span>
                       <div className="flex items-center justify-between text-sm font-semibold">
                         <span className="text-muted-foreground">
@@ -452,14 +616,66 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                           )}
                         </span>
                       </div>
+                      {/* Pagamentos registrados */}
+                      {(pagamentosPorRota[rota.id] || []).length > 0 && (
+                        <div className="flex flex-wrap gap-1 pt-0.5">
+                          {(pagamentosPorRota[rota.id] || []).map((p) => (
+                            <Badge key={p.id} variant="secondary" className="text-[10px] px-1.5 py-0">
+                              {getFormaPagamentoName(p.forma_pagamento_id)}: {fmt(p.valor)}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                      {/* Botão editar/visualizar conciliação */}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full mt-1 border-amber-500/50 text-amber-600 hover:bg-amber-500/10"
+                        onClick={() => setRotaSelecionada(rota)}
+                      >
+                        <Coins className="h-3.5 w-3.5 mr-1.5" />
+                        {(pagamentosPorRota[rota.id] || []).length > 0 ? "Visualizar / Corrigir conciliação" : "Registrar recebimento"}
+                      </Button>
                     </div>
                   )}
 
                   {rota.observacoes && <p className="text-xs text-muted-foreground italic">{rota.observacoes}</p>}
+                  </>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
+
+          {/* Progresso + botão concluir — visão entregador, não concluída */}
+          {!isConcluida && isDriverView && onConcluir && (
+            <>
+              <Separator />
+              {rotasObrigatorias.length > 0 && (
+                <div className={`flex items-center gap-1.5 text-xs ${todasRegistradas ? "text-emerald-500" : "text-amber-500"}`}>
+                  {todasRegistradas ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Coins className="h-3.5 w-3.5" />}
+                  <span className="tabular-nums">
+                    {qtdRegistradas}/{rotasObrigatorias.length} rota{rotasObrigatorias.length !== 1 ? "s" : ""} com recebimento registrado
+                  </span>
+                </div>
+              )}
+              <div className="flex justify-end">
+                <Button
+                  onClick={onConcluir}
+                  disabled={!todasRegistradas}
+                  className="bg-status-completed hover:bg-status-completed/90 text-white w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <CheckCheck className="h-4 w-4 mr-1.5" /> Concluir Entrega
+                  {!todasRegistradas && rotasFaltando.length > 0 && (
+                    <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 h-4">
+                      {rotasFaltando.length} pendente{rotasFaltando.length !== 1 ? "s" : ""}
+                    </Badge>
+                  )}
+                </Button>
+              </div>
+            </>
+          )}
 
           {/* Resumo de Conciliação (só para concluída) */}
           {isConcluida && conciliacao && !isDriverView && (
@@ -517,44 +733,83 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
 
           {/* Histórico */}
           <div>
-            <h4 className="text-sm font-semibold mb-3">Histórico</h4>
-            {historicoRows.length === 0 ? (
-              <p className="text-sm text-muted-foreground italic">Nenhum registro de histórico.</p>
-            ) : (
-              <div className="space-y-0">
-                {historicoRows.map((ev, idx) => {
-                  const userName = ev.usuario_id
-                    ? (adminProfiles.find((p) => p.id === ev.usuario_id)?.nome
-                      ?? entregadores.find((e) => e.profile_id === ev.usuario_id)?.nome
-                      ?? null)
-                    : null;
-                  const config = HISTORICO_TIPO_CONFIG[ev.tipo] ?? { icon: Clock, color: "text-muted-foreground" };
-                  const Icon = config.icon;
-                  const isLast = idx === historicoRows.length - 1;
-                  return (
-                    <div key={ev.id} className="flex items-start gap-3 text-sm">
-                      {/* icon + connector */}
-                      <div className="flex flex-col items-center shrink-0">
-                        <div className={`mt-0.5 h-6 w-6 rounded-full flex items-center justify-center bg-muted/50 border border-border/50 ${config.color}`}>
-                          <Icon className="h-3 w-3" />
+            <button
+              type="button"
+              onClick={() => setHistoricoAberto((v) => !v)}
+              className="w-full flex items-center justify-between rounded-lg border border-border bg-muted/20 px-3 py-2.5 text-sm font-semibold hover:bg-muted/40 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                <span>Histórico</span>
+                {historicoRows.length > 0 && (
+                  <span className="text-xs font-normal text-muted-foreground">&middot; {historicoRows.length} {historicoRows.length === 1 ? "registro" : "registros"}</span>
+                )}
+              </div>
+              <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${historicoAberto ? "rotate-180" : ""}`} />
+            </button>
+
+            {historicoAberto && (
+              <div className="mt-3">
+                {historicoRows.length === 0 ? (
+                  <p className="text-sm text-muted-foreground italic px-1">Nenhum registro de histórico.</p>
+                ) : (
+                  <div className="space-y-0">
+                    {historicoRows.map((ev, idx) => {
+                      const userName = ev.usuario_id
+                        ? (adminProfiles.find((p) => p.id === ev.usuario_id)?.nome
+                          ?? entregadores.find((e) => e.profile_id === ev.usuario_id)?.nome
+                          ?? null)
+                        : null;
+                      const config = HISTORICO_TIPO_CONFIG[ev.tipo] ?? { icon: Clock, color: "text-muted-foreground" };
+                      const Icon = config.icon;
+                      const isLast = idx === historicoRows.length - 1;
+                      return (
+                        <div key={ev.id} className="flex items-start gap-3 text-sm">
+                          {/* icon + connector */}
+                          <div className="flex flex-col items-center shrink-0">
+                            <div className={`mt-0.5 h-6 w-6 rounded-full flex items-center justify-center bg-muted/50 border border-border/50 ${config.color}`}>
+                              <Icon className="h-3 w-3" />
+                            </div>
+                            {!isLast && <div className="w-px flex-1 min-h-[12px] bg-border/40 my-0.5" />}
+                          </div>
+                          {/* content */}
+                          <div className="pb-3">
+                            <p className="leading-snug">{ev.descricao}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {fmtDate(ev.created_at)}{userName ? ` · ${userName}` : ""}
+                            </p>
+                          </div>
                         </div>
-                        {!isLast && <div className="w-px flex-1 min-h-[12px] bg-border/40 my-0.5" />}
-                      </div>
-                      {/* content */}
-                      <div className={`pb-3 ${isLast ? "" : ""}`}>
-                        <p className="leading-snug">{ev.descricao}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {fmtDate(ev.created_at)}{userName ? ` · ${userName}` : ""}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
           </div>
         </div>
       </DialogContent>
     </Dialog>
+
+    {/* Single-rota mini-dialog */}
+    {rotaSelecionada && (
+      <Suspense fallback={null}>
+        <ConciliacaoDialogLazy
+          open={!!rotaSelecionada}
+          onOpenChange={(open) => !open && setRotaSelecionada(null)}
+          rotas={[rotaSelecionada]}
+          solicitacaoId={solicitacao?.id}
+          clienteId={solicitacao?.cliente_id}
+          isConcluding={false}
+          isDriverView
+          isEditing={rotasComPagamentoBD.has(rotaSelecionada.id)}
+          existingPagamentos={allPagamentos.filter((p) => p.rota_id === rotaSelecionada.id)}
+          onConcluir={() => { marcarRotaRegistrada(rotaSelecionada.id); setRotaSelecionada(null); }}
+        />
+      </Suspense>
+    )}
+
+
+    </>
   );
 }

@@ -25,9 +25,7 @@ import { useEntregadorId } from "@/hooks/useEntregadorId";
 const ViewSolicitacaoDialog = lazy(() =>
   import("@/pages/admin/solicitacoes/ViewSolicitacaoDialog").then((m) => ({ default: m.ViewSolicitacaoDialog }))
 );
-const ConciliacaoDialog = lazy(() =>
-  import("@/pages/admin/solicitacoes/ConciliacaoDialog").then((m) => ({ default: m.ConciliacaoDialog }))
-);
+
 
 const fmt = (v: number | null | undefined) =>
   v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
@@ -54,7 +52,6 @@ export default function EntregadorSolicitacoesPage() {
   const [activeTab, setActiveTab] = useState("todas");
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [viewSolicitacao, setViewSolicitacao] = useState<Solicitacao | null>(null);
-  const [conciliacaoTarget, setConciliacaoTarget] = useState<Solicitacao | null>(null);
 
   const filtered = useMemo(() => {
     return solicitacoes.filter((s) => {
@@ -175,7 +172,7 @@ export default function EntregadorSolicitacoesPage() {
           <ActionButton tooltip="Iniciar corrida" icon={Play} onClick={() => handleStart(sol)} variant="success" />
         )}
         {sol.status === "em_andamento" && (
-          <ActionButton tooltip="Concluir & Conciliar" icon={CheckCheck} onClick={() => setConciliacaoTarget(sol)} variant="success" />
+          <ActionButton tooltip="Concluir & Conciliar" icon={CheckCheck} onClick={() => setViewSolicitacao(sol)} variant="success" />
         )}
       </div>
     </TooltipProvider>
@@ -230,8 +227,8 @@ export default function EntregadorSolicitacoesPage() {
 
   return (
     <PageContainer title="Solicitações" subtitle="Gerencie suas solicitações de entrega.">
-      {/* Metrics */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Metrics — hidden on mobile */}
+      <div className="hidden sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard title="Aceitas" value={metrics.aceitas} icon={ClipboardList} />
         <MetricCard title="Em Andamento" value={metrics.emAndamento} icon={Truck} />
         <MetricCard title="Concluídas Hoje" value={metrics.concluidasHoje} icon={CheckCircle} />
@@ -299,22 +296,15 @@ export default function EntregadorSolicitacoesPage() {
 
       {/* Dialogs */}
       <Suspense fallback={null}>
-        <ViewSolicitacaoDialog solicitacao={viewSolicitacao} onClose={() => setViewSolicitacao(null)} isDriverView />
-        {conciliacaoTarget && (
-          <ConciliacaoDialog
-            open={!!conciliacaoTarget}
-            onOpenChange={(open) => !open && setConciliacaoTarget(null)}
-            rotas={getRotasBySolicitacao(conciliacaoTarget.id)}
-            clienteId={conciliacaoTarget.cliente_id}
-            solicitacaoId={conciliacaoTarget.id}
-            isConcluding={conciliacaoTarget.status === "em_andamento"}
-            isDriverView
-            onConcluir={() => {
-              handleConcluir(conciliacaoTarget);
-              setConciliacaoTarget(null);
-            }}
-          />
-        )}
+        <ViewSolicitacaoDialog
+          solicitacao={viewSolicitacao}
+          onClose={() => setViewSolicitacao(null)}
+          isDriverView
+          onConcluir={viewSolicitacao ? () => {
+            handleConcluir(viewSolicitacao);
+            setViewSolicitacao(null);
+          } : undefined}
+        />
       </Suspense>
     </PageContainer>
   );

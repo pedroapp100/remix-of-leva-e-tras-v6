@@ -258,6 +258,8 @@ export interface Rota {
   pagamento_operacao: "faturar" | "pago_na_hora" | "descontar_saldo";
   meios_pagamento_operacao: string[];
   status: "ativa" | "concluida" | "cancelada";
+  meio_cobranca_destino?: "dinheiro" | "maquina_loja" | "pix_loja" | "pix_empresa" | null;
+  destino_dinheiro?: "devolver_loja" | "repassar_empresa" | null;
 }
 
 export interface PagamentoSolicitacao {
@@ -383,6 +385,7 @@ export interface RotaEntregaFatura {
   valor_receber: number | null;
   status: "concluida" | "cancelada";
   pagamento_operacao: "faturar" | "pago_na_hora" | "descontar_saldo";
+  meio_cobranca_destino: "dinheiro" | "maquina_loja" | "pix_loja" | "pix_empresa" | null;
 }
 
 export interface EntregaFatura {

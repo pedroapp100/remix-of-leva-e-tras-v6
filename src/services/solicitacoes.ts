@@ -314,6 +314,22 @@ export async function createPagamentos(
   return data as PagamentoRow[];
 }
 
+export async function deletePagamentosBySolicitacao(solId: string): Promise<void> {
+  const { error } = await supabase
+    .from("pagamentos_solicitacao")
+    .delete()
+    .eq("solicitacao_id", solId);
+  if (error) throw new Error(error.message);
+}
+
+export async function deletePagamentosByRota(rotaId: string): Promise<void> {
+  const { error } = await supabase
+    .from("pagamentos_solicitacao")
+    .delete()
+    .eq("rota_id", rotaId);
+  if (error) throw new Error(error.message);
+}
+
 // ── Histórico ─────────────────────────────────────────────────────────────────
 
 export async function fetchHistoricoBySolicitacao(

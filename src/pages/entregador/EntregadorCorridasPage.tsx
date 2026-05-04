@@ -14,19 +14,11 @@ import { useBairros } from "@/hooks/useSettings";
 import { STATUS_SOLICITACAO_LABELS } from "@/types/database";
 import { TipoOperacaoBadge } from "@/components/shared/TipoOperacaoBadge";
 import type { Solicitacao } from "@/types/database";
-import {
-  Truck, Play, CheckCheck, MapPin, Package,
-  ClipboardList, Eye, Navigation
-} from "lucide-react";
+import { Truck, Play, CheckCheck, MapPin, Package, ClipboardList, Eye, Navigation } from "lucide-react";
 import { ViewSolicitacaoDialog } from "@/pages/admin/solicitacoes/ViewSolicitacaoDialog";
 import { toast } from "sonner";
 import { sendNotificationToRole } from "@/services/notifications";
-import { lazy, Suspense } from "react";
 import { useEntregadorId } from "@/hooks/useEntregadorId";
-
-const ConciliacaoDialog = lazy(() =>
-  import("@/pages/admin/solicitacoes/ConciliacaoDialog").then((m) => ({ default: m.ConciliacaoDialog }))
-);
 
 const fmt = (v: number | null | undefined) =>
   v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
@@ -47,7 +39,6 @@ export default function EntregadorCorridasPage() {
   const getBairroNome = (id: string) => bairros.find((b) => b.id === id)?.nome ?? id;
   const [activeTab, setActiveTab] = useState<"ativas" | "todas">("ativas");
   const [viewSol, setViewSol] = useState<Solicitacao | null>(null);
-  const [conciliacaoTarget, setConciliacaoTarget] = useState<Solicitacao | null>(null);
 
   const filtered = useMemo(() => {
     if (activeTab === "ativas") {
@@ -190,25 +181,32 @@ export default function EntregadorCorridasPage() {
 
                     {/* Rotas resumo */}
                     {rotas.length > 0 && (
-                      <div className="grid gap-2 sm:grid-cols-2 mb-3">
-                        {rotas.map((rota) => (
-                          <div key={rota.id} className="flex items-center gap-2 text-sm rounded-md border border-border/60 px-3 py-2 bg-muted/20">
-                            <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                            <span className="truncate font-medium">{getBairroNome(rota.bairro_destino_id)}</span>
-                            <span className="text-muted-foreground">•</span>
-                            <span className="text-muted-foreground truncate">{rota.responsavel}</span>
-                            {rota.pagamento_operacao === "pago_na_hora" && (
-                              <Badge variant="outline" className="ml-auto shrink-0 text-[10px] border-amber-500 text-amber-600 px-1.5">
-                                Cobrar: {fmt((rota.taxa_resolvida ?? 0) + (rota.receber_do_cliente ? (rota.valor_a_receber ?? 0) : 0))}
-                              </Badge>
-                            )}
-                            {rota.pagamento_operacao !== "pago_na_hora" && rota.receber_do_cliente && rota.valor_a_receber && (
-                              <Badge variant="outline" className="ml-auto text-xs shrink-0">
-                                Cobrar: {fmt(rota.valor_a_receber)}
-                              </Badge>
-                            )}
-                          </div>
-                        ))}
+                      <div className="grid gap-1.5 sm:grid-cols-2 mb-3">
+                        {rotas.map((rota) => {
+                          const valorACobrar =
+                            rota.pagamento_operacao === "pago_na_hora"
+                              ? (rota.taxa_resolvida ?? 0) + (rota.receber_do_cliente ? (rota.valor_a_receber ?? 0) : 0)
+                              : rota.receber_do_cliente
+                              ? (rota.valor_a_receber ?? 0)
+                              : 0;
+                          return (
+                            <div
+                              key={rota.id}
+                              className="flex items-center gap-2 text-sm rounded-md border border-border/60 bg-muted/10 px-3 py-2"
+                            >
+                              <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                              <div className="flex-1 min-w-0">
+                                <span className="block truncate font-medium">{getBairroNome(rota.bairro_destino_id)}</span>
+                                <span className="block text-[11px] text-muted-foreground truncate">{rota.responsavel}</span>
+                              </div>
+                              {valorACobrar > 0 && (
+                                <Badge variant="outline" className="shrink-0 text-[10px] px-1.5 border-amber-500 text-amber-600">
+                                  {fmt(valorACobrar)}
+                                </Badge>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
 
@@ -223,7 +221,11 @@ export default function EntregadorCorridasPage() {
                         </Button>
                       )}
                       {sol.status === "em_andamento" && (
-                        <Button size="sm" onClick={() => setConciliacaoTarget(sol)} className="bg-status-completed hover:bg-status-completed/90 text-white">
+                        <Button
+                          size="sm"
+                          onClick={() => setViewSol(sol)}
+                          className="bg-status-completed hover:bg-status-completed/90 text-white"
+                        >
                           <CheckCheck className="h-4 w-4 mr-1.5" /> Concluir & Conciliar
                         </Button>
                       )}
@@ -237,22 +239,14 @@ export default function EntregadorCorridasPage() {
       </Card>
 
       {/* View Dialog */}
-      <ViewSolicitacaoDialog solicitacao={viewSol} onClose={() => setViewSol(null)} isDriverView />
+      <ViewSolicitacaoDialog
+        solicitacao={viewSol}
+        onClose={() => setViewSol(null)}
+        isDriverView
+        onConcluir={viewSol?.status === "em_andamento" ? () => { handleConcluir(viewSol!); setViewSol(null); } : undefined}
+      />
 
-      {/* Conciliação Dialog */}
-      {conciliacaoTarget && (
-        <Suspense fallback={null}>
-          <ConciliacaoDialog
-            open={!!conciliacaoTarget}
-            onOpenChange={(open) => !open && setConciliacaoTarget(null)}
-            rotas={allRotas.filter(r => r.solicitacao_id === conciliacaoTarget.id)}
-            clienteId={conciliacaoTarget.cliente_id}
-            isConcluding
-            isDriverView
-            onConcluir={() => handleConcluir(conciliacaoTarget)}
-          />
-        </Suspense>
-      )}
+
     </PageContainer>
   );
 }

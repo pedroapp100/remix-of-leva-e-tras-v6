@@ -47,9 +47,14 @@ export function useConcluirComCaixa() {
         return { success: false, error: "Erro ao carregar rotas da solicitação." };
       }
 
-      // For invoiced clients: routes marked 'faturar' go to fatura
+      // For invoiced clients: routes marked 'faturar' go to fatura.
+      // Also includes pago_na_hora routes paid via maquina_loja — the loja kept the
+      // operation fee and must be billed (money never reached the empresa).
+      const isFaturavelRoute = (r: (typeof solRotas)[0]) =>
+        r.pagamento_operacao === "faturar" ||
+        (r.pagamento_operacao === "pago_na_hora" && r.meios_pagamento_operacao?.includes("maquina_loja"));
       const totalTaxasFaturar = solRotas
-        .filter((r) => r.pagamento_operacao === "faturar")
+        .filter(isFaturavelRoute)
         .reduce((s, r) => s + (r.taxa_resolvida ?? 0), 0);
 
       // For pre-paid clients: routes marked 'descontar_saldo' debit from balance
@@ -201,7 +206,16 @@ export function useConcluirComCaixa() {
 
       if (!cliente || cliente.modalidade !== "faturado") return { success: true };
 
-      const totalRecebido = solRotas.filter((r) => r.receber_do_cliente).reduce((s, r) => s + (r.valor_a_receber ?? 0), 0);
+      // Apenas rotas onde o dinheiro passou pela empresa geram credito_loja.
+      // maquina_loja, pix_loja e dinheiro+devolver_loja → lojista já recebeu direto.
+      const totalRecebido = solRotas
+        .filter((r) => {
+          if (!r.receber_do_cliente) return false;
+          if (r.meio_cobranca_destino === "pix_empresa") return true;
+          if (r.meio_cobranca_destino === "dinheiro" && r.destino_dinheiro === "repassar_empresa") return true;
+          return false;
+        })
+        .reduce((s, r) => s + (r.valor_a_receber ?? 0), 0);
 
       // Guard: skip fatura creation when nothing to invoice (all routes are pago_na_hora)
       if (totalTaxasFaturar === 0 && totalRecebido === 0) return { success: true };
@@ -220,7 +234,7 @@ export function useConcluirComCaixa() {
           p_total_taxas: totalTaxasFaturar,
           p_total_recebido: totalRecebido,
           p_sol_codigo: sol.codigo,
-          p_num_rotas: solRotas.filter((r) => r.pagamento_operacao === "faturar").length,
+          p_num_rotas: solRotas.filter(isFaturavelRoute).length,
         });
 
         if (!result.success) {

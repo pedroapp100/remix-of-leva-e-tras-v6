@@ -13,9 +13,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { Plus, CheckCircle, ChevronRight, ChevronLeft, Briefcase, Store, Package, RotateCcw, MapPin, CircleCheckBig, MapPinned, Receipt, Wallet, CalendarIcon, History } from "lucide-react";
+import { Plus, CheckCircle, ChevronRight, ChevronLeft, Briefcase, Store, Package, RotateCcw, MapPin, CircleCheckBig, MapPinned, Receipt, Wallet, CalendarIcon, History, Check, ChevronsUpDown } from "lucide-react";
 import { toast } from "sonner";
 import { RotaCard, getRotaSubtotalOperacao, getRotaTotalEntregador } from "./RotaCard";
 import type { RotaForm } from "./RotaCard";
@@ -130,6 +131,7 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit }: Launch
   const tiposAtivos = tiposOperacaoData.filter((t) => t.ativo);
   const taxasExtrasDisponiveis = taxasExtrasData.filter((t) => t.ativo);
   const [step, setStep] = useState(0);
+  const [clienteOpen, setClienteOpen] = useState(false);
 
   // Step 0
   const [tipoColeta, setTipoColeta] = useState<TipoColeta | "">("");
@@ -237,7 +239,7 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit }: Launch
 
   const validateStep2 = () => {
     for (const r of rotas) {
-      if (!r.bairro_destino_id || !r.responsavel.trim() || !r.telefone.trim()) {
+      if (!r.bairro_destino_id || !r.responsavel.trim()) {
         toast.error("Preencha todos os campos obrigatórios de cada rota."); return false;
       }
       if (r.taxa_resolvida === null || r.taxa_resolvida === 0) {
@@ -365,10 +367,45 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit }: Launch
               {/* Cliente (Loja) */}
               <div className="space-y-2">
                 <Label>Cliente (Loja) *</Label>
-                <Select value={clienteId} onValueChange={handleClienteChange}>
-                  <SelectTrigger><SelectValue placeholder="Selecione o cliente" /></SelectTrigger>
-                  <SelectContent>{clientesAtivos.map((c) => (<SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>))}</SelectContent>
-                </Select>
+                <Popover open={clienteOpen} onOpenChange={setClienteOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={clienteOpen}
+                      className={cn(
+                        "w-full justify-between font-normal text-sm h-9",
+                        !clienteId && "text-muted-foreground"
+                      )}
+                    >
+                      {clienteNome || "Selecione o cliente"}
+                      <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Buscar cliente..." className="h-9" />
+                      <CommandList>
+                        <CommandEmpty>Nenhum cliente encontrado.</CommandEmpty>
+                        <CommandGroup>
+                          {clientesAtivos.map((c) => (
+                            <CommandItem
+                              key={c.id}
+                              value={c.nome}
+                              onSelect={() => {
+                                handleClienteChange(c.id);
+                                setClienteOpen(false);
+                              }}
+                            >
+                              <Check className={cn("mr-2 h-3.5 w-3.5 shrink-0", clienteId === c.id ? "opacity-100" : "opacity-0")} />
+                              {c.nome}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
 
               {/* Client Info Card */}
