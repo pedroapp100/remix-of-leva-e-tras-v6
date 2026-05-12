@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, ClipboardList, Clock, CheckCircle, CheckCircle2, Truck, Eye, UserPlus, Play, X, Trash2, Pencil, CheckCheck, Calculator, ClipboardCheck, History, ArrowLeftRight } from "lucide-react";
+import { Plus, ClipboardList, CheckCircle, CheckCircle2, Truck, Eye, UserPlus, Play, X, Trash2, Pencil, CheckCheck, Calculator, ClipboardCheck, History, ArrowLeftRight } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { SimuladorOperacoes } from "@/components/shared/SimuladorOperacoes";
 import { toast } from "sonner";
@@ -170,8 +170,7 @@ export default function SolicitacoesPage() {
     const hoje = new Date().toISOString().slice(0, 10);
     const counts: Record<string, number> = { todas: 0, pendente: 0, aceita: 0, em_andamento: 0, concluida: 0, cancelada: 0, rejeitada: 0 };
     let concluidasHoje = 0;
-    let tempoTotal = 0;
-    let tempoCount = 0;
+    let naoConciliadas = 0;
 
     for (const s of solicitacoes) {
       counts.todas++;
@@ -179,21 +178,12 @@ export default function SolicitacoesPage() {
 
       if (s.status === "concluida") {
         if (s.data_conclusao?.startsWith(hoje)) concluidasHoje++;
-        if (s.data_inicio && s.data_conclusao) {
-          tempoTotal += (new Date(s.data_conclusao).getTime() - new Date(s.data_inicio).getTime()) / 60000;
-          tempoCount++;
-        }
+        if (!s.admin_conciliada_at) naoConciliadas++;
       }
     }
 
-    let tempoMedio = "—";
-    if (tempoCount > 0) {
-      const avg = Math.round(tempoTotal / tempoCount);
-      tempoMedio = avg >= 60 ? `${Math.floor(avg / 60)}h${avg % 60 > 0 ? String(avg % 60).padStart(2, "0") : ""}` : `${avg}min`;
-    }
-
     return {
-      metrics: { pendentes: counts.pendente, aceitas: counts.aceita, emAndamento: counts.em_andamento, concluidasHoje, tempoMedio },
+      metrics: { pendentes: counts.pendente, aceitas: counts.aceita, emAndamento: counts.em_andamento, concluidasHoje, naoConciliadas },
       statusCounts: counts,
     };
   }, [solicitacoes]);
@@ -664,7 +654,7 @@ export default function SolicitacoesPage() {
         <MetricCard title="Aceitas" value={metrics.aceitas} icon={CheckCircle} />
         <MetricCard title="Em Andamento" value={metrics.emAndamento} icon={Truck} />
         <MetricCard title="Concluídas Hoje" value={metrics.concluidasHoje} icon={CheckCircle} />
-        <MetricCard title="Tempo Médio" value={metrics.tempoMedio} icon={Clock} />
+        <MetricCard title="Não Conciliadas" value={metrics.naoConciliadas} icon={ClipboardCheck} />
       </div>
 
       {/* Tabs + Table */}
