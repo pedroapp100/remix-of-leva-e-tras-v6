@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { useSolicitacoes, useUpdateSolicitacao, useUpdateRotasBulk } from "@/hooks/useSolicitacoes";
-import { fetchRotasBySolicitacao } from "@/services/solicitacoes";
+import { fetchRotasBySolicitacao, fetchTaxasExtrasByRotaIds } from "@/services/solicitacoes";
 import { rowToRota } from "@/lib/mappers";
 import { useClientes, useClienteSaldoMap } from "@/hooks/useClientes";
 import { useEntregadores } from "@/hooks/useEntregadores";
@@ -9,6 +9,9 @@ import { useCaixaStore } from "@/contexts/CaixaStore";
 import { useSettingsStore } from "@/contexts/SettingsStore";
 import { notificarEntregaConcluida, notificarFaturaGerada, notificarFaturaFechada, notificarSaldoBaixo } from "@/services/whatsapp";
 import type { SolicitacaoUpdate } from "@/services/solicitacoes";
+import { useCreateReceita } from "@/hooks/useFinanceiro";
+import { useCreateHistoricoFatura } from "@/hooks/useFaturas";
+import { buildReceitaFromFatura } from "@/lib/faturaReceita";
 
 /**
  * Hook that concludes a solicitação, auto-creates/updates fatura for
@@ -28,6 +31,8 @@ export function useConcluirComCaixa() {
   const updateRotasBulkMut = useUpdateRotasBulk();
   const concluirFaturaMut = useConcluirFaturaEntrega();
   const updateFaturaMut = useUpdateFatura();
+  const createReceita = useCreateReceita();
+  const createHistoricoFatura = useCreateHistoricoFatura();
 
   const { addRecebimentoAutomatico } = useCaixaStore();
 
@@ -40,12 +45,18 @@ export function useConcluirComCaixa() {
 
       // Fetch rotas fresh at action-time (never stale, uses idx_rotas_sol)
       let solRotas: ReturnType<typeof rowToRota>[];
+      let taxasExtrasMap: Map<string, { nome: string; valor: number }[]>;
       try {
         const rawRotas = await fetchRotasBySolicitacao(solId);
         solRotas = rawRotas.map(rowToRota);
+        taxasExtrasMap = await fetchTaxasExtrasByRotaIds(rawRotas.map((r) => r.id));
       } catch {
         return { success: false, error: "Erro ao carregar rotas da solicitação." };
       }
+
+      // Helper: soma taxa base + todas as extras de uma rota
+      const getRotaTotal = (r: (typeof solRotas)[0]) =>
+        (r.taxa_resolvida ?? 0) + (taxasExtrasMap.get(r.id) ?? []).reduce((a, t) => a + t.valor, 0);
 
       // For invoiced clients: routes marked 'faturar' go to fatura.
       // Also includes pago_na_hora routes paid via maquina_loja — the loja kept the
@@ -55,12 +66,12 @@ export function useConcluirComCaixa() {
         (r.pagamento_operacao === "pago_na_hora" && r.meios_pagamento_operacao?.includes("maquina_loja"));
       const totalTaxasFaturar = solRotas
         .filter(isFaturavelRoute)
-        .reduce((s, r) => s + (r.taxa_resolvida ?? 0), 0);
+        .reduce((s, r) => s + getRotaTotal(r), 0);
 
       // For pre-paid clients: routes marked 'descontar_saldo' debit from balance
       const totalTaxasPrePago = solRotas
         .filter((r) => r.pagamento_operacao === "descontar_saldo")
-        .reduce((s, r) => s + (r.taxa_resolvida ?? 0), 0);
+        .reduce((s, r) => s + getRotaTotal(r), 0);
 
       // ── Pre-paid balance validation ──
       if (cliente?.modalidade === "pre_pago") {
@@ -173,6 +184,29 @@ export function useConcluirComCaixa() {
                 id: result.fatura_id,
                 patch: { status_geral: "Paga", status_taxas: "Paga" },
               });
+              // Lança receita automática para clientes pré-pagos
+              const receitaPrePago = buildReceitaFromFatura({
+                faturaId: result.fatura_id,
+                faturaNumero: result.fatura_numero ?? "",
+                clienteId: sol.cliente_id,
+                valor: totalTaxasPrePago,
+                tipo: "pagamento",
+              });
+              if (receitaPrePago) {
+                createReceita.mutate(receitaPrePago, {
+                  onSuccess: () => {
+                    createHistoricoFatura.mutate({
+                      fatura_id: result.fatura_id!,
+                      tipo: "receita_lancada",
+                      descricao: `Receita de ${totalTaxasPrePago.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} lançada automaticamente (pré-pago)`,
+                      usuario_id: null,
+                      valor_anterior: null,
+                      valor_novo: totalTaxasPrePago,
+                      metadata: null,
+                    });
+                  },
+                });
+              }
             }
 
             // Notifica nova fatura pré-paga
@@ -294,7 +328,7 @@ export function useConcluirComCaixa() {
 
       return { success: true };
     },
-    [solicitacoes, clientes, entregadores, faturas, getClienteSaldo, updateSolMut, updateRotasBulkMut, concluirFaturaMut, updateFaturaMut, addRecebimentoAutomatico]
+    [solicitacoes, clientes, entregadores, faturas, getClienteSaldo, updateSolMut, updateRotasBulkMut, concluirFaturaMut, updateFaturaMut, createReceita, createHistoricoFatura, addRecebimentoAutomatico]
   );
 
   return concluirComCaixa;

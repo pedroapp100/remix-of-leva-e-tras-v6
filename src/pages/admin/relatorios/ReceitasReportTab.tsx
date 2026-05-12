@@ -114,7 +114,7 @@ export function ReceitasReportTab({ dateRange }: ReceitasReportTabProps) {
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="mes" tick={axisTickStyle} />
                 <YAxis tick={axisTickStyle} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-                <Tooltip contentStyle={chartTooltipStyle} formatter={(value: number) => formatCurrency(value)} />
+                <Tooltip cursor={{ fill: "hsl(var(--muted)/0.3)" }} contentStyle={chartTooltipStyle} formatter={(value: number) => formatCurrency(value)} />
                 <Legend />
                 <Bar dataKey="realizado" name="Realizado" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
               </ComposedChart>

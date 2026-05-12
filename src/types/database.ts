@@ -382,10 +382,12 @@ export interface RotaEntregaFatura {
   responsavel: string;
   telefone: string;
   taxa: number;
+  taxas_extras: { nome: string; valor: number }[];
   valor_receber: number | null;
   status: "concluida" | "cancelada";
   pagamento_operacao: "faturar" | "pago_na_hora" | "descontar_saldo";
   meio_cobranca_destino: "dinheiro" | "maquina_loja" | "pix_loja" | "pix_empresa" | null;
+  destino_dinheiro: "devolver_loja" | "repassar_empresa" | null;
 }
 
 export interface EntregaFatura {

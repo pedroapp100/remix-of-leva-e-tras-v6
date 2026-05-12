@@ -10,7 +10,8 @@ import type { Fatura } from "@/types/database";
 import { formatCurrency } from "@/lib/formatters";
 import { Banknote, Upload, X, FileText } from "lucide-react";
 import { CurrencyInput } from "@/components/shared/CurrencyInput";
-import { useFormasPagamento } from "@/hooks/useSettings";
+
+const FORMAS_PAGAMENTO = ["PIX", "Dinheiro", "Transferência Bancária", "Boleto"];
 
 interface Props {
   fatura: Fatura;
@@ -20,12 +21,10 @@ interface Props {
 }
 
 export function RegistrarPagamentoDialog({ fatura, open, onOpenChange, onConfirm }: Props) {
-  const { data: formasPagamento = [] } = useFormasPagamento();
-  const formasAtivas = formasPagamento.filter((f) => f.enabled);
   const saldo = fatura.saldo_liquido ?? 0;
   const valorSugerido = Math.abs(saldo);
   const [valor, setValor] = useState(valorSugerido > 0 ? valorSugerido : 0);
-  const [formaPagamento, setFormaPagamento] = useState(formasAtivas[0]?.name ?? "");
+  const [formaPagamento, setFormaPagamento] = useState("");
   const [observacao, setObservacao] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [comprovantes, setComprovantes] = useState<File[]>([]);
@@ -84,8 +83,8 @@ export function RegistrarPagamentoDialog({ fatura, open, onOpenChange, onConfirm
             <Select value={formaPagamento} onValueChange={setFormaPagamento}>
               <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
               <SelectContent>
-                {formasAtivas.map((f) => (
-                  <SelectItem key={f.id} value={f.name}>{f.name}</SelectItem>
+                {FORMAS_PAGAMENTO.map((f) => (
+                  <SelectItem key={f} value={f}>{f}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

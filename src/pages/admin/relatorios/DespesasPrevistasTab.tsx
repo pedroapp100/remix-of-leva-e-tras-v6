@@ -122,7 +122,7 @@ export function DespesasPrevistasTab({ dateRange }: DespesasPrevistasTabProps) {
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="mes" tick={axisTickStyle} />
                 <YAxis tick={axisTickStyle} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-                <Tooltip contentStyle={chartTooltipStyle} formatter={(value: number) => formatCurrency(value)} />
+                <Tooltip cursor={{ fill: "hsl(var(--muted)/0.3)" }} contentStyle={chartTooltipStyle} formatter={(value: number) => formatCurrency(value)} />
                 <Legend />
                 <Bar dataKey="realizado" name="Realizado" fill="hsl(var(--destructive))" radius={[4, 4, 0, 0]} />
                 <Line type="monotone" dataKey="previsto" name="Previsto" stroke="hsl(var(--chart-5))" strokeWidth={2} strokeDasharray="5 5" dot={{ fill: "hsl(var(--chart-5))" }} />

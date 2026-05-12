@@ -222,7 +222,7 @@ export function ClientesReportTab() {
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="name" tick={axisTickStyle} />
                 <YAxis tick={axisTickStyle} tickFormatter={(v) => `${(v / 1000).toFixed(1)}k`} />
-                <RechartsTooltip contentStyle={chartTooltipStyle} formatter={(value: number) => formatCurrency(value)} />
+                <RechartsTooltip cursor={{ fill: "hsl(var(--muted)/0.3)" }} contentStyle={chartTooltipStyle} formatter={(value: number) => formatCurrency(value)} />
                 <Legend />
                 <Bar dataKey="value" name="Receita" radius={[4, 4, 0, 0]}>
                   {data.receitaPorModalidade.map((entry, index) => (

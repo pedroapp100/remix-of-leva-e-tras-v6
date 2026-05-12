@@ -663,6 +663,7 @@ export type Database = {
           total_debitos_loja: number
           total_entregas: number
           updated_at: string
+          valor_repasse: number | null
         }
         Insert: {
           cliente_id: string
@@ -683,6 +684,7 @@ export type Database = {
           total_debitos_loja?: number
           total_entregas?: number
           updated_at?: string
+          valor_repasse?: number | null
         }
         Update: {
           cliente_id?: string
@@ -703,6 +705,7 @@ export type Database = {
           total_debitos_loja?: number
           total_entregas?: number
           updated_at?: string
+          valor_repasse?: number | null
         }
         Relationships: [
           {
@@ -1553,9 +1556,10 @@ export type Database = {
           ponto_coleta: string
           retroativo: boolean
           status: Database["public"]["Enums"]["status_solicitacao"]
-          tipo_coleta: "loja_cliente" | "cliente_loja" | "ponto_ponto"
+          tipo_coleta: string
           tipo_operacao: string
           updated_at: string
+          valor_total_taxas: number | null
         }
         Insert: {
           admin_conciliada_at?: string | null
@@ -1571,9 +1575,10 @@ export type Database = {
           ponto_coleta: string
           retroativo?: boolean
           status?: Database["public"]["Enums"]["status_solicitacao"]
-          tipo_coleta?: "loja_cliente" | "cliente_loja" | "ponto_ponto"
+          tipo_coleta?: string
           tipo_operacao: string
           updated_at?: string
+          valor_total_taxas?: number | null
         }
         Update: {
           admin_conciliada_at?: string | null
@@ -1589,9 +1594,10 @@ export type Database = {
           ponto_coleta?: string
           retroativo?: boolean
           status?: Database["public"]["Enums"]["status_solicitacao"]
-          tipo_coleta?: "loja_cliente" | "cliente_loja" | "ponto_ponto"
+          tipo_coleta?: string
           tipo_operacao?: string
           updated_at?: string
+          valor_total_taxas?: number | null
         }
         Relationships: [
           {

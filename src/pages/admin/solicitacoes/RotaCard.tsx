@@ -29,6 +29,7 @@ export type DestinoDinheiro = "devolver_loja" | "repassar_empresa";
 
 export interface RotaForm {
   id: string;
+  rotaDbId?: string;
   bairro_destino_id: string;
   responsavel: string;
   telefone: string;
@@ -57,6 +58,7 @@ interface RotaCardProps {
   onUpdateTaxaExtra: (rotaId: string, taxaId: string, field: "nome" | "valor", value: string | number) => void;
   onToggleMeioPagamento: (rotaId: string, meioPagamentoId: string) => void;
   onToggleMeioPagamentoOperacao: (rotaId: string, meioPagamentoId: string) => void;
+  isReadonly?: boolean;
 }
 
 export function getRotaSubtotalOperacao(r: RotaForm) {
@@ -70,7 +72,7 @@ export function getRotaTotalEntregador(r: RotaForm) {
 }
 
 export function RotaCard({
-  rota, index, canRemove, clienteModalidade,
+  rota, index, canRemove, clienteModalidade, isReadonly = false,
   onUpdate, onRemove, onAddTaxaExtra, onRemoveTaxaExtra, onUpdateTaxaExtra, onToggleMeioPagamento, onToggleMeioPagamentoOperacao,
 }: RotaCardProps) {
   const { data: bairros = [] } = useBairros();
@@ -82,7 +84,7 @@ export function RotaCard({
   const [collapsed, setCollapsed] = useState(false);
   const bairroSelecionado = bairros.find((b) => b.id === rota.bairro_destino_id);
   return (
-    <div className="rounded-lg border border-border p-4 space-y-4">
+    <div className={cn("rounded-lg border border-border p-4 space-y-4", isReadonly && "opacity-75")}>
       {/* Header */}
       <div
         className="flex items-center justify-between cursor-pointer select-none"
@@ -90,6 +92,11 @@ export function RotaCard({
       >
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-sm font-medium shrink-0">Rota {index + 1}</span>
+          {isReadonly && (
+            <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-amber-500/30 text-amber-600 shrink-0">
+              Em andamento
+            </Badge>
+          )}
           {collapsed && (
             <span className="text-xs text-muted-foreground truncate">
               {bairroSelecionado ? bairroSelecionado.nome : "—"}
@@ -99,7 +106,7 @@ export function RotaCard({
           )}
         </div>
         <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
-          {canRemove && (
+          {canRemove && !isReadonly && (
             <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => onRemove(rota.id)}>
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
@@ -115,7 +122,7 @@ export function RotaCard({
         </div>
       </div>
 
-      {!collapsed && (<>
+      {!collapsed && (<div className={cn(isReadonly && "pointer-events-none select-none")}>
       {/* Destination & Contact */}
       <div className="space-y-2">
         <Label className="text-xs">Bairro Destino *</Label>
@@ -482,7 +489,7 @@ export function RotaCard({
           <span className="text-sm font-bold tabular-nums">{fmt(getRotaTotalEntregador(rota))}</span>
         </div>
       )}
-      </>)}
+      </div>)}
     </div>
   );
 }

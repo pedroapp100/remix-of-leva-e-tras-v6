@@ -4,10 +4,10 @@ import { useSearchParams } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { PageContainer, MetricCard, DataTable, SearchInput, StatusBadge, PermissionGuard } from "@/components/shared";
 import type { Column } from "@/components/shared/DataTable";
-import type { Solicitacao, StatusSolicitacao } from "@/types/database";
+import type { Solicitacao, StatusSolicitacao, Rota } from "@/types/database";
 import { STATUS_SOLICITACAO_LABELS } from "@/types/database";
 import { TipoOperacaoBadge } from "@/components/shared/TipoOperacaoBadge";
-import { useSolicitacoes, useSolicitacoesPageable, useUpdateSolicitacao, useCreateSolicitacaoWithRotas, useRotasBySolicitacaoIds, useAppendHistorico } from "@/hooks/useSolicitacoes";
+import { useSolicitacoes, useSolicitacoesPageable, useUpdateSolicitacao, useCreateSolicitacaoWithRotas, useRotasBySolicitacaoIds, useAppendHistorico, useTaxasExtrasByRotaIds, useCreateRota, useUpdateRota } from "@/hooks/useSolicitacoes";
 import { useClientes } from "@/hooks/useClientes";
 import { useEntregadores } from "@/hooks/useEntregadores";
 import { useConcluirComCaixa } from "@/hooks/useConcluirComCaixa";
@@ -27,6 +27,8 @@ import { sendNotificationToUser, sendNotificationToRole } from "@/services/notif
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { lazy, Suspense } from "react";
 const LaunchSolicitacaoDialog = lazy(() => import("./solicitacoes/LaunchSolicitacaoDialog").then(m => ({ default: m.LaunchSolicitacaoDialog })));
+import type { EditInitialData } from "./solicitacoes/LaunchSolicitacaoDialog";
+import type { RotaForm } from "./solicitacoes/RotaCard";
 const ViewSolicitacaoDialog = lazy(() => import("./solicitacoes/ViewSolicitacaoDialog").then(m => ({ default: m.ViewSolicitacaoDialog })));
 const AssignDriverDialog = lazy(() => import("./solicitacoes/AssignDriverDialog").then(m => ({ default: m.AssignDriverDialog })));
 const ConciliacaoDialog = lazy(() => import("./solicitacoes/ConciliacaoDialog").then(m => ({ default: m.ConciliacaoDialog })));
@@ -55,6 +57,8 @@ export default function SolicitacoesPage() {
   const { data: clientes = [] } = useClientes();
   const { data: entregadores = [] } = useEntregadores();
   const concluirComCaixa = useConcluirComCaixa();
+  const createRotaMut = useCreateRota();
+  const updateRotaMut = useUpdateRota();
   const { user } = useAuth();
 
   const getClienteNome = (id: string) => clientes.find((c) => c.id === id)?.nome ?? id;
@@ -115,6 +119,15 @@ export default function SolicitacoesPage() {
   const { data: pagedRotas = [] } = useRotasBySolicitacaoIds(pagedSolIds);
   const getRotasBySolicitacao = (solId: string) => pagedRotas.filter(r => r.solicitacao_id === solId);
 
+  // Fetch taxas extras for all rotas in the current page
+  const pagedRotaIds = useMemo(() => pagedRotas.map(r => r.id), [pagedRotas]);
+  const { data: taxasExtrasMap = new Map() } = useTaxasExtrasByRotaIds(pagedRotaIds);
+  const getExtrasBySolicitacao = (solId: string) =>
+    getRotasBySolicitacao(solId).reduce((sum, rota) => {
+      const extras = taxasExtrasMap.get(rota.id) ?? [];
+      return sum + extras.reduce((s, e) => s + e.valor, 0);
+    }, 0);
+
   // Sync state → URL
   useEffect(() => {
     const params = new URLSearchParams();
@@ -123,7 +136,21 @@ export default function SolicitacoesPage() {
     setSearchParams(params, { replace: true });
   }, [search, activeTab, setSearchParams]);
   const [launchOpen, setLaunchOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<Solicitacao | null>(null);
   const [viewSolicitacao, setViewSolicitacao] = useState<Solicitacao | null>(null);
+
+  // editInitialData must be declared AFTER editTarget and taxasExtrasMap
+  const editInitialData: EditInitialData | undefined = useMemo(() => {
+    if (!editTarget) return undefined;
+    const rotas = pagedRotas.filter(r => r.solicitacao_id === editTarget.id);
+    return {
+      sol: editTarget,
+      rotas: rotas.map(r => ({
+        ...r,
+        taxas_extras_data: taxasExtrasMap.get(r.id) ?? [],
+      })),
+    };
+  }, [editTarget, pagedRotas, taxasExtrasMap]);
   const [assignTarget, setAssignTarget] = useState<Solicitacao | null>(null);
   const [transferTarget, setTransferTarget] = useState<Solicitacao | null>(null);
   const [transferJustify, setTransferJustify] = useState<Solicitacao | null>(null);
@@ -172,7 +199,7 @@ export default function SolicitacoesPage() {
   }, [solicitacoes]);
 
   // Actions
-  const handleLaunch = async (data: { clienteId: string; tipoOperacao: string; tipoColeta?: string; pontoColeta: string; entregadorId?: string; dataRetroativa?: string; retroativoConcluida?: boolean; rotas: { id?: string; bairro_destino_id?: string; responsavel?: string; telefone?: string; observacoes?: string; receber_do_cliente?: boolean; valor_a_receber?: number; taxa_resolvida: number | null; taxas_extras?: { nome: string; valor: number }[] }[] }) => {
+  const handleLaunch = async (data: { clienteId: string; tipoOperacao: string; tipoColeta?: string; pontoColeta: string; entregadorId?: string; dataRetroativa?: string; retroativoConcluida?: boolean; rotas: { id?: string; bairro_destino_id?: string; responsavel?: string; telefone?: string; observacoes?: string; receber_do_cliente?: boolean; valor_a_receber?: number; taxa_resolvida: number | null; taxas_extras?: { id: string; nome: string; valor: number }[] }[] }) => {
     const now = data.dataRetroativa ?? new Date().toISOString();
     const dateForCode = data.dataRetroativa ? data.dataRetroativa.slice(0, 10) : new Date().toISOString().slice(0, 10);
     const { data: codigoGerado } = await supabase.rpc("gerar_codigo_solicitacao");
@@ -211,6 +238,18 @@ export default function SolicitacoesPage() {
       status: isRetroativoConcluida ? "concluida" as const : "ativa" as const,
     }));
 
+    // Build flat list of taxa extra entries keyed by rota index
+    const taxasExtrasPerRota = data.rotas.flatMap((r, rotaIndex) =>
+      (r.taxas_extras ?? []).map((te) => ({ rotaIndex, taxaExtraId: te.id, valor: te.valor }))
+    );
+
+    // Compute valor_total_taxas = sum of taxa_resolvida + all taxas_extras per rota
+    const valorTotalTaxas = data.rotas.reduce((sum, r) => {
+      const taxa = r.taxa_resolvida ?? 0;
+      const extras = (r.taxas_extras ?? []).reduce((s, te) => s + te.valor, 0);
+      return sum + taxa + extras;
+    }, 0);
+
     try {
       const result = await createSolMut.mutateAsync({
         sol: {
@@ -226,8 +265,10 @@ export default function SolicitacoesPage() {
           data_conclusao: dataConclusao,
           justificativa: null,
           retroativo: !!data.dataRetroativa,
+          valor_total_taxas: valorTotalTaxas,
         },
         rotas: rotaInserts,
+        taxasExtrasPerRota: taxasExtrasPerRota.length > 0 ? taxasExtrasPerRota : undefined,
       });
 
       const clienteNome = getClienteNome(data.clienteId);
@@ -257,6 +298,88 @@ export default function SolicitacoesPage() {
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erro desconhecido ao criar solicitação.";
       toast.error(`Erro ao criar solicitação: ${message}`);
+      return false;
+    }
+  };
+
+  const handleEdit = async (data: { solicitacaoId: string; entregadorId?: string; tipoOperacao: string; pontoColeta: string; tipoColeta: string; rotas: RotaForm[] }): Promise<boolean> => {
+    try {
+      const sol = pagedResult?.data.find(s => s.id === data.solicitacaoId) ?? editTarget;
+      const isEmAndamento = sol?.status === "em_andamento";
+
+      const valorTotalTaxas = data.rotas.reduce((sum, r) => {
+        return sum + (r.taxa_resolvida ?? 0) + r.taxas_extras.reduce((s, te) => s + te.valor, 0);
+      }, 0);
+
+      await updateSolMut.mutateAsync({
+        id: data.solicitacaoId,
+        patch: {
+          entregador_id: data.entregadorId ?? null,
+          tipo_operacao: data.tipoOperacao,
+          ponto_coleta: data.pontoColeta,
+          valor_total_taxas: valorTotalTaxas,
+          ...(data.entregadorId && sol?.status === "pendente" ? { status: "aceita" as StatusSolicitacao } : {}),
+        },
+      });
+
+      if (!isEmAndamento) {
+        for (const rota of data.rotas.filter(r => r.rotaDbId)) {
+          await updateRotaMut.mutateAsync({
+            id: rota.rotaDbId!,
+            patch: {
+              bairro_destino_id: rota.bairro_destino_id,
+              responsavel: rota.responsavel,
+              telefone: rota.telefone,
+              observacoes: rota.observacoes || null,
+              receber_do_cliente: rota.receber_do_cliente,
+              valor_a_receber: rota.valor_a_receber || null,
+              taxa_resolvida: rota.taxa_resolvida,
+              pagamento_operacao: rota.pagamento_operacao,
+              meios_pagamento_operacao: rota.meios_pagamento_operacao,
+              meio_cobranca_destino: rota.meio_cobranca_destino || null,
+              destino_dinheiro: rota.destino_dinheiro || null,
+            },
+          });
+        }
+      }
+
+      for (const rota of data.rotas.filter(r => !r.rotaDbId)) {
+        await createRotaMut.mutateAsync({
+          solicitacao_id: data.solicitacaoId,
+          bairro_destino_id: rota.bairro_destino_id,
+          responsavel: rota.responsavel,
+          telefone: rota.telefone || "",
+          observacoes: rota.observacoes || null,
+          receber_do_cliente: rota.receber_do_cliente,
+          valor_a_receber: rota.valor_a_receber || null,
+          taxa_resolvida: rota.taxa_resolvida,
+          regra_preco_id: null,
+          pagamento_operacao: rota.pagamento_operacao,
+          meios_pagamento_operacao: rota.meios_pagamento_operacao,
+          meio_cobranca_destino: rota.meio_cobranca_destino || null,
+          destino_dinheiro: rota.destino_dinheiro || null,
+          status: "ativa" as const,
+        });
+      }
+
+      const newRotasCount = data.rotas.filter(r => !r.rotaDbId).length;
+      let descricao = "Solicitação editada pelo administrador";
+      if (newRotasCount > 0) {
+        descricao += ` — ${newRotasCount} nova${newRotasCount > 1 ? "s" : ""} rota${newRotasCount > 1 ? "s" : ""} adicionada${newRotasCount > 1 ? "s" : ""}`;
+      }
+      appendHistoricoMut.mutate({
+        solId: data.solicitacaoId,
+        tipo: "edicao",
+        descricao,
+        extra: { usuario_id: user?.id ?? null },
+      });
+
+      toast.success("Solicitação atualizada!");
+      setEditTarget(null);
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro desconhecido.";
+      toast.error(`Erro ao editar: ${message}`);
       return false;
     }
   };
@@ -394,6 +517,16 @@ export default function SolicitacoesPage() {
     <TooltipProvider delayDuration={200}>
       <div data-onboarding="request-actions" className="flex items-center justify-center gap-1">
         <ActionButton tooltip="Visualizar" icon={Eye} onClick={() => setViewSolicitacao(sol)} variant="info" />
+        {["pendente", "aceita", "em_andamento"].includes(sol.status) && (
+          <PermissionGuard permission="solicitacoes.edit">
+            <ActionButton
+              tooltip={sol.status === "em_andamento" ? "Adicionar rota" : "Editar solicitação"}
+              icon={Pencil}
+              onClick={() => setEditTarget(sol)}
+              variant="info"
+            />
+          </PermissionGuard>
+        )}
         {sol.status === "pendente" && (
           <>
             <PermissionGuard permission="solicitacoes.edit">
@@ -471,6 +604,13 @@ export default function SolicitacoesPage() {
       cell: (r) => {
         const total = getRotasBySolicitacao(r.id).reduce((s, rota) => s + (rota.taxa_resolvida ?? 0), 0);
         return <span className="tabular-nums font-medium">{total > 0 ? fmt(total) : "—"}</span>;
+      },
+    },
+    {
+      key: "taxas_extras_val", header: "Taxas Extras",
+      cell: (r) => {
+        const extras = getExtrasBySolicitacao(r.id);
+        return <span className="tabular-nums font-medium">{fmt(extras)}</span>;
       },
     },
     {
@@ -604,6 +744,13 @@ export default function SolicitacoesPage() {
       {/* Dialogs (lazy loaded) */}
       <Suspense fallback={null}>
         <LaunchSolicitacaoDialog open={launchOpen} onOpenChange={setLaunchOpen} onSubmit={handleLaunch} />
+        <LaunchSolicitacaoDialog
+          open={!!editTarget}
+          onOpenChange={(open) => { if (!open) setEditTarget(null); }}
+          onSubmit={handleLaunch}
+          initialData={editInitialData}
+          onEdit={handleEdit}
+        />
         <ViewSolicitacaoDialog solicitacao={viewSolicitacao} onClose={() => setViewSolicitacao(null)} />
         <AssignDriverDialog
           open={!!assignTarget}

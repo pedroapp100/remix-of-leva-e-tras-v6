@@ -5,7 +5,7 @@ import type { Column } from "@/components/shared/DataTable";
 import type { Fatura, StatusGeral } from "@/types/database";
 import { STATUS_GERAL_LABELS } from "@/types/database";
 import { STATUS_GERAL_VARIANT, TIPO_FATURAMENTO_LABELS, formatCurrency, formatDateBR } from "@/lib/formatters";
-import { useFaturas } from "@/hooks/useFaturas";
+import { useFaturas, useFaturaIdsComReceita } from "@/hooks/useFaturas";
 import { DatePickerWithRange } from "@/components/shared/DatePickerWithRange";
 import type { DateRange } from "react-day-picker";
 import { Badge } from "@/components/ui/badge";
@@ -21,11 +21,24 @@ import { exportCSV, exportPDF } from "@/lib/exportTable";
 import { lazy, Suspense } from "react";
 const FaturaDetailsModal = lazy(() => import("./faturas/FaturaDetailsModal").then(m => ({ default: m.FaturaDetailsModal })));
 
-type TabFilter = "ativas" | "em_aberto" | "vencidas" | "fechadas" | "finalizadas";
+type TabFilter = "ativas" | "em_aberto" | "vencidas" | "fechadas" | "finalizadas" | "lancadas";
+
+/** Retorna 'Vencida' quando o banco ainda não foi atualizado pelo cron mas o prazo já passou. */
+function getEffectiveStatus(f: Fatura, todayIso: string): StatusGeral {
+  if (
+    (f.status_geral === "Aberta" || f.status_geral === "Fechada") &&
+    f.data_vencimento != null &&
+    f.data_vencimento < todayIso
+  ) {
+    return "Vencida";
+  }
+  return f.status_geral;
+}
 
 export default function FaturasPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { data: faturas = [] } = useFaturas();
+  const { data: faturasComReceita = new Set<string>() } = useFaturaIdsComReceita();
   const [searchInput, setSearchInput] = useState(searchParams.get("q") ?? "");
   // Só aplica o filtro com campo vazio (mostra tudo) ou a partir de 4 caracteres
   const search = searchInput.length === 0 || searchInput.length >= 4 ? searchInput : "";
@@ -33,6 +46,16 @@ export default function FaturasPage() {
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [tipoFilter, setTipoFilter] = useState<string>("todos");
   const [selectedFatura, setSelectedFatura] = useState<Fatura | null>(null);
+
+  // Data de hoje em formato ISO local (YYYY-MM-DD) — usa hora local, não UTC,
+  // para evitar que às 22h BRT o sistema trate o dia seguinte como "hoje".
+  const todayIso = useMemo(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, "0");
+    const d = String(now.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }, []);
 
   // Sync state → URL
   useEffect(() => {
@@ -44,29 +67,31 @@ export default function FaturasPage() {
 
   // ── Single-pass metrics ──
   const metrics = useMemo(() => {
-    let abertas = 0, vencidas = 0, valorVencido = 0, fechadas = 0, finalizadas = 0, saldoTotal = 0;
+    let abertas = 0, vencidas = 0, valorVencido = 0, fechadas = 0, finalizadas = 0, lancadas = 0, saldoTotal = 0;
 
     for (const f of faturas) {
-      const st = f.status_geral;
+      const st = getEffectiveStatus(f, todayIso);
       if (st === "Aberta") abertas++;
       else if (st === "Vencida") { vencidas++; valorVencido += f.saldo_liquido ?? 0; }
       else if (st === "Fechada" || st === "Paga") { fechadas++; }
-      else if (st === "Finalizada") { finalizadas++; continue; }
+      else if (st === "Finalizada") { if (faturasComReceita.has(f.id)) lancadas++; else finalizadas++; continue; }
       saldoTotal += f.saldo_liquido ?? 0;
     }
 
-    return { abertas, vencidas, valorVencido, fechadas, finalizadas, saldoTotal, ativas: abertas + vencidas };
-  }, [faturas]);
+    return { abertas, vencidas, valorVencido, fechadas, finalizadas, lancadas, saldoTotal, ativas: abertas + vencidas };
+  }, [faturas, todayIso, faturasComReceita]);
 
   // ── Filtered data ──
   const filtered = useMemo(() => {
     return faturas.filter((f) => {
+      const effStatus = getEffectiveStatus(f, todayIso);
       const matchTab =
-        activeTab === "ativas"    ? (f.status_geral === "Aberta" || f.status_geral === "Vencida") :
-        activeTab === "em_aberto" ? f.status_geral === "Aberta" :
-        activeTab === "vencidas"  ? f.status_geral === "Vencida" :
-        activeTab === "fechadas"  ? (f.status_geral === "Fechada" || f.status_geral === "Paga") :
-        f.status_geral === "Finalizada";
+        activeTab === "ativas"    ? (effStatus === "Aberta" || effStatus === "Vencida") :
+        activeTab === "em_aberto" ? effStatus === "Aberta" :
+        activeTab === "vencidas"  ? effStatus === "Vencida" :
+        activeTab === "fechadas"  ? (effStatus === "Fechada" || effStatus === "Paga") :
+        activeTab === "lancadas"   ? (effStatus === "Finalizada" && faturasComReceita.has(f.id)) :
+        /* finalizadas */            (effStatus === "Finalizada" && !faturasComReceita.has(f.id));
       const matchSearch =
         f.numero.toLowerCase().includes(search.toLowerCase()) ||
         f.cliente_nome.toLowerCase().includes(search.toLowerCase());
@@ -78,7 +103,7 @@ export default function FaturasPage() {
       }
       return matchTab && matchSearch && matchTipo && matchDate;
     });
-  }, [faturas, activeTab, search, tipoFilter, dateRange]);
+  }, [faturas, activeTab, search, tipoFilter, dateRange, todayIso, faturasComReceita]);
 
   // ── Columns ──
   const columns: Column<Fatura>[] = [
@@ -141,7 +166,9 @@ export default function FaturasPage() {
     {
       key: "status_geral",
       header: "Status",
-      cell: (f) => <StatusBadge status={f.status_geral} label={STATUS_GERAL_LABELS[f.status_geral]} />,
+      cell: (f) => faturasComReceita.has(f.id)
+        ? <StatusBadge status="Finalizada" label="Lançada" />
+        : <StatusBadge status={f.status_geral} label={STATUS_GERAL_LABELS[f.status_geral]} />,
     },
     {
       key: "acoes",
@@ -189,7 +216,10 @@ export default function FaturasPage() {
       <Card className="p-4 space-y-2">
         <div className="flex items-center justify-between">
           <span className="font-mono text-sm font-medium">{f.numero}</span>
-          <StatusBadge status={f.status_geral} label={STATUS_GERAL_LABELS[f.status_geral]} />
+          <StatusBadge
+            status={f.status_geral}
+            label={faturasComReceita.has(f.id) ? "Lançada" : STATUS_GERAL_LABELS[f.status_geral]}
+          />
         </div>
         <p className="font-medium">{f.cliente_nome}</p>
         <div className="flex justify-between text-sm text-muted-foreground">
@@ -292,6 +322,12 @@ export default function FaturasPage() {
                   {metrics.finalizadas}
                 </Badge>
               </TabsTrigger>
+              <TabsTrigger value="lancadas" className="gap-1.5">
+                <DollarSign className="h-4 w-4" /> Lançadas
+                <Badge variant="secondary" className="ml-1 text-xs h-5 px-1.5 bg-primary/10 text-primary">
+                  {metrics.lancadas}
+                </Badge>
+              </TabsTrigger>
             </TabsList>
           </Tabs>
 
@@ -321,7 +357,7 @@ export default function FaturasPage() {
             </Select>
             <DatePickerWithRange value={dateRange} onChange={setDateRange} />
             {(search || activeTab !== "ativas" || dateRange?.from || tipoFilter !== "todos") && (
-              <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground w-full sm:w-auto" onClick={() => { setSearch(""); setActiveTab("ativas"); setDateRange(undefined); setTipoFilter("todos"); }}>
+              <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground w-full sm:w-auto" onClick={() => { setSearchInput(""); setActiveTab("ativas"); setDateRange(undefined); setTipoFilter("todos"); }}>
                 <X className="h-3.5 w-3.5" /> Limpar filtros
               </Button>
             )}

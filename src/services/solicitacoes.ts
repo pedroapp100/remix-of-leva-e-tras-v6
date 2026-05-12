@@ -216,6 +216,42 @@ export async function fetchRotasBySolicitacaoIds(ids: string[]): Promise<RotaRow
   return data as RotaRow[];
 }
 
+export type RotaTaxaExtraRow = { rota_id: string; nome: string; valor: number };
+
+/**
+ * Busca as taxas extras de uma lista de rotas (tabela rota_taxa_extra).
+ * Retorna um map de rota_id → lista de { nome, valor }.
+ */
+export async function fetchTaxasExtrasByRotaIds(
+  rotaIds: string[]
+): Promise<Map<string, { nome: string; valor: number }[]>> {
+  if (rotaIds.length === 0) return new Map();
+  const { data, error } = await supabase
+    .from("rota_taxa_extra")
+    .select("rota_id, valor, taxas_extras_config(nome)")
+    .in("rota_id", rotaIds);
+  if (error) throw new Error(error.message);
+  const result = new Map<string, { nome: string; valor: number }[]>();
+  for (const row of data ?? []) {
+    const nome = (row.taxas_extras_config as { nome: string } | null)?.nome ?? "Taxa extra";
+    const arr = result.get(row.rota_id) ?? [];
+    arr.push({ nome, valor: row.valor });
+    result.set(row.rota_id, arr);
+  }
+  return result;
+}
+
+/**
+ * Inserts taxas extras for a set of rotas into rota_taxa_extra.
+ */
+export async function createRotaTaxasExtras(
+  entries: { rota_id: string; taxa_extra_id: string; valor: number }[]
+): Promise<void> {
+  if (entries.length === 0) return;
+  const { error } = await supabase.from("rota_taxa_extra").insert(entries);
+  if (error) throw new Error(error.message);
+}
+
 /**
  * Fetches rotas created after a given date (time-window).
  * Used by EntregasPage to avoid loading ALL rotas forever.

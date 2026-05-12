@@ -28,6 +28,8 @@ import {
   deletePagamentosByRota,
   fetchHistoricoBySolicitacao,
   appendHistorico,
+  fetchTaxasExtrasByRotaIds,
+  createRotaTaxasExtras,
   type SolicitacaoRow,
   type SolicitacaoInsert,
   type SolicitacaoUpdate,
@@ -179,11 +181,28 @@ export function useCreateSolicitacao() {
 export function useCreateSolicitacaoWithRotas() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ sol, rotas }: { sol: SolicitacaoInsert; rotas: RotaInsert[] }) => {
+    mutationFn: async ({
+      sol,
+      rotas,
+      taxasExtrasPerRota,
+    }: {
+      sol: SolicitacaoInsert;
+      rotas: RotaInsert[];
+      taxasExtrasPerRota?: { rotaIndex: number; taxaExtraId: string; valor: number }[];
+    }) => {
       const created = await createSolicitacao(sol);
       const createdRotas = await createRotas(
         rotas.map((r) => ({ ...r, solicitacao_id: created.id }))
       );
+      if (taxasExtrasPerRota && taxasExtrasPerRota.length > 0) {
+        await createRotaTaxasExtras(
+          taxasExtrasPerRota.map(({ rotaIndex, taxaExtraId, valor }) => ({
+            rota_id: createdRotas[rotaIndex].id,
+            taxa_extra_id: taxaExtraId,
+            valor,
+          }))
+        );
+      }
       return { sol: created, rotas: createdRotas };
     },
     onSuccess: () => {
@@ -241,6 +260,14 @@ export function useRotasBySolicitacao(solId: string) {
     queryFn: () => fetchRotasBySolicitacao(solId),
     select: (data) => data.map(rowToRota),
     enabled: Boolean(solId),
+  });
+}
+
+export function useTaxasExtrasByRotaIds(rotaIds: string[]) {
+  return useQuery({
+    queryKey: ["taxas_extras_rotas", rotaIds],
+    queryFn: () => fetchTaxasExtrasByRotaIds(rotaIds),
+    enabled: rotaIds.length > 0,
   });
 }
 

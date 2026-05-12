@@ -173,6 +173,16 @@ export async function createHistoricoFatura(
   return data[0] as HistoricoFaturaRow;
 }
 
+/** Retorna o Set de fatura_ids que já têm receita lançada no histórico. */
+export async function fetchFaturaIdsComReceita(): Promise<Set<string>> {
+  const { data, error } = await supabase
+    .from("historico_faturas")
+    .select("fatura_id")
+    .in("tipo", ["repasse", "pagamento", "receita_lancada"]);
+  if (error) throw new Error(error.message);
+  return new Set((data ?? []).map((r: { fatura_id: string }) => r.fatura_id));
+}
+
 // ── RPC: Atomic fatura + lançamentos + histórico ─────────────────────────────
 
 export interface ConcluirFaturaEntregaParams {

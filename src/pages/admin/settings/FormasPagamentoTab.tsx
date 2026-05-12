@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -26,6 +27,7 @@ export function FormasPagamentoTab() {
   const [editing, setEditing] = useState<FormaPagamento | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [confirmDisable, setConfirmDisable] = useState<FormaPagamento | null>(null);
 
   const filtered = formas.filter((f) => f.name.toLowerCase().includes(search.toLowerCase()));
 
@@ -62,7 +64,16 @@ export function FormasPagamentoTab() {
       key: "enabled", header: "Status",
       cell: (r) => (
         <div className="flex items-center gap-2">
-          <Switch checked={r.enabled} onCheckedChange={() => toggleEnabled(r.id)} />
+          <Switch
+            checked={r.enabled}
+            onCheckedChange={() => {
+              if (r.enabled) {
+                setConfirmDisable(r);
+              } else {
+                toggleEnabled(r.id);
+              }
+            }}
+          />
           <Badge variant={r.enabled ? "default" : "secondary"}>{r.enabled ? "Ativa" : "Inativa"}</Badge>
         </div>
       ),
@@ -101,7 +112,16 @@ export function FormasPagamentoTab() {
               <div className="flex items-center justify-between">
                 <span className="font-medium">{r.name}</span>
                 <div className="flex items-center gap-2">
-                  <Switch checked={r.enabled} onCheckedChange={() => toggleEnabled(r.id)} />
+                  <Switch
+                    checked={r.enabled}
+                    onCheckedChange={() => {
+                      if (r.enabled) {
+                        setConfirmDisable(r);
+                      } else {
+                        toggleEnabled(r.id);
+                      }
+                    }}
+                  />
                   <Badge variant={r.enabled ? "default" : "secondary"}>{r.enabled ? "Ativa" : "Inativa"}</Badge>
                 </div>
               </div>
@@ -127,6 +147,30 @@ export function FormasPagamentoTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!confirmDisable} onOpenChange={(o) => !o && setConfirmDisable(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Desabilitar "{confirmDisable?.name}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta forma de pagamento ficará indisponível para novas conciliações.
+              Registros existentes não serão afetados.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (confirmDisable) toggleEnabled(confirmDisable.id);
+                setConfirmDisable(null);
+              }}
+            >
+              Desabilitar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

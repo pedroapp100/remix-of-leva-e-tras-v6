@@ -65,8 +65,13 @@ export function maskDocumento(value: string): string {
  * Formata data no padrão BR: dd/mm/aaaa
  */
 export function formatDateBR(date: string | Date): string {
-  const d = typeof date === "string" ? new Date(date) : date;
-  return d.toLocaleDateString("pt-BR");
+  if (typeof date === "string") {
+    // Date-only strings (YYYY-MM-DD) are parsed as UTC midnight by the Date constructor.
+    // Appending T00:00:00 forces local timezone, preventing off-by-one-day in UTC-3 (Brazil).
+    const normalized = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date + "T00:00:00" : date;
+    return new Date(normalized).toLocaleDateString("pt-BR");
+  }
+  return date.toLocaleDateString("pt-BR");
 }
 
 /**

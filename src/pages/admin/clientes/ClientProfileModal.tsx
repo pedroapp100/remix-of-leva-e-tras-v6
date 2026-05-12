@@ -163,17 +163,16 @@ export function ClientProfileModal({ client, onClose, onEdit }: ClientProfileMod
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base font-semibold">Informações Cadastrais</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <FieldItem label="Nome / Razão Social" value={client.nome} />
-                    <FieldItem label="Email" value={client.email} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
+                <CardContent className="space-y-3">
+                  <FieldItem label="Nome / Razão Social" value={client.nome} />
+                  <FieldItem label="Email" value={client.email} />
+                  <div className="grid grid-cols-2 gap-3">
                     <FieldItem label="Telefone" value={client.telefone} />
-                    <FieldItem label="Endereço Principal" value={`${client.endereco}, ${client.bairro}, ${client.cidade} - ${client.uf}`} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
                     <FieldItem label="Chave Pix" value={client.chave_pix ?? "—"} />
+                  </div>
+                  <FieldItem label="Endereço Principal" value={`${client.endereco}, ${client.bairro}, ${client.cidade} - ${client.uf}`} />
+                  <div className="grid grid-cols-2 gap-3">
+                    <FieldItem label="Tipo" value={client.tipo === "pessoa_juridica" ? "Pessoa Jurídica" : "Pessoa Física"} />
                     <div>
                       <p className="text-xs text-muted-foreground mb-1">Status</p>
                       <Badge variant={client.status === "ativo" ? "default" : "outline"} className={client.status === "ativo" ? "bg-emerald-600 hover:bg-emerald-700" : ""}>
@@ -181,7 +180,6 @@ export function ClientProfileModal({ client, onClose, onEdit }: ClientProfileMod
                       </Badge>
                     </div>
                   </div>
-                  <FieldItem label="Tipo" value={client.tipo === "pessoa_juridica" ? "Pessoa Jurídica" : "Pessoa Física"} />
                   <FieldItem label="Cadastrado em" value={createdDate} />
                 </CardContent>
               </Card>
@@ -191,18 +189,16 @@ export function ClientProfileModal({ client, onClose, onEdit }: ClientProfileMod
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base font-semibold">Configuração Financeira</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">Modalidade de Pagamento</p>
-                      <Badge variant={client.modalidade === "faturado" ? "default" : "secondary"}>
-                        {MODALIDADE_LABELS[client.modalidade]}
-                      </Badge>
-                    </div>
-                    <FieldItem label="Fechamento de Fatura" value={getFrequenciaDesc()} />
+                <CardContent className="space-y-3">
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Modalidade de Pagamento</p>
+                    <Badge variant={client.modalidade === "faturado" ? "default" : "secondary"}>
+                      {MODALIDADE_LABELS[client.modalidade]}
+                    </Badge>
                   </div>
+                  <FieldItem label="Fechamento de Fatura" value={getFrequenciaDesc()} />
                   {client.modalidade === "faturado" && (
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-2 gap-3">
                       <FieldItem label="Faturamento Automático" value={client.ativar_faturamento_automatico ? "Sim" : "Não"} />
                       {client.numero_de_entregas_para_faturamento && (
                         <FieldItem label="Nº entregas p/ faturar" value={String(client.numero_de_entregas_para_faturamento)} />

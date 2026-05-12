@@ -42,7 +42,7 @@ export function ClientFormDialog({ open, onOpenChange, editing, onSave }: Client
   const [numEntregas, setNumEntregas] = useState<number | "">("");
   const [diaSemana, setDiaSemana] = useState<DiaSemana | "">("");
   const [diaMes, setDiaMes] = useState<number | "">("");
-  const [prazoVencimento, setPrazoVencimento] = useState<number>(7);
+  const [prazoVencimento, setPrazoVencimento] = useState<number | "">(7);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [exibirLogoLanding, setExibirLogoLanding] = useState(false);
@@ -160,7 +160,7 @@ export function ClientFormDialog({ open, onOpenChange, editing, onSave }: Client
       numero_de_entregas_para_faturamento: frequencia === "por_entrega" && numEntregas ? Number(numEntregas) : null,
       dia_da_semana_faturamento: frequencia === "semanal" && diaSemana ? diaSemana as DiaSemana : null,
       dia_do_mes_faturamento: frequencia === "mensal" && diaMes ? Number(diaMes) : null,
-      prazo_vencimento_dias: prazoVencimento,
+      prazo_vencimento_dias: Number(prazoVencimento) || 1,
       logo_url: resolvedLogoUrl,
       exibir_logo_landing: exibirLogoLanding,
       created_at: editing?.created_at ?? now,
@@ -280,7 +280,18 @@ export function ClientFormDialog({ open, onOpenChange, editing, onSave }: Client
                       min={1}
                       max={365}
                       value={prazoVencimento}
-                      onChange={(e) => setPrazoVencimento(Math.max(1, Math.min(365, Number(e.target.value) || 7)))}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === "") {
+                          setPrazoVencimento("");
+                        } else {
+                          setPrazoVencimento(Math.min(365, Math.max(1, Number(val))));
+                        }
+                      }}
+                      onBlur={(e) => {
+                        const val = Number(e.target.value);
+                        if (!val || val < 1) setPrazoVencimento(1);
+                      }}
                       className="w-24"
                     />
                     <span className="text-sm text-muted-foreground">dias após o fechamento da fatura</span>

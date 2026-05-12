@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import type { Rota, PagamentoSolicitacao } from "@/types/database";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFormasPagamento, useBairros } from "@/hooks/useSettings";
@@ -51,6 +51,17 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
   const { data: bairros = [] } = useBairros();
   const getBairroName = (id: string) => bairros.find((b) => b.id === id)?.nome ?? id;
   const formasAtivas = formasPagamento.filter((f) => f.enabled);
+
+  // Helper to find a forma de pagamento by keyword(s) in its name
+  const findFormaByKeyword = (...keywords: string[]) => {
+    const lower = keywords.map((k) => k.toLowerCase());
+    return (
+      formasAtivas.find((f) => lower.some((k) => f.name.toLowerCase().includes(k)))?.id ??
+      formasAtivas[0]?.id ??
+      ""
+    );
+  };
+
   const cliente = useMemo(() => clienteId ? clientes.find((c) => c.id === clienteId) : null, [clienteId, clientes]);
   const isPrePago = cliente?.modalidade === "pre_pago";
   const isFaturado = cliente?.modalidade === "faturado";
@@ -81,6 +92,72 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
     return initial;
   });
 
+  // Auto-fill payment lines based on rota configuration (runs when formasAtivas loads)
+  const hasAutoFilledRef = useRef(false);
+  useEffect(() => {
+    if (!open) { hasAutoFilledRef.current = false; return; }
+    if (hasAutoFilledRef.current || formasAtivas.length === 0) return;
+    hasAutoFilledRef.current = true;
+    setPagamentosPorRota((prev) => {
+      const updated = { ...prev };
+      rotas.forEach((r) => {
+        if ((prev[r.id] ?? []).length > 0) return; // already has lines — skip
+        const lines: PagamentoLinha[] = [];
+        // Operation fee paid in cash at origin
+        if (r.pagamento_operacao === "pago_na_hora" && (r.taxa_resolvida ?? 0) > 0) {
+          lines.push({
+            id: crypto.randomUUID(),
+            forma_pagamento_id: r.meios_pagamento_operacao?.[0] ?? findFormaByKeyword("dinheiro"),
+            valor: r.taxa_resolvida ?? 0,
+            pertence_a: "operacao",
+          });
+        }
+        // Destination collection
+        if (r.receber_do_cliente && (r.valor_a_receber ?? 0) > 0) {
+          const dest = r.meio_cobranca_destino;
+          if (dest === "maquina_loja") {
+            lines.push({
+              id: crypto.randomUUID(),
+              forma_pagamento_id: findFormaByKeyword("máquina", "maquina"),
+              valor: r.valor_a_receber ?? 0,
+              pertence_a: "loja",
+            });
+          } else if (dest === "pix_loja") {
+            lines.push({
+              id: crypto.randomUUID(),
+              forma_pagamento_id: findFormaByKeyword("pix"),
+              valor: r.valor_a_receber ?? 0,
+              pertence_a: "loja",
+            });
+          } else if (dest === "pix_empresa") {
+            lines.push({
+              id: crypto.randomUUID(),
+              forma_pagamento_id: findFormaByKeyword("pix"),
+              valor: r.valor_a_receber ?? 0,
+              pertence_a: "operacao",
+            });
+          } else if (dest === "dinheiro" && r.destino_dinheiro === "devolver_loja") {
+            lines.push({
+              id: crypto.randomUUID(),
+              forma_pagamento_id: DEVOLVER_LOJA_ID,
+              valor: r.valor_a_receber ?? 0,
+              pertence_a: "loja",
+            });
+          } else if (dest === "dinheiro" && r.destino_dinheiro === "repassar_empresa") {
+            lines.push({
+              id: crypto.randomUUID(),
+              forma_pagamento_id: findFormaByKeyword("dinheiro"),
+              valor: r.valor_a_receber ?? 0,
+              pertence_a: "operacao",
+            });
+          }
+        }
+        if (lines.length > 0) updated[r.id] = lines;
+      });
+      return updated;
+    });
+  }, [open, formasAtivas, rotas]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const addPagamento = (rotaId: string) => {
     setPagamentosPorRota((prev) => ({
       ...prev,
@@ -103,6 +180,18 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
         const updated = { ...p, [field]: value };
         if (field === "forma_pagamento_id" && value === DEVOLVER_LOJA_ID) {
           updated.pertence_a = "loja";
+        }
+        // In driver view, lock pertence_a to "loja" for destination-collection routes
+        if (isDriverView && field === "pertence_a") {
+          const rota = rotas.find((r) => r.id === rotaId);
+          if (
+            rota?.receber_do_cliente &&
+            (rota.meio_cobranca_destino === "maquina_loja" ||
+              rota.meio_cobranca_destino === "pix_loja" ||
+              (rota.meio_cobranca_destino === "dinheiro" && rota.destino_dinheiro === "devolver_loja"))
+          ) {
+            updated.pertence_a = "loja";
+          }
         }
         return updated;
       }),
@@ -279,20 +368,53 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
           )}
 
           {rotas.map((rota, i) => {
+            const MEIO_COBRANCA_LABELS: Record<string, string> = {
+              dinheiro: "Dinheiro",
+              maquina_loja: "Máquina da Loja",
+              pix_loja: "PIX da Loja",
+              pix_empresa: "PIX da Empresa",
+            };
             const totalAReceber =
               (rota.pagamento_operacao === "pago_na_hora" ? (rota.taxa_resolvida ?? 0) : 0)
               + (rota.receber_do_cliente ? (rota.valor_a_receber ?? 0) : 0);
-            const meiosNomes = (rota.meios_pagamento_operacao ?? [])
-              .map((id) => formasAtivas.find((f) => f.id === id)?.name)
-              .filter(Boolean) as string[];
+            const meiosNomes = [
+              ...(rota.meios_pagamento_operacao ?? [])
+                .map((id) => formasAtivas.find((f) => f.id === id)?.name)
+                .filter(Boolean),
+              ...(rota.receber_do_cliente && rota.meio_cobranca_destino
+                ? [MEIO_COBRANCA_LABELS[rota.meio_cobranca_destino] ?? rota.meio_cobranca_destino]
+                : []),
+            ] as string[];
             const mostrarReferencia = isDriverView &&
               (rota.pagamento_operacao === "pago_na_hora" || rota.receber_do_cliente);
             const isRotaFaturada = isDriverView && rota.pagamento_operacao === "faturar";
             const podeRegistrarPagamento = !isRotaFaturada || !!rota.receber_do_cliente;
+
+            // Per-route validation
+            const pagRotaOperacaoTotal = (pagamentosPorRota[rota.id] || [])
+              .filter((p) => p.pertence_a === "operacao")
+              .reduce((s, p) => s + p.valor, 0);
+            const pagRotaLojaTotal = (pagamentosPorRota[rota.id] || [])
+              .filter((p) => p.pertence_a === "loja" && p.forma_pagamento_id !== DEVOLVER_LOJA_ID)
+              .reduce((s, p) => s + p.valor, 0);
+            const expectedOperacao = rota.taxa_resolvida != null ? rota.taxa_resolvida : null;
+            const expectedLoja = rota.receber_do_cliente ? (rota.valor_a_receber ?? 0) : null;
+            const operacaoErro = !isDriverView && expectedOperacao !== null &&
+              Math.round(pagRotaOperacaoTotal * 100) !== Math.round(expectedOperacao * 100);
+            const lojaErro = !isDriverView && expectedLoja !== null &&
+              Math.round(pagRotaLojaTotal * 100) !== Math.round(expectedLoja * 100);
+
             return (
-            <div key={rota.id} className="space-y-3">
+            <div key={rota.id} className={`rounded-lg border p-4 space-y-3 transition-colors ${
+              (operacaoErro || lojaErro) ? "border-amber-500/60 bg-amber-500/5" : "border-border bg-muted/20"
+            }`}>
               <div className="flex items-center justify-between">
-                <h4 className="text-sm font-semibold">Rota {i + 1} — {getBairroName(rota.bairro_destino_id)}</h4>
+                <h4 className="text-sm font-semibold flex items-center gap-2">
+                  {(operacaoErro || lojaErro) && (
+                    <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+                  )}
+                  Rota {i + 1} — {getBairroName(rota.bairro_destino_id)}
+                </h4>
                 {isRotaFaturada && (
                   <Badge variant="default" className="text-xs">Faturado</Badge>
                 )}
@@ -303,6 +425,24 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
                   </div>
                 )}
               </div>
+
+              {(operacaoErro || lojaErro) && (
+                <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 flex items-start gap-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+                  <div className="text-xs space-y-0.5">
+                    {operacaoErro && (
+                      <p className="text-amber-700 dark:text-amber-400">
+                        <strong>Operação:</strong> registrado <strong>{fmt(pagRotaOperacaoTotal)}</strong>, esperado <strong>{fmt(expectedOperacao!)}</strong>
+                      </p>
+                    )}
+                    {lojaErro && (
+                      <p className="text-amber-700 dark:text-amber-400">
+                        <strong>Loja:</strong> registrado <strong>{fmt(pagRotaLojaTotal)}</strong>, esperado <strong>{fmt(expectedLoja!)}</strong>
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {mostrarReferencia && (
                 <div className="rounded-md border border-primary/20 bg-primary/5 p-3 space-y-1.5">
@@ -348,7 +488,7 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
               <div className="space-y-2">
                 {(pagamentosPorRota[rota.id] || []).map((pag) => (
                   isDriverView ? (
-                    <div key={pag.id} className="grid grid-cols-[1fr_100px_auto] gap-2 items-end">
+                    <div key={pag.id} className="grid grid-cols-[1fr_100px_auto_auto] gap-2 items-end">
                       <div className="space-y-1">
                         <Label className="text-xs">Meio</Label>
                         <Select value={pag.forma_pagamento_id} onValueChange={(v) => updatePagamento(rota.id, pag.id, "forma_pagamento_id", v)}>
@@ -361,6 +501,14 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
                       <div className="space-y-1">
                         <Label className="text-xs">Valor</Label>
                         <CurrencyInput value={pag.valor} onChange={(v) => updatePagamento(rota.id, pag.id, "valor", v)} />
+                      </div>
+                      <div className="flex items-end pb-0.5">
+                        <Badge
+                          variant={pag.pertence_a === "loja" ? "secondary" : "outline"}
+                          className="text-[10px] h-9 px-2 rounded-md"
+                        >
+                          {pag.pertence_a === "loja" ? "Loja" : "Operação"}
+                        </Badge>
                       </div>
                       <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive" onClick={() => removePagamento(rota.id, pag.id)}>
                         <Trash2 className="h-4 w-4" />
@@ -406,8 +554,6 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
               </Button>
               </>
               )}
-
-              {i < rotas.length - 1 && <Separator />}
             </div>
             );
           })}

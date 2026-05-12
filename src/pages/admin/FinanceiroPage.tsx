@@ -6,7 +6,7 @@ import { useDespesas, useReceitas, useCategorias } from "@/hooks/useFinanceiro";
 import { useFaturas } from "@/hooks/useFaturas";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { DollarSign, TrendingDown, Clock, CheckCircle, Receipt, BookOpen, RefreshCw } from "lucide-react";
+import { DollarSign, TrendingDown, Clock, CheckCircle, Receipt, BookOpen, RefreshCw, TrendingUp, ArrowUpRight } from "lucide-react";
 import { formatCurrency, formatDateBR } from "@/lib/formatters";
 import { ExportDropdown } from "@/components/shared/ExportDropdown";
 import { exportCSV, exportPDF } from "@/lib/exportTable";
@@ -15,6 +15,8 @@ import { DespesasTab } from "./financeiro/DespesasTab";
 import { ReceitasTab } from "./financeiro/ReceitasTab";
 import { LivroCaixaTab } from "./financeiro/LivroCaixaTab";
 import { DespesasRecorrentesTab } from "./financeiro/DespesasRecorrentesTab";
+import { ReceitasLancadasTab } from "./financeiro/ReceitasLancadasTab";
+import { RepassesTab } from "./financeiro/RepassesTab";
 
 export default function FinanceiroPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -78,7 +80,7 @@ export default function FinanceiroPage() {
         categoria, valor, fill: CHART_FILLS[i % CHART_FILLS.length],
       })),
     };
-  }, [despesas, receitas, getCatNome]);
+  }, [despesas, receitas, faturas, getCatNome]);
 
   const livroCaixaEntries: LivroCaixaEntry[] = [];
 
@@ -127,6 +129,7 @@ export default function FinanceiroPage() {
                 <XAxis dataKey="mes" tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} />
                 <YAxis tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                 <Tooltip
+                  cursor={{ fill: "hsl(var(--muted)/0.3)" }}
                   contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, color: "hsl(var(--foreground))" }}
                   formatter={(value: number) => formatCurrency(value)}
                 />
@@ -180,11 +183,17 @@ export default function FinanceiroPage() {
               <TabsTrigger value="despesas" className="gap-1.5">
                 <TrendingDown className="h-4 w-4" /> Despesas
               </TabsTrigger>
+              <TabsTrigger value="recorrentes" className="gap-1.5">
+                <RefreshCw className="h-4 w-4" /> Recorrentes
+              </TabsTrigger>
               <TabsTrigger value="receitas" className="gap-1.5">
                 <Receipt className="h-4 w-4" /> Receitas
               </TabsTrigger>
-              <TabsTrigger value="recorrentes" className="gap-1.5">
-                <RefreshCw className="h-4 w-4" /> Recorrentes
+              <TabsTrigger value="lancadas" className="gap-1.5">
+                <TrendingUp className="h-4 w-4" /> Lançadas
+              </TabsTrigger>
+              <TabsTrigger value="repasses" className="gap-1.5">
+                <ArrowUpRight className="h-4 w-4" /> Repasses
               </TabsTrigger>
               <TabsTrigger value="livro-caixa" className="gap-1.5">
                 <BookOpen className="h-4 w-4" /> Livro Caixa
@@ -193,11 +202,17 @@ export default function FinanceiroPage() {
             <TabsContent value="despesas" className="mt-4">
               <DespesasTab despesas={despesas} />
             </TabsContent>
-            <TabsContent value="receitas" className="mt-4">
-              <ReceitasTab receitas={receitas} faturas={faturas} />
-            </TabsContent>
             <TabsContent value="recorrentes" className="mt-4">
               <DespesasRecorrentesTab />
+            </TabsContent>
+            <TabsContent value="receitas" className="mt-4">
+              <ReceitasTab faturas={faturas} receitas={receitas} />
+            </TabsContent>
+            <TabsContent value="lancadas" className="mt-4">
+              <ReceitasLancadasTab receitas={receitas} faturas={faturas} />
+            </TabsContent>
+            <TabsContent value="repasses" className="mt-4">
+              <RepassesTab faturas={faturas} />
             </TabsContent>
             <TabsContent value="livro-caixa" className="mt-4">
               <LivroCaixaTab entries={livroCaixaEntries} />

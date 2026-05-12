@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useClientes, useTabelaPrecos, useClienteSaldoMap } from "@/hooks/useClientes";
@@ -19,7 +19,8 @@ import { Badge } from "@/components/ui/badge";
 import { Plus, CheckCircle, ChevronRight, ChevronLeft, Briefcase, Store, Package, RotateCcw, MapPin, CircleCheckBig, MapPinned, Receipt, Wallet, CalendarIcon, History, Check, ChevronsUpDown } from "lucide-react";
 import { toast } from "sonner";
 import { RotaCard, getRotaSubtotalOperacao, getRotaTotalEntregador } from "./RotaCard";
-import type { RotaForm } from "./RotaCard";
+import type { RotaForm, MeioCobrancaDestino, DestinoDinheiro } from "./RotaCard";
+import type { Rota, Solicitacao } from "@/types/database";
 
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -70,6 +71,36 @@ function resolverTarifa(
   return { taxa: bairro.taxa_entrega, fallback: true };
 }
 
+interface RotaWithExtras extends Rota {
+  taxas_extras_data: { id: string; nome: string; valor: number }[];
+}
+
+export interface EditInitialData {
+  sol: Solicitacao;
+  rotas: RotaWithExtras[];
+}
+
+function rotaToForm(rota: RotaWithExtras): RotaForm {
+  return {
+    id: rota.id,
+    rotaDbId: rota.id,
+    bairro_destino_id: rota.bairro_destino_id,
+    responsavel: rota.responsavel,
+    telefone: rota.telefone,
+    observacoes: rota.observacoes ?? "",
+    receber_do_cliente: rota.receber_do_cliente,
+    valor_a_receber: rota.valor_a_receber ?? 0,
+    meios_pagamento: [],
+    taxa_resolvida: rota.taxa_resolvida ?? null,
+    is_fallback: false,
+    taxas_extras: rota.taxas_extras_data,
+    pagamento_operacao: rota.pagamento_operacao,
+    meios_pagamento_operacao: rota.meios_pagamento_operacao ?? [],
+    meio_cobranca_destino: (rota.meio_cobranca_destino ?? "") as MeioCobrancaDestino | "",
+    destino_dinheiro: (rota.destino_dinheiro ?? "") as DestinoDinheiro | "",
+  };
+}
+
 const emptyRota = (): RotaForm => ({
   id: crypto.randomUUID(),
   bairro_destino_id: "",
@@ -115,9 +146,11 @@ interface LaunchSolicitacaoDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (data: { clienteId: string; tipoOperacao: string; tipoColeta: TipoColeta; pontoColeta: string; entregadorId?: string; dataRetroativa?: string; retroativoConcluida?: boolean; rotas: RotaForm[] }) => Promise<boolean> | boolean;
+  initialData?: EditInitialData;
+  onEdit?: (data: { solicitacaoId: string; entregadorId?: string; tipoOperacao: string; pontoColeta: string; tipoColeta: TipoColeta; rotas: RotaForm[] }) => Promise<boolean> | boolean;
 }
 
-export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit }: LaunchSolicitacaoDialogProps) {
+export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit, initialData, onEdit }: LaunchSolicitacaoDialogProps) {
   const { getClienteSaldo } = useClienteSaldoMap();
   const { data: clientesData = [] } = useClientes();
   const { data: entregadoresData = [] } = useEntregadores();
@@ -165,6 +198,26 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit }: Launch
     setRotas([emptyRota()]);
   };
 
+  useEffect(() => {
+    if (!open) return;
+    if (initialData) {
+      setStep(1);
+      setTipoColeta(initialData.sol.tipo_coleta as TipoColeta);
+      setClienteId(initialData.sol.cliente_id);
+      setTipoOperacao(initialData.sol.tipo_operacao);
+      setPontoColeta(initialData.sol.ponto_coleta);
+      setEntregadorId(initialData.sol.entregador_id ?? "");
+      setObservacoes("");
+      setRetroativoEnabled(false);
+      setDataRetroativa(undefined);
+      setRetroativoConcluida(false);
+      setRotas(initialData.rotas.map(rotaToForm));
+    } else {
+      resetForm();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
   const addRota = () => {
     const cliente = clientesAtivos.find((c) => c.id === clienteId);
     const defaultOp = cliente?.modalidade === "pre_pago" ? "descontar_saldo" : "faturar";
@@ -200,7 +253,7 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit }: Launch
       }
       return {
         ...r,
-        taxas_extras: [...r.taxas_extras, { id: crypto.randomUUID(), nome: config.nome, valor: config.valor_padrao }],
+        taxas_extras: [...r.taxas_extras, { id: config.id, nome: config.nome, valor: config.valor_padrao }],
       };
     }));
   };
@@ -239,6 +292,8 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit }: Launch
 
   const validateStep2 = () => {
     for (const r of rotas) {
+      const isRo = !!initialData && initialData.sol.status === "em_andamento" && !!r.rotaDbId;
+      if (isRo) continue;
       if (!r.bairro_destino_id || !r.responsavel.trim()) {
         toast.error("Preencha todos os campos obrigatórios de cada rota."); return false;
       }
@@ -272,6 +327,21 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit }: Launch
   };
 
   const handleSubmit = async () => {
+    if (initialData && onEdit) {
+      const success = await onEdit({
+        solicitacaoId: initialData.sol.id,
+        entregadorId: entregadorId || undefined,
+        tipoOperacao,
+        pontoColeta,
+        tipoColeta: tipoColeta as TipoColeta,
+        rotas,
+      });
+      if (success) {
+        resetForm();
+        onOpenChange(false);
+      }
+      return;
+    }
     if (retroativoEnabled && !dataRetroativa) {
       toast.error("Selecione a data retroativa.");
       return;
@@ -304,7 +374,9 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit }: Launch
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
          <DialogHeader>
           <DialogTitle>
-            {step === 0 ? "Lançar Nova Solicitação" : step === 1 ? "Lançar Nova Coleta" : `Nova Solicitação — Etapa ${step}/3`}
+            {initialData
+              ? `Editar Solicitação — ${initialData.sol.codigo} (Etapa ${step}/3)`
+              : step === 0 ? "Lançar Nova Solicitação" : step === 1 ? "Lançar Nova Coleta" : `Nova Solicitação — Etapa ${step}/3`}
           </DialogTitle>
           <DialogDescription className="sr-only">.</DialogDescription>
           {step === 0 && (
@@ -580,6 +652,7 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit }: Launch
 
               {rotas.map((rota, i) => {
                 const clienteSel = clientesAtivos.find((c) => c.id === clienteId);
+                const isRotaReadonly = !!initialData && initialData.sol.status === "em_andamento" && !!rota.rotaDbId;
                 return (
                   <RotaCard
                     key={rota.id}
@@ -587,6 +660,7 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit }: Launch
                     index={i}
                     canRemove={rotas.length > 1}
                     clienteModalidade={clienteSel?.modalidade ?? "faturado"}
+                    isReadonly={isRotaReadonly}
                     onUpdate={updateRota}
                     onRemove={removeRota}
                     onAddTaxaExtra={addTaxaExtra}
@@ -750,15 +824,15 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit }: Launch
         </div>
 
         <DialogFooter className="flex-row justify-between sm:justify-between">
-          {step > 0 ? (
+          {step > 0 && !(initialData && step === 1) ? (
             <Button variant="outline" onClick={() => setStep(step - 1)}><ChevronLeft className="h-4 w-4 mr-1" /> Voltar</Button>
           ) : (
-            <Button variant="outline" onClick={() => { resetForm(); onOpenChange(false); }}>Cancelar</Button>
+            <Button variant="outline" onClick={() => { if (!initialData) resetForm(); onOpenChange(false); }}>Cancelar</Button>
           )}
           {step < 3 ? (
             <Button onClick={handleNext}>{step === 0 ? "Continuar" : "Próximo"} <ChevronRight className="h-4 w-4 ml-1" /></Button>
           ) : (
-            <Button onClick={handleSubmit}>Criar Solicitação</Button>
+            <Button onClick={handleSubmit}>{initialData ? "Salvar Alterações" : "Criar Solicitação"}</Button>
           )}
         </DialogFooter>
       </DialogContent>

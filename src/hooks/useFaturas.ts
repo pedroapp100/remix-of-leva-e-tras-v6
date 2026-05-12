@@ -18,6 +18,7 @@ import {
   createAjuste,
   fetchHistoricoFatura,
   createHistoricoFatura,
+  fetchFaturaIdsComReceita,
   concluirFaturaEntrega,
   type FaturaRow,
   type FaturaInsert,
@@ -35,6 +36,7 @@ import {
   fetchSolicitacoesByIds,
   fetchSolicitacoesByCodigos,
   fetchRotasBySolicitacaoIds,
+  fetchTaxasExtrasByRotaIds,
   type SolicitacaoRow,
   type RotaRow,
 } from "@/services/solicitacoes";
@@ -46,6 +48,14 @@ export function useFaturas() {
     queryKey: ["faturas"],
     queryFn: fetchFaturas,
     select: (data) => data.map(rowToFatura),
+  });
+}
+
+export function useFaturaIdsComReceita() {
+  return useQuery<Set<string>>({
+    queryKey: ["faturas_com_receita"],
+    queryFn: fetchFaturaIdsComReceita,
+    staleTime: 30_000,
   });
 }
 
@@ -228,14 +238,26 @@ export function useEntregasByFatura(faturaId: string) {
         rotasBySol.set(r.solicitacao_id, arr);
       }
 
+      // Busca as taxas extras de todas as rotas de uma vez
+      const todosRotaIds = rotas.map((r) => r.id);
+      const taxasExtrasMap = await fetchTaxasExtrasByRotaIds(todosRotaIds);
+
       // 6. Map to EntregaFatura[]
       return sols.map((sol): EntregaFatura => {
         const solRotas = rotasBySol.get(sol.id) ?? [];
         const totalTaxasFaturadas = solRotas
           .filter((r) => r.pagamento_operacao !== "pago_na_hora")
-          .reduce((s, r) => s + (r.taxa_resolvida ?? 0), 0);
+          .reduce((s, r) => {
+            const extras = taxasExtrasMap.get(r.id) ?? [];
+            return s + (r.taxa_resolvida ?? 0) + extras.reduce((a, t) => a + t.valor, 0);
+          }, 0);
         const totalRecebido = solRotas
-          .filter((r) => r.receber_do_cliente)
+          .filter((r) => {
+            if (!r.receber_do_cliente) return false;
+            if (r.meio_cobranca_destino === "pix_empresa") return true;
+            if (r.meio_cobranca_destino === "dinheiro" && r.destino_dinheiro === "repassar_empresa") return true;
+            return false;
+          })
           .reduce((s, r) => s + (r.valor_a_receber ?? 0), 0);
 
         const mappedRotas: RotaEntregaFatura[] = solRotas.map((r) => ({
@@ -243,10 +265,12 @@ export function useEntregasByFatura(faturaId: string) {
           responsavel: r.responsavel,
           telefone: r.telefone,
           taxa: r.taxa_resolvida ?? 0,
+          taxas_extras: taxasExtrasMap.get(r.id) ?? [],
           valor_receber: r.receber_do_cliente ? (r.valor_a_receber ?? null) : null,
           status: r.status === "cancelada" ? "cancelada" : "concluida",
           pagamento_operacao: r.pagamento_operacao,
           meio_cobranca_destino: r.meio_cobranca_destino ?? null,
+          destino_dinheiro: (r.destino_dinheiro as "devolver_loja" | "repassar_empresa" | null) ?? null,
         }));
 
         return {

@@ -21,7 +21,7 @@ import {
   FileText, Calendar, Receipt, ArrowDownUp, Pencil, History,
   Banknote, ArrowUpRight, ArrowDownRight, Download, Package,
   ChevronDown, ChevronRight, User, MapPin, Truck, Phone, DollarSign,
-  Lock, Trash2, Save, X, CheckCircle,
+  Lock, Trash2, Save, X, CheckCircle, Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { generateFaturaPDF } from "@/lib/generateFaturaPDF";
@@ -38,6 +38,8 @@ import {
   useEntregasByFatura,
   useFaturaById,
 } from "@/hooks/useFaturas";
+import { useCreateReceita } from "@/hooks/useFinanceiro";
+import { buildReceitaFromFatura } from "@/lib/faturaReceita";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface Props {
@@ -65,10 +67,13 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate,
   const updateFatura = useUpdateFatura();
   const createAjuste = useCreateAjuste();
   const createHistorico = useCreateHistoricoFatura();
+  const createReceita = useCreateReceita();
 
   const [repasseOpen, setRepasseOpen] = useState(false);
   const [pagamentoOpen, setPagamentoOpen] = useState(false);
   const [ajusteOpen, setAjusteOpen] = useState(false);
+  const [lancandoReceita, setLancandoReceita] = useState(false);
+  const [finalizando, setFinalizando] = useState(false);
   const [entregasExpanded, setEntregasExpanded] = useState(false);
   const [expandedEntrega, setExpandedEntrega] = useState<string | null>(null);
   const [fecharConfirmOpen, setFecharConfirmOpen] = useState(false);
@@ -83,28 +88,77 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate,
   const saldoColor = saldo < 0 ? "text-emerald-500" : saldo > 0 ? "text-destructive" : "text-muted-foreground";
   const saldoLabel = saldo > 0 ? "Operação deve repassar à loja" : saldo < 0 ? "Loja deve pagar à operação" : "Quitado";
 
-  const handleRepasse = async (valor: number, observacao: string) => {
+  const totalAjustesVal = ajustes.reduce((sum, a) => sum + (a.tipo === "credito" ? a.valor : -a.valor), 0);
+  const valorBaseOriginal = (fatura.total_creditos_loja ?? 0) - (fatura.total_debitos_loja ?? 0) + totalAjustesVal;
+  const statusRepasse  = liveFatura?.status_repasse  ?? fatura.status_repasse;
+  const statusCobranca = liveFatura?.status_cobranca ?? fatura.status_cobranca;
+
+  const handleRepasse = async (valor: number, formaPagamento: string, observacao: string, _comprovantes: File[]) => {
     const novoSaldo = saldo - valor;
+    const faturaFinalizada = novoSaldo === 0;
+    const taxas = (liveFatura ?? fatura).total_debitos_loja ?? 0;
     try {
       await updateFatura.mutateAsync({
         id: fatura.id,
         patch: {
           saldo_liquido: novoSaldo,
+          valor_repasse: valor,
           status_repasse: "Repassado",
-          status_geral: novoSaldo === 0 ? "Fechada" : fatura.status_geral,
+          status_geral: faturaFinalizada ? "Finalizada" : fatura.status_geral,
         },
       });
       await createHistorico.mutateAsync({
         fatura_id: fatura.id,
         tipo: "repasse",
-        descricao: `Repasse de ${formatCurrency(valor)} registrado${observacao ? ` — ${observacao}` : ""}`,
+        descricao: `Repasse de ${formatCurrency(valor)} registrado${formaPagamento ? ` via ${formaPagamento}` : ""}${observacao ? ` — ${observacao}` : ""}`,
         usuario_id: user?.id ?? null,
         valor_anterior: saldo,
         valor_novo: novoSaldo,
         metadata: null,
       });
+      // Auto-lançar Receita de taxas se ainda não foi lançada
+      if (taxas > 0 && !receitaJaLancada) {
+        const receitaTaxas = buildReceitaFromFatura({
+          faturaId: fatura.id,
+          faturaNumero: fatura.numero,
+          clienteId: fatura.cliente_id,
+          valor: taxas,
+          tipo: "repasse",
+        });
+        if (receitaTaxas) {
+          await createReceita.mutateAsync(receitaTaxas);
+          await createHistorico.mutateAsync({
+            fatura_id: fatura.id,
+            tipo: "receita_lancada",
+            descricao: `Receita de taxas ${formatCurrency(taxas)} lançada automaticamente ao registrar repasse`,
+            usuario_id: user?.id ?? null,
+            valor_anterior: null,
+            valor_novo: taxas,
+            metadata: null,
+          });
+        }
+      }
+      if (faturaFinalizada) {
+        await createHistorico.mutateAsync({
+          fatura_id: fatura.id,
+          tipo: "finalizada",
+          descricao: "Fatura finalizada automaticamente após repasse total",
+          usuario_id: user?.id ?? null,
+          valor_anterior: null,
+          valor_novo: null,
+          metadata: null,
+        });
+      }
       setRepasseOpen(false);
-      toast.success(`Repasse de ${formatCurrency(valor)} registrado com sucesso`);
+      if (faturaFinalizada) {
+        toast.success(`Fatura ${fatura.numero} finalizada!`, {
+          description: `Repasse de ${formatCurrency(valor)} registrado — saldo zerado.`,
+          duration: 5000,
+        });
+        onOpenChange(false);
+      } else {
+        toast.success(`Repasse de ${formatCurrency(valor)} registrado com sucesso`);
+      }
     } catch (err) {
       toast.error("Erro ao registrar repasse");
     }
@@ -142,7 +196,46 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate,
     }
   };
 
+  // Receita considerada lançada se houver evento de repasse, pagamento ou lançamento manual no histórico
+  const receitaJaLancada = historico.some(
+    (h) => h.tipo === "receita_lancada"
+  );
+
+  const handleLancarReceita = async () => {
+    const taxas = (liveFatura ?? fatura).total_debitos_loja ?? 0;
+    const receita = buildReceitaFromFatura({
+      faturaId: fatura.id,
+      faturaNumero: fatura.numero,
+      clienteId: fatura.cliente_id,
+      valor: taxas,
+      tipo: "repasse",
+    });
+    if (!receita) {
+      toast.error("Não há valor de taxas para lançar nesta fatura.");
+      return;
+    }
+    setLancandoReceita(true);
+    try {
+      await createReceita.mutateAsync(receita);
+      await createHistorico.mutateAsync({
+        fatura_id: fatura.id,
+        tipo: "receita_lancada",
+        descricao: `Receita de ${formatCurrency(taxas)} lançada manualmente no financeiro`,
+        usuario_id: user?.id ?? null,
+        valor_anterior: null,
+        valor_novo: taxas,
+        metadata: null,
+      });
+      toast.success(`Receita de ${formatCurrency(taxas)} lançada com sucesso.`);
+    } catch {
+      toast.error("Erro ao lançar receita. Tente novamente.");
+    } finally {
+      setLancandoReceita(false);
+    }
+  };
+
   const handleFinalizar = async () => {
+    setFinalizando(true);
     try {
       await updateFatura.mutateAsync({
         id: fatura.id,
@@ -157,9 +250,15 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate,
         valor_novo: null,
         metadata: null,
       });
-      toast.success("Fatura finalizada com sucesso");
+      toast.success(`Fatura ${fatura.numero} finalizada!`, {
+        description: "Saldo zerado — fatura aguardando lançamento no financeiro.",
+        duration: 5000,
+      });
+      onOpenChange(false);
     } catch (err) {
       toast.error("Erro ao finalizar fatura");
+    } finally {
+      setFinalizando(false);
     }
   };
 
@@ -342,9 +441,16 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate,
                   <p className="text-muted-foreground">Cliente</p>
                   <p className="font-medium">{fatura.cliente_nome}</p>
                   {fatura.status_geral === "Finalizada" && (
-                    <Badge className="mt-1 bg-emerald-500/15 text-emerald-600 border border-emerald-500/30 text-xs gap-1 h-5">
-                      <CheckCircle className="h-3 w-3" /> Fatura Paga
-                    </Badge>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      <Badge className="bg-emerald-500/15 text-emerald-600 border border-emerald-500/30 text-xs gap-1 h-5">
+                        <CheckCircle className="h-3 w-3" /> Fatura Paga
+                      </Badge>
+                      {receitaJaLancada && (
+                        <Badge className="bg-primary/10 text-primary border border-primary/20 text-xs gap-1 h-5">
+                          <DollarSign className="h-3 w-3" /> Lançada
+                        </Badge>
+                      )}
+                    </div>
                   )}
                 </div>
                 <div>
@@ -378,11 +484,36 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate,
                     <SummaryItem label="Créditos Loja" value={fatura.total_creditos_loja ?? 0} icon={<ArrowDownRight className="h-4 w-4 text-emerald-500" />} />
                     <SummaryItem label="Débitos Loja" value={fatura.total_debitos_loja ?? 0} icon={<ArrowUpRight className="h-4 w-4 text-destructive" />} />
                     <SummaryItem label="Ajustes" value={ajustes.reduce((sum, a) => sum + (a.tipo === "credito" ? a.valor : -a.valor), 0)} icon={<ArrowDownUp className="h-4 w-4 text-amber-500" />} />
-                    <div>
-                      <p className="text-muted-foreground text-xs mb-1">Saldo Líquido</p>
-                      <p className={cn("text-base sm:text-lg font-bold tabular-nums", saldoColor)}>{formatCurrency(saldo)}</p>
-                      <p className="text-xs text-muted-foreground">{saldoLabel}</p>
-                    </div>
+                    {fatura.status_geral === "Finalizada" ? (
+                      <div className="col-span-2 sm:col-span-1 flex gap-4">
+                        {(fatura.total_creditos_loja ?? 0) > 0 && (
+                          <div>
+                            <p className="text-muted-foreground text-xs mb-1">Repassado ao lojista</p>
+                            <p className="text-base sm:text-lg font-bold tabular-nums">{formatCurrency((fatura.total_creditos_loja ?? 0) - (fatura.total_debitos_loja ?? 0))}</p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="text-muted-foreground text-xs mb-1">Saldo Líquido</p>
+                        {saldo === 0 && valorBaseOriginal > 0 && statusRepasse === "Repassado" ? (
+                          <>
+                            <p className="text-base sm:text-lg font-bold tabular-nums text-emerald-500">{formatCurrency(valorBaseOriginal)}</p>
+                            <p className="text-xs text-emerald-600 flex items-center gap-1"><CheckCircle className="h-3 w-3" /> Repassado à loja</p>
+                          </>
+                        ) : saldo === 0 && valorBaseOriginal < 0 && statusCobranca === "Cobrado" ? (
+                          <>
+                            <p className="text-base sm:text-lg font-bold tabular-nums text-emerald-500">{formatCurrency(Math.abs(valorBaseOriginal))}</p>
+                            <p className="text-xs text-emerald-600 flex items-center gap-1"><CheckCircle className="h-3 w-3" /> Cobrado do lojista</p>
+                          </>
+                        ) : (
+                          <>
+                            <p className={cn("text-base sm:text-lg font-bold tabular-nums", saldoColor)}>{formatCurrency(saldo)}</p>
+                            <p className="text-xs text-muted-foreground">{saldoLabel}</p>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -441,12 +572,25 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate,
                             />
                           ))}
                           {/* Totais */}
-                          <div className="flex items-center justify-between pt-3 mt-2 border-t border-border/50 text-sm">
+                          <div className="flex items-center justify-between pt-3 mt-2 border-t border-border/50 text-sm flex-wrap gap-2">
                             <span className="font-medium text-muted-foreground">Totais</span>
-                            <div className="flex gap-6">
+                            <div className="flex gap-6 flex-wrap">
                               <span className="text-muted-foreground">{entregas.reduce((s, e) => s + e.total_rotas, 0)} rotas</span>
                               <span className="font-semibold tabular-nums">{formatCurrency(entregas.reduce((s, e) => s + e.valor_taxas, 0))} taxas</span>
-                              <span className="font-semibold tabular-nums text-emerald-500">{formatCurrency(entregas.reduce((s, e) => s + e.valor_recebido_cliente, 0))} recebido</span>
+                              {fatura.status_geral === "Finalizada" ? (
+                                <>
+                                  {(fatura.total_creditos_loja ?? 0) > 0 && (
+                                    <span className="font-semibold tabular-nums text-destructive">
+                                      {formatCurrency((fatura.total_creditos_loja ?? 0) - (fatura.total_debitos_loja ?? 0))} repassado ao lojista
+                                    </span>
+                                  )}
+                                </>
+                              ) : (
+                                <>
+                                  <span className="font-semibold tabular-nums text-emerald-500">{formatCurrency(entregas.reduce((s, e) => s + e.valor_recebido_cliente, 0))} recebido</span>
+                                  <span className={`font-semibold tabular-nums ${saldoColor}`}>{formatCurrency(saldo)} saldo líquido</span>
+                                </>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -483,8 +627,8 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate,
                                 {l.tipo === "credito_loja" ? "Crédito Loja" : l.tipo === "receita_operacao" ? "Receita Op." : l.tipo === "debito_loja" ? "Débito Loja" : "Ajuste"}
                               </Badge>
                             </TableCell>
-                            <TableCell className={cn("text-right tabular-nums font-medium", l.sinal === "credito" ? "text-emerald-500" : "text-destructive")}>
-                              {l.sinal === "debito" ? "- " : ""}{formatCurrency(l.valor)}
+                            <TableCell className={cn("text-right tabular-nums font-medium whitespace-nowrap", l.sinal === "credito" ? "text-emerald-500" : "text-destructive")}>
+                              {l.sinal === "debito" ? "− " : ""}{formatCurrency(l.valor)}
                             </TableCell>
                             <TableCell>
                               <Badge variant={l.status_liquidacao === "liquidado" ? "default" : "secondary"} className="text-xs">
@@ -541,9 +685,29 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate,
                     </CardHeader>
                     <CardContent>
                       {pagamentos.length === 0 ? (
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <CheckCircle className="h-4 w-4 text-emerald-500 shrink-0" />
-                          <span>Fatura quitada por ajuste manual — saldo zerado.</span>
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <CheckCircle className="h-4 w-4 text-emerald-500 shrink-0" />
+                            <span>Fatura quitada por ajuste manual — saldo zerado.</span>
+                          </div>
+                          {!viewOnly && ((liveFatura ?? fatura).total_debitos_loja ?? 0) > 0 && (
+                            receitaJaLancada ? (
+                              <Badge className="gap-1.5 bg-primary/10 text-primary border border-primary/20 text-xs py-1.5 px-3">
+                                <DollarSign className="h-3.5 w-3.5" /> Lançado no financeiro
+                              </Badge>
+                            ) : (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="gap-1.5 text-emerald-600 border-emerald-500/40 hover:bg-emerald-500/10"
+                                disabled={lancandoReceita}
+                                onClick={handleLancarReceita}
+                              >
+                                <DollarSign className="h-3.5 w-3.5" />
+                                {lancandoReceita ? "Lançando..." : "Lançar Fatura"}
+                              </Button>
+                            )
+                          )}
                         </div>
                       ) : (
                         <div className="space-y-3">
@@ -587,6 +751,24 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate,
                               </div>
                             );
                           })}
+                          {!viewOnly && ((liveFatura ?? fatura).total_debitos_loja ?? 0) > 0 && (
+                            receitaJaLancada ? (
+                              <Badge className="gap-1.5 bg-primary/10 text-primary border border-primary/20 text-xs py-1.5 px-3">
+                                <DollarSign className="h-3.5 w-3.5" /> Lançado no financeiro
+                              </Badge>
+                            ) : (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="gap-1.5 text-emerald-600 border-emerald-500/40 hover:bg-emerald-500/10"
+                                disabled={lancandoReceita}
+                                onClick={handleLancarReceita}
+                              >
+                                <DollarSign className="h-3.5 w-3.5" />
+                                {lancandoReceita ? "Lançando..." : "Lançar Fatura"}
+                              </Button>
+                            )
+                          )}
                         </div>
                       )}
                     </CardContent>
@@ -622,17 +804,17 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate,
                 <>
                   <Separator />
                   <div className="flex flex-wrap gap-2">
-                    {saldo > 0 && (
+                    {fatura.status_geral === "Fechada" && saldo > 0 && (
                       <Button variant="outline" onClick={() => setRepasseOpen(true)}>
                         <ArrowUpRight className="h-4 w-4 mr-1.5" /> Registrar Repasse
                       </Button>
                     )}
-                    {saldo < 0 && (
+                    {fatura.status_geral === "Fechada" && saldo < 0 && (
                       <Button variant="outline" onClick={handleCobranca}>
                         <ArrowDownRight className="h-4 w-4 mr-1.5" /> Registrar Cobrança
                       </Button>
                     )}
-                    {saldo !== 0 && (
+                    {fatura.status_geral === "Fechada" && saldo !== 0 && (
                       <Button variant="outline" onClick={() => setPagamentoOpen(true)}>
                         <Banknote className="h-4 w-4 mr-1.5" /> Registrar Pagamento
                       </Button>
@@ -648,9 +830,13 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate,
                         <Lock className="h-4 w-4 mr-1.5" /> Fechar Fatura
                       </Button>
                     ) : null}
-                    {saldo === 0 && (
-                      <Button onClick={handleFinalizar}>
-                        Finalizar Fatura
+                    {fatura.status_geral === "Fechada" && saldo === 0 && (
+                      <Button onClick={handleFinalizar} disabled={finalizando}>
+                        {finalizando ? (
+                          <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Finalizando...</>
+                        ) : (
+                          "Finalizar Fatura"
+                        )}
                       </Button>
                     )}
                   </div>
@@ -872,7 +1058,6 @@ function EntregaCard({ entrega, expanded, onToggle, isEditing, editValue, canEdi
 }
 
 const MEIO_COBRANCA_LABELS: Record<string, { label: string; className: string }> = {
-  dinheiro:     { label: "Dinheiro",        className: "border-yellow-500/50 text-yellow-600 bg-yellow-500/5" },
   maquina_loja: { label: "Máquina da Loja", className: "border-blue-500/50 text-blue-600 bg-blue-500/5" },
   pix_loja:     { label: "PIX da Loja",     className: "border-violet-500/50 text-violet-600 bg-violet-500/5" },
   pix_empresa:  { label: "PIX Empresa",     className: "border-emerald-500/50 text-emerald-600 bg-emerald-500/5" },
@@ -887,12 +1072,16 @@ function RotaCard({ rota, index }: { rota: RotaEntregaFatura; index: number }) {
           Rota {index + 1} — {rota.bairro_destino}
         </span>
         <div className="flex items-center gap-1.5">
-          {rota.pagamento_operacao === "pago_na_hora" && (
-            <Badge variant="outline" className="text-[10px] h-5 border-amber-500/50 text-amber-600 bg-amber-500/5">
-              Taxas pagas no ato
+          {rota.valor_receber != null && rota.meio_cobranca_destino === "dinheiro" && (
+            <Badge variant="outline" className={`text-[10px] h-5 ${
+              rota.destino_dinheiro === "repassar_empresa"
+                ? "border-blue-500/50 text-blue-600 bg-blue-500/5"
+                : "border-orange-500/50 text-orange-600 bg-orange-500/5"
+            }`}>
+              {rota.destino_dinheiro === "repassar_empresa" ? "Dinheiro → Empresa" : "Dinheiro → Loja"}
             </Badge>
           )}
-          {rota.valor_receber != null && rota.meio_cobranca_destino && MEIO_COBRANCA_LABELS[rota.meio_cobranca_destino] && (
+          {rota.valor_receber != null && rota.meio_cobranca_destino && rota.meio_cobranca_destino !== "dinheiro" && MEIO_COBRANCA_LABELS[rota.meio_cobranca_destino] && (
             <Badge variant="outline" className={`text-[10px] h-5 ${MEIO_COBRANCA_LABELS[rota.meio_cobranca_destino].className}`}>
               {MEIO_COBRANCA_LABELS[rota.meio_cobranca_destino].label}
             </Badge>
@@ -905,14 +1094,38 @@ function RotaCard({ rota, index }: { rota: RotaEntregaFatura; index: number }) {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-muted-foreground">
         <span className="flex items-center gap-1 text-xs"><User className="h-3 w-3" />{rota.responsavel}</span>
         <span className="flex items-center gap-1 text-xs"><Phone className="h-3 w-3" />{rota.telefone}</span>
-        <span className="flex items-center gap-1 text-xs">
-          <DollarSign className="h-3 w-3" />
-          Taxa: {formatCurrency(rota.taxa)}
-        </span>
+        <div className="flex flex-col gap-0.5">
+          {rota.pagamento_operacao === "faturar" && (
+            <Badge variant="outline" className="text-[10px] h-4 px-1 w-fit border-border text-muted-foreground">
+              Faturado
+            </Badge>
+          )}
+          {rota.pagamento_operacao === "pago_na_hora" && (
+            <Badge variant="outline" className="text-[10px] h-4 px-1 w-fit border-amber-500/50 text-amber-600 bg-amber-500/5">
+              Pago no ato
+            </Badge>
+          )}
+          <span className="flex items-center gap-1 text-xs">
+            <DollarSign className="h-3 w-3" />
+            Taxa: {formatCurrency(rota.taxa)}
+          </span>
+          {rota.taxas_extras.map((te, i) => (
+            <span key={i} className="flex items-center gap-1 text-xs text-amber-600">
+              <DollarSign className="h-3 w-3" />
+              {te.nome}: {formatCurrency(te.valor)}
+            </span>
+          ))}
+          {rota.taxas_extras.length > 0 && (
+            <span className="flex items-center gap-1 text-xs font-semibold text-foreground border-t border-border/40 pt-0.5 mt-0.5">
+              <DollarSign className="h-3 w-3" />
+              Subtotal: {formatCurrency(rota.taxa + rota.taxas_extras.reduce((s, t) => s + t.valor, 0))}
+            </span>
+          )}
+        </div>
         {rota.valor_receber != null && (
           <span className="flex items-center gap-1 text-xs text-emerald-500">
             <DollarSign className="h-3 w-3" />
-            Receber: {formatCurrency(rota.valor_receber)}
+            Recebido: {formatCurrency(rota.valor_receber)}
           </span>
         )}
       </div>

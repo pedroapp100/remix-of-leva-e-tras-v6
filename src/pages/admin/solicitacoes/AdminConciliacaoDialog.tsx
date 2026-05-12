@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import type { Rota, PagamentoSolicitacao, Solicitacao } from "@/types/database";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFormasPagamento, useBairros } from "@/hooks/useSettings";
-import { useRotasBySolicitacao, usePagamentosBySolicitacao, useCreatePagamentos, useDeletePagamentosBySolicitacao, useUpdateSolicitacao, useAppendHistorico } from "@/hooks/useSolicitacoes";
+import { useRotasBySolicitacao, usePagamentosBySolicitacao, useCreatePagamentos, useDeletePagamentosBySolicitacao, useUpdateSolicitacao, useAppendHistorico, useTaxasExtrasByRotaIds } from "@/hooks/useSolicitacoes";
 import { useClientes } from "@/hooks/useClientes";
 import { useEntregadores } from "@/hooks/useEntregadores";
 import { useConcluirComCaixa } from "@/hooks/useConcluirComCaixa";
@@ -48,6 +48,10 @@ export function AdminConciliacaoDialog({
 }: AdminConciliacaoDialogProps) {
   const { user } = useAuth();
   const { data: rotas = [] } = useRotasBySolicitacao(solicitacao.id);
+  const rotaIds = useMemo(() => rotas.map((r) => r.id), [rotas]);
+  const { data: taxasExtrasMap = new Map() } = useTaxasExtrasByRotaIds(rotaIds);
+  const getExtrasForRota = (rotaId: string): number =>
+    (taxasExtrasMap.get(rotaId) ?? []).reduce((s: number, e: { valor: number }) => s + e.valor, 0);
   const { data: driverPagamentos = [], isLoading: isLoadingPagamentos } = usePagamentosBySolicitacao(solicitacao.id);
   const createPagamentosMut = useCreatePagamentos();
   const deletePagamentosMut = useDeletePagamentosBySolicitacao();
@@ -99,13 +103,19 @@ export function AdminConciliacaoDialog({
     hasSyncedRef.current = true;
     const initial: Record<string, PagamentoLinha[]> = {};
     rotas.forEach((r) => {
+      // Routes where the destination already received the money directly — always "loja"
+      const isLojaCobrancaRoute =
+        r.receber_do_cliente &&
+        (r.meio_cobranca_destino === "maquina_loja" ||
+          r.meio_cobranca_destino === "pix_loja" ||
+          (r.meio_cobranca_destino === "dinheiro" && r.destino_dinheiro === "devolver_loja"));
       const driverPags = driverByRota[r.id] || [];
       if (driverPags.length > 0) {
         initial[r.id] = driverPags.map((dp) => ({
           id: `admin-${dp.id}`,
           forma_pagamento_id: dp.forma_pagamento_id,
           valor: dp.valor,
-          pertence_a: dp.pertence_a ?? "operacao",
+          pertence_a: isLojaCobrancaRoute ? "loja" : (dp.pertence_a ?? "operacao"),
         }));
       } else {
         initial[r.id] = [];
@@ -173,23 +183,27 @@ export function AdminConciliacaoDialog({
   // Only faturar routes generate an expected taxa; pago_na_hora is collected in cash at destination
   const totalEsperadoTaxasCents = rotas
     .filter((r) => r.pagamento_operacao === "faturar")
-    .reduce((s, r) => s + Math.round((r.taxa_resolvida ?? 0) * 100), 0);
+    .reduce((s, r) => s + Math.round((r.taxa_resolvida ?? 0) * 100) + Math.round(getExtrasForRota(r.id) * 100), 0);
   // For pago_na_hora routes on faturado clients the driver also collects the operation fee
   const totalEsperadoPagoNaHoraCents = rotas
     .filter((r) => r.pagamento_operacao === "pago_na_hora")
-    .reduce((s, r) => s + Math.round((r.taxa_resolvida ?? 0) * 100), 0);
+    .reduce((s, r) => s + Math.round((r.taxa_resolvida ?? 0) * 100) + Math.round(getExtrasForRota(r.id) * 100), 0);
   const totalEsperadoReceberCents = rotas
     .filter((r) => r.receber_do_cliente)
     .reduce((s, r) => s + Math.round((r.valor_a_receber ?? 0) * 100), 0);
 
   const diffOperacaoCents = totalOperacaoCents - totalEsperadoTaxasCents;
   const diffLojaCents = totalLojaCents - totalEsperadoReceberCents;
-  // Faturado: skip faturar taxa balance (not cash), but require pago_na_hora taxa balance
+  const diffFaturarCents = totalFaturarCents - totalEsperadoTaxasCents;
+  // Faturado: faturar lines must exactly match expected taxa; pago_na_hora cash must be covered
   // Pre-pago: all operation fees are always required
   const isBalanced = (
-    isPrePago ? diffOperacaoCents === 0
-    : isFaturado ? totalEsperadoPagoNaHoraCents === 0 || (totalOperacaoCents - totalEsperadoPagoNaHoraCents) >= 0
-    : diffOperacaoCents === 0
+    isPrePago
+      ? diffOperacaoCents === 0
+      : isFaturado
+        ? totalFaturarCents === totalEsperadoTaxasCents &&
+          (totalEsperadoPagoNaHoraCents === 0 || (totalOperacaoCents - totalEsperadoPagoNaHoraCents) >= 0)
+        : diffOperacaoCents === 0
   ) && diffLojaCents === 0;
 
   const totalOperacao = totalOperacaoCents / 100;
@@ -202,6 +216,7 @@ export function AdminConciliacaoDialog({
   const totalEsperadoReceber = totalEsperadoReceberCents / 100;
   const diffOperacao = diffOperacaoCents / 100;
   const diffLoja = diffLojaCents / 100;
+  const diffFaturar = diffFaturarCents / 100;
   const totalAdmin = (totalOperacaoCents + totalLojaCents) / 100;
 
   const handleConfirm = async () => {
@@ -254,12 +269,18 @@ export function AdminConciliacaoDialog({
       // Already concluded + faturado client: call fatura RPC directly (avoid double-caixa)
       // Inclui rotas 'faturar' e rotas 'pago_na_hora' pagas via maquina_loja —
       // neste caso a loja ficou com a taxa de operação e deve à empresa.
+      // Resolve the UUID of the "Máquina da Loja" form (stored as UUID, not the literal "maquina_loja")
+      const maquinaLojaId = formasPagamento.find(
+        (f) => f.name.toLowerCase().includes("máquina") || f.name.toLowerCase().includes("maquina")
+      )?.id;
       const isFaturavelRota = (r: (typeof rotas)[0]) =>
         r.pagamento_operacao === "faturar" ||
-        (r.pagamento_operacao === "pago_na_hora" && r.meios_pagamento_operacao?.includes("maquina_loja"));
+        (r.pagamento_operacao === "pago_na_hora" &&
+          !!maquinaLojaId &&
+          r.meios_pagamento_operacao?.includes(maquinaLojaId));
       const totalTaxas = rotas
         .filter(isFaturavelRota)
-        .reduce((s, r) => s + (r.taxa_resolvida ?? 0), 0);
+        .reduce((s, r) => s + (r.taxa_resolvida ?? 0) + getExtrasForRota(r.id), 0);
       // Apenas rotas onde o dinheiro passou pela empresa geram credito_loja.
       // maquina_loja, pix_loja e dinheiro+devolver_loja → lojista já recebeu direto.
       const totalRecebido = rotas
@@ -422,25 +443,79 @@ export function AdminConciliacaoDialog({
             const driverRotaTotal = driverRotaPags.reduce((s, p) => s + p.valor, 0);
             const isExpanded = expandedRotas.has(rota.id);
 
+            const taxaLabel =
+              rota.pagamento_operacao === "faturar"
+                ? "Faturado"
+                : rota.pagamento_operacao === "descontar_saldo"
+                ? "Saldo Pré-pago"
+                : rota.meios_pagamento_operacao.length > 0
+                ? rota.meios_pagamento_operacao
+                    .map((id) => formasPagamento.find((f) => f.id === id)?.name ?? id)
+                    .join(" · ")
+                : "Pago na hora";
+
+            const lojaLabel =
+              rota.meio_cobranca_destino === "dinheiro"
+                ? "Dinheiro Leva e Traz"
+                : rota.meio_cobranca_destino === "maquina_loja"
+                ? "Máquina da Loja"
+                : rota.meio_cobranca_destino === "pix_loja"
+                ? "PIX da Loja"
+                : rota.meio_cobranca_destino === "pix_empresa"
+                ? "PIX da Empresa"
+                : null;
+
+            // Per-route validation
+            const pagRotaOperacaoTotal = (pagamentosPorRota[rota.id] || [])
+              .filter((p) => p.pertence_a === "operacao")
+              .reduce((s, p) => s + p.valor, 0);
+            const pagRotaLojaTotal = (pagamentosPorRota[rota.id] || [])
+              .filter((p) => p.pertence_a === "loja" && p.forma_pagamento_id !== DEVOLVER_LOJA_ID)
+              .reduce((s, p) => s + p.valor, 0);
+            const extrasRota = getExtrasForRota(rota.id);
+            const expectedRotaOperacao = rota.taxa_resolvida != null
+              ? rota.taxa_resolvida + extrasRota
+              : extrasRota > 0 ? extrasRota : null;
+            const expectedRotaLoja = rota.receber_do_cliente ? (rota.valor_a_receber ?? 0) : null;
+            const rotaOperacaoErro = expectedRotaOperacao !== null &&
+              Math.round(pagRotaOperacaoTotal * 100) !== Math.round(expectedRotaOperacao * 100);
+            const rotaLojaErro = expectedRotaLoja !== null &&
+              Math.round(pagRotaLojaTotal * 100) !== Math.round(expectedRotaLoja * 100);
+            const rotaTemErro = rotaOperacaoErro || rotaLojaErro;
+
             return (
-              <div key={rota.id} className="space-y-3">
-                <div className="flex items-center justify-between">
+              <div key={rota.id} className={`rounded-lg border p-4 space-y-3 transition-colors ${
+                rotaTemErro ? "border-amber-500/60 bg-amber-500/5" : "border-border bg-card"
+              }`}>
+                <div className="flex items-center justify-between flex-wrap gap-2">
                   <h4 className="text-sm font-semibold flex items-center gap-2">
                     <MapPin className="h-3.5 w-3.5 text-primary" />
+                    {rotaTemErro && <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />}
                     Rota {i + 1} — {getBairroName(rota.bairro_destino_id)}
                     <span className="text-muted-foreground font-normal">
                       ({rota.responsavel})
                     </span>
                   </h4>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                    <span className="flex items-center gap-1 flex-wrap">
                       <Building2 className="h-3 w-3" />
                       Taxa: {fmt(rota.taxa_resolvida ?? 0)}
+                      {getExtrasForRota(rota.id) > 0 && (
+                        <span className="text-amber-500 tabular-nums">+ Extras: {fmt(getExtrasForRota(rota.id))}</span>
+                      )}
+                      <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-medium">
+                        {taxaLabel}
+                      </span>
                     </span>
                     {rota.receber_do_cliente && (
                       <span className="flex items-center gap-1">
                         <Store className="h-3 w-3" />
                         Loja: {fmt(rota.valor_a_receber ?? 0)}
+                        {lojaLabel && (
+                          <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-medium">
+                            {lojaLabel}
+                          </span>
+                        )}
                       </span>
                     )}
                   </div>
@@ -476,6 +551,12 @@ export function AdminConciliacaoDialog({
                         <span className="text-muted-foreground">Taxa:</span>
                         <span className="tabular-nums font-medium">{fmt(rota.taxa_resolvida ?? 0)}</span>
                       </div>
+                      {(taxasExtrasMap.get(rota.id) ?? []).map((te: { nome: string; valor: number }, idx: number) => (
+                        <div key={idx} className="flex items-center gap-1.5">
+                          <span className="text-muted-foreground">{te.nome}:</span>
+                          <span className="tabular-nums font-medium text-amber-500">{fmt(te.valor)}</span>
+                        </div>
+                      ))}
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-muted-foreground">Cobrança:</span>
                         <Badge
@@ -516,6 +597,24 @@ export function AdminConciliacaoDialog({
                         </div>
                       ) : (
                         <span className="text-muted-foreground italic">Não cobrar do destinatário</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {rotaTemErro && (
+                  <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+                    <div className="text-xs space-y-0.5">
+                      {rotaOperacaoErro && (
+                        <p className="text-amber-700 dark:text-amber-400">
+                          <strong>Operação:</strong> registrado <strong>{fmt(pagRotaOperacaoTotal)}</strong>, esperado <strong>{fmt(expectedRotaOperacao!)}</strong>
+                        </p>
+                      )}
+                      {rotaLojaErro && (
+                        <p className="text-amber-700 dark:text-amber-400">
+                          <strong>Loja:</strong> registrado <strong>{fmt(pagRotaLojaTotal)}</strong>, esperado <strong>{fmt(expectedRotaLoja!)}</strong>
+                        </p>
                       )}
                     </div>
                   </div>
@@ -627,7 +726,6 @@ export function AdminConciliacaoDialog({
                   <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar pagamento
                 </Button>
 
-                {i < rotas.length - 1 && <Separator />}
               </div>
             );
           })}
@@ -716,7 +814,12 @@ export function AdminConciliacaoDialog({
               )}
               {isBalanced
                 ? "Valores balanceados — pronto para gerar fatura"
-                : `Diferença: Operação ${fmt(diffOperacao)} | Loja ${fmt(diffLoja)}`}
+                : isFaturado
+                  ? [
+                      diffFaturarCents !== 0 && `Faturar: ${fmt(diffFaturar)}`,
+                      diffLojaCents !== 0 && `Loja: ${fmt(diffLoja)}`,
+                    ].filter(Boolean).join(" | ") || `Diferença: Faturar ${fmt(diffFaturar)}`
+                  : `Diferença: Operação ${fmt(diffOperacao)} | Loja ${fmt(diffLoja)}`}
             </div>
           </div>
         </div>

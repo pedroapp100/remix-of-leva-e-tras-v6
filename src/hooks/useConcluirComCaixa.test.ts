@@ -26,6 +26,8 @@ vi.mock("@/hooks/useEntregadores", () => ({
 vi.mock("@/hooks/useFaturas", () => ({
   useFaturas: vi.fn(() => ({ data: [] })),
   useConcluirFaturaEntrega: vi.fn(() => ({ mutateAsync: mockConcluirFaturaMutateAsync })),
+  useUpdateFatura: vi.fn(() => ({ mutateAsync: vi.fn(() => Promise.resolve()) })),
+  useCreateHistoricoFatura: vi.fn(() => ({ mutateAsync: vi.fn(() => Promise.resolve()) })),
 }));
 
 vi.mock("@/contexts/CaixaStore", () => ({
@@ -40,6 +42,11 @@ vi.mock("@/contexts/SettingsStore", () => ({
 
 vi.mock("@/services/solicitacoes", () => ({
   fetchRotasBySolicitacao: vi.fn(() => Promise.resolve([])),
+  fetchTaxasExtrasByRotaIds: vi.fn(() => Promise.resolve(new Map())),
+}));
+
+vi.mock("@/hooks/useFinanceiro", () => ({
+  useCreateReceita: vi.fn(() => ({ mutate: vi.fn(), mutateAsync: vi.fn(() => Promise.resolve()) })),
 }));
 
 vi.mock("@/lib/mappers", () => ({
@@ -136,7 +143,7 @@ describe("useConcluirComCaixa", () => {
     vi.mocked(useSolicitacoes).mockReturnValue({ data: [makeSol()] } as never);
     vi.mocked(useClientes).mockReturnValue({ data: [makeCliente({ modalidade: "pre_pago" })] } as never);
     vi.mocked(useClienteSaldoMap).mockReturnValue({ getClienteSaldo: () => 5 } as never);
-    vi.mocked(fetchRotasBySolicitacao).mockResolvedValueOnce([makeRota({ taxa_resolvida: 20, pagamento_operacao: "faturar" })] as never);
+    vi.mocked(fetchRotasBySolicitacao).mockResolvedValueOnce([makeRota({ taxa_resolvida: 20, pagamento_operacao: "descontar_saldo" })] as never);
 
     const { result } = renderHook(() => useConcluirComCaixa(), { wrapper });
     let res: { success: boolean; error?: string };

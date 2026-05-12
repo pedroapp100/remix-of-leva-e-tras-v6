@@ -2,7 +2,7 @@ import { useMemo, useState, useCallback, lazy, Suspense } from "react";
 import type { Solicitacao, Rota, PagamentoSolicitacao } from "@/types/database";
 import { STATUS_SOLICITACAO_LABELS } from "@/types/database";
 import { TipoOperacaoBadge } from "@/components/shared/TipoOperacaoBadge";
-import { useRotasBySolicitacao, usePagamentosBySolicitacao, useHistoricoBySolicitacao } from "@/hooks/useSolicitacoes";
+import { useRotasBySolicitacao, usePagamentosBySolicitacao, useHistoricoBySolicitacao, useTaxasExtrasByRotaIds } from "@/hooks/useSolicitacoes";
 import { useClientes } from "@/hooks/useClientes";
 import { useEntregadores } from "@/hooks/useEntregadores";
 import { useAdminProfiles } from "@/hooks/useUsers";
@@ -106,7 +106,7 @@ function RotaContactCard({ rota, clienteName, getBairroName, getRegiaoByBairro }
   );
 }
 
-function RotaPaymentPreview({ rota, getFormaPagamentoName }: { rota: Rota; getFormaPagamentoName: (id: string) => string }) {
+function RotaPaymentPreview({ rota, taxasExtras, getFormaPagamentoName }: { rota: Rota; taxasExtras: { nome: string; valor: number }[]; getFormaPagamentoName: (id: string) => string }) {
   const badge = PAGAMENTO_OPERACAO_BADGE[rota.pagamento_operacao] ?? { label: rota.pagamento_operacao, variant: "outline" as const };
   return (
     <div className="space-y-2">
@@ -130,6 +130,18 @@ function RotaPaymentPreview({ rota, getFormaPagamentoName }: { rota: Rota; getFo
           <span className="text-muted-foreground">Taxa de Entrega</span>
           <span className="tabular-nums font-medium">{fmt(rota.taxa_resolvida)}</span>
         </div>
+        {taxasExtras.map((te, i) => (
+          <div key={i} className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">{te.nome}</span>
+            <span className="tabular-nums font-medium text-amber-600">{fmt(te.valor)}</span>
+          </div>
+        ))}
+        {taxasExtras.length > 0 && (
+          <div className="flex items-center justify-between text-sm font-semibold border-t border-border pt-1">
+            <span className="text-muted-foreground">Subtotal</span>
+            <span className="tabular-nums">{fmt((rota.taxa_resolvida ?? 0) + taxasExtras.reduce((s, t) => s + t.valor, 0))}</span>
+          </div>
+        )}
         {rota.meios_pagamento_operacao.length > 0 && (
           <div className="flex flex-wrap gap-1 pt-0.5">
             {rota.meios_pagamento_operacao.map((id) => (
@@ -144,10 +156,17 @@ function RotaPaymentPreview({ rota, getFormaPagamentoName }: { rota: Rota; getFo
       {/* Card Loja */}
       {rota.receber_do_cliente && (
         <div className="rounded-md border border-border bg-muted/30 p-3 space-y-1.5">
-          <span className="flex items-center gap-1.5 font-medium text-xs uppercase tracking-wide">
-            <Store className="h-3.5 w-3.5 text-status-pending" />
-            Loja
-          </span>
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-1.5 font-medium text-xs uppercase tracking-wide">
+              <Store className="h-3.5 w-3.5 text-status-pending" />
+              Loja
+            </span>
+            {rota.meio_cobranca_destino && (
+              <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                {({ dinheiro: "Dinheiro", maquina_loja: "Máquina da Loja", pix_loja: "PIX da Loja", pix_empresa: "PIX da Empresa" } as Record<string, string>)[rota.meio_cobranca_destino] ?? rota.meio_cobranca_destino}
+              </Badge>
+            )}
+          </div>
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Cobrar no destino</span>
             <span className="tabular-nums font-medium">{fmt(rota.valor_a_receber)}</span>
@@ -158,7 +177,7 @@ function RotaPaymentPreview({ rota, getFormaPagamentoName }: { rota: Rota; getFo
   );
 }
 
-function RotaConciliationCard({ rota, pagamentos, isFaturado, getBairroName, getRegiaoByBairro, getFormaPagamentoName }: { rota: Rota; pagamentos: PagamentoSolicitacao[]; isFaturado: boolean; getBairroName: (id: string) => string; getRegiaoByBairro: (id: string) => string; getFormaPagamentoName: (id: string) => string }) {
+function RotaConciliationCard({ rota, taxasExtras, pagamentos, isFaturado, getBairroName, getRegiaoByBairro, getFormaPagamentoName }: { rota: Rota; taxasExtras: { nome: string; valor: number }[]; pagamentos: PagamentoSolicitacao[]; isFaturado: boolean; getBairroName: (id: string) => string; getRegiaoByBairro: (id: string) => string; getFormaPagamentoName: (id: string) => string }) {
   const pagOperacao = pagamentos.filter((p) => p.pertence_a === "operacao");
   const pagLoja = pagamentos.filter((p) => p.pertence_a === "loja");
 
@@ -187,9 +206,21 @@ function RotaConciliationCard({ rota, pagamentos, isFaturado, getBairroName, get
           <span className="text-muted-foreground">Taxa de Entrega</span>
           <span className="tabular-nums font-medium">{fmt(rota.taxa_resolvida)}</span>
         </div>
+        {taxasExtras.map((te, i) => (
+          <div key={i} className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">{te.nome}</span>
+            <span className="tabular-nums font-medium text-amber-600">{fmt(te.valor)}</span>
+          </div>
+        ))}
+        {taxasExtras.length > 0 && (
+          <div className="flex items-center justify-between text-sm font-semibold border-t border-border pt-1">
+            <span className="text-muted-foreground">Subtotal taxas</span>
+            <span className="tabular-nums">{fmt((rota.taxa_resolvida ?? 0) + taxasExtras.reduce((s, t) => s + t.valor, 0))}</span>
+          </div>
+        )}
         {pagOperacao.length > 0 && (
           <div className="flex items-center justify-between text-sm border-t border-border pt-1.5">
-            <span className="text-muted-foreground">Subtotal</span>
+            <span className="text-muted-foreground">Subtotal pago</span>
             <span className="tabular-nums font-medium">{fmt(pagOperacao.reduce((s, p) => s + p.valor, 0))}</span>
           </div>
         )}
@@ -237,6 +268,8 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
   const { data: rotas = [] } = useRotasBySolicitacao(solicitacao?.id ?? "");
   const { data: allPagamentos = [] } = usePagamentosBySolicitacao(solicitacao?.id ?? "");
   const { data: historicoRows = [] } = useHistoricoBySolicitacao(solicitacao?.id ?? "");
+  const rotaIds = rotas.map((r) => r.id);
+  const { data: taxasExtrasMap = new Map() } = useTaxasExtrasByRotaIds(rotaIds);
   const { data: clientes = [] } = useClientes();
   const { data: entregadores = [] } = useEntregadores();
   const { data: adminProfiles = [] } = useAdminProfiles();
@@ -264,6 +297,7 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
     [solicitacao?.entregador_id, entregadores]
   );
   const isConcluida = solicitacao?.status === "concluida";
+  const isEmAndamento = solicitacao?.status === "em_andamento";
   const isFaturado = clienteData?.modalidade === "faturado";
   const isPrePago = clienteData?.modalidade === "pre_pago";
 
@@ -276,11 +310,14 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
 
   const conciliacao = useMemo(() => {
     if (!isConcluida || !rotas.length) return null;
-    const totalTaxas = rotas.reduce((s, r) => s + (r.taxa_resolvida ?? 0), 0);
+    const totalTaxas = rotas.reduce((s, r) => {
+      const extras = taxasExtrasMap.get(r.id) ?? [];
+      return s + (r.taxa_resolvida ?? 0) + extras.reduce((a, t) => a + t.valor, 0);
+    }, 0);
     const totalLoja = rotas.filter((r) => r.receber_do_cliente).reduce((s, r) => s + (r.valor_a_receber ?? 0), 0);
     const totalEntregadorRecebe = (isFaturado || isPrePago) ? totalLoja : totalTaxas + totalLoja;
     return { totalTaxas, totalLoja, totalEntregadorRecebe };
-  }, [isConcluida, rotas, isFaturado, isPrePago]);
+  }, [isConcluida, rotas, isFaturado, isPrePago, taxasExtrasMap]);
 
   // Per-rota registration state (driver view) — merged: BD real data + local session
   const rotasComPagamentoBD = useMemo(
@@ -455,7 +492,7 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       {/* Botão marcar faturada como entregue */}
-                      {isFaturadaSemCobrar && !isConcluida && (
+                      {isFaturadaSemCobrar && isEmAndamento && (
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <button
@@ -477,7 +514,7 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                         </Tooltip>
                       )}
                       {/* Ícone de conciliação */}
-                      {isDriverView && temCobranca && (
+                      {isDriverView && isEmAndamento && temCobranca && (
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <button
@@ -500,6 +537,9 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                       {isDriverView && isExpandable && (
                         <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />
                       )}
+                      {rota.pagamento_operacao === "faturar" && (
+                        <Badge variant="default" className="text-[10px] px-1.5 py-0 h-5">Faturado</Badge>
+                      )}
                       {!isDriverView && (
                         <Badge variant={rota.status === "concluida" ? "default" : rota.status === "cancelada" ? "destructive" : "outline"}>
                           {rota.status}
@@ -514,7 +554,7 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                   {!isConcluida && !isDriverView && (
                     <>
                       <RotaContactCard rota={rota} clienteName={clienteName} getBairroName={getBairroName} getRegiaoByBairro={getRegiaoByBairro} />
-                      <RotaPaymentPreview rota={rota} getFormaPagamentoName={getFormaPagamentoName} />
+                      <RotaPaymentPreview rota={rota} taxasExtras={taxasExtrasMap.get(rota.id) ?? []} getFormaPagamentoName={getFormaPagamentoName} />
                     </>
                   )}
                   {!isConcluida && isDriverView && (
@@ -536,18 +576,31 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                           <div className="flex items-center justify-between text-sm font-semibold">
                             <span className="text-muted-foreground">Total a cobrar</span>
                             <span className="tabular-nums">
-                              {fmt((rota.taxa_resolvida ?? 0) + (rota.receber_do_cliente ? (rota.valor_a_receber ?? 0) : 0))}
+                              {fmt((rota.taxa_resolvida ?? 0) + (taxasExtrasMap.get(rota.id) ?? []).reduce((s, t) => s + t.valor, 0) + (rota.receber_do_cliente ? (rota.valor_a_receber ?? 0) : 0))}
                             </span>
                           </div>
-                          {rota.meios_pagamento_operacao.length > 0 && (
-                            <div className="flex flex-wrap gap-1 pt-0.5">
-                              {rota.meios_pagamento_operacao.map((id) => (
-                                <Badge key={id} variant="secondary" className="text-[10px] px-1.5 py-0">
-                                  {getFormaPagamentoName(id)}
+                          <div className="border-t border-amber-500/20 pt-1.5 space-y-1.5">
+                            {(rota.taxa_resolvida ?? 0) > 0 && rota.meios_pagamento_operacao.length > 0 && (
+                              <div className="flex items-center justify-between text-sm">
+                                <div className="flex flex-wrap gap-1">
+                                  {rota.meios_pagamento_operacao.map((id) => (
+                                    <Badge key={id} variant="secondary" className="text-[10px] px-1.5 py-0">
+                                      {getFormaPagamentoName(id)}
+                                    </Badge>
+                                  ))}
+                                </div>
+                                <span className="tabular-nums font-medium">{fmt(rota.taxa_resolvida)}</span>
+                              </div>
+                            )}
+                            {rota.receber_do_cliente && rota.meio_cobranca_destino && (
+                              <div className="flex items-center justify-between text-sm">
+                                <Badge variant="secondary" className="text-[11px] px-2 py-0.5">
+                                  {({ dinheiro: "Dinheiro", maquina_loja: "Máquina da Loja", pix_loja: "PIX da Loja", pix_empresa: "PIX da Empresa" } as Record<string, string>)[rota.meio_cobranca_destino] ?? rota.meio_cobranca_destino}
                                 </Badge>
-                              ))}
-                            </div>
-                          )}
+                                <span className="tabular-nums font-medium">{fmt(rota.valor_a_receber)}</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
 
@@ -562,26 +615,38 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                             <span className="text-muted-foreground">Valor a receber</span>
                             <span className="tabular-nums">{fmt(rota.valor_a_receber)}</span>
                           </div>
+                          {rota.meio_cobranca_destino && (
+                            <div className="flex items-center gap-1.5 pt-0.5">
+                              <span className="text-xs text-muted-foreground">Receber via</span>
+                              <Badge variant="secondary" className="text-[11px] px-2 py-0.5">
+                                {({ dinheiro: "Dinheiro", maquina_loja: "Máquina da Loja", pix_loja: "PIX da Loja", pix_empresa: "PIX da Empresa" } as Record<string, string>)[rota.meio_cobranca_destino] ?? rota.meio_cobranca_destino}
+                              </Badge>
+                            </div>
+                          )}
                         </div>
                       )}
 
                       {/* faturada sem cobrança: card informativo + botão marcar entregue */}
-                      {isFaturadaSemCobrar && (
+                      {isFaturadaSemCobrar && isEmAndamento && (
                         <div className="rounded-md border border-border bg-muted/30 p-3 flex items-center justify-between gap-3">
                           <div className="flex items-center gap-2 text-xs text-muted-foreground">
                             <Receipt className="h-3.5 w-3.5 shrink-0" />
                             <span>Faturado — sem cobrança no destino</span>
                           </div>
-                          {!isMarcadaConcluida && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="shrink-0 border-emerald-500/50 text-emerald-600 hover:bg-emerald-500/10 text-xs h-7 px-2"
-                              onClick={() => marcarRotaFaturadaConcluida(rota.id)}
-                            >
-                              <CheckCircle2 className="h-3 w-3 mr-1" /> Marcar entregue
-                            </Button>
-                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={isMarcadaConcluida}
+                            className={`shrink-0 text-xs h-7 px-2 ${
+                              isMarcadaConcluida
+                                ? "border-emerald-500/50 text-emerald-600 bg-emerald-500/5"
+                                : "border-emerald-500/50 text-emerald-600 hover:bg-emerald-500/10"
+                            }`}
+                            onClick={() => marcarRotaFaturadaConcluida(rota.id)}
+                          >
+                            <CheckCircle2 className="h-3 w-3 mr-1" />
+                            {isMarcadaConcluida ? "Concluído" : "Concluir"}
+                          </Button>
                         </div>
                       )}
                     </>
@@ -591,6 +656,7 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                   {isConcluida && !isDriverView && (
                     <RotaConciliationCard
                       rota={rota}
+                      taxasExtras={taxasExtrasMap.get(rota.id) ?? []}
                       pagamentos={pagamentosPorRota[rota.id] || []}
                       isFaturado={!!isFaturado}
                       getBairroName={getBairroName}
@@ -649,7 +715,7 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
           </div>
 
           {/* Progresso + botão concluir — visão entregador, não concluída */}
-          {!isConcluida && isDriverView && onConcluir && (
+          {isEmAndamento && isDriverView && onConcluir && (
             <>
               <Separator />
               {rotasObrigatorias.length > 0 && (

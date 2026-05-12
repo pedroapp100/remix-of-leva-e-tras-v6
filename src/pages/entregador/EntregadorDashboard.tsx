@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { motion } from "framer-motion";
-import { Truck, CheckCircle2, DollarSign, TrendingUp, Package } from "lucide-react";
+import { Truck, CheckCircle2, DollarSign, TrendingUp, Package, Wallet } from "lucide-react";
 import { MetricCard } from "@/components/shared/MetricCard";
 import { PageContainer } from "@/components/shared/PageContainer";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -10,6 +10,7 @@ import { formatCurrency, formatDateBR } from "@/lib/formatters";
 import { useSolicitacoesByEntregador } from "@/hooks/useSolicitacoes";
 import { useComissao } from "@/hooks/useComissao";
 import { useEntregadorId } from "@/hooks/useEntregadorId";
+import { useCaixaStore } from "@/contexts/CaixaStore";
 
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.1 } } };
 const fadeUp = {
@@ -21,6 +22,9 @@ export default function EntregadorDashboard() {
   const { entregadorId: ENTREGADOR_ID } = useEntregadorId();
   const { data: solicitacoes = [] } = useSolicitacoesByEntregador(ENTREGADOR_ID ?? "");
   const comissaoData = useComissao(ENTREGADOR_ID);
+  const { getCaixaAberto, ensureLoaded } = useCaixaStore();
+  ensureLoaded();
+  const caixaAberto = ENTREGADOR_ID ? getCaixaAberto(ENTREGADOR_ID) : undefined;
 
   const { metrics, recentEntregas } = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -56,7 +60,7 @@ export default function EntregadorDashboard() {
           <MetricCard title="Concluídas Hoje" value={metrics.concluidasHoje} icon={CheckCircle2} subtitle="Entregas finalizadas" />
         </motion.div>
         <motion.div variants={fadeUp}>
-          <MetricCard title="Comissão do Dia" value={formatCurrency(metrics.comissaoDia)} icon={DollarSign} subtitle="Estimativa" />
+          <MetricCard title="Caixa do Dia" value={formatCurrency(caixaAberto?.total_recebido ?? 0)} icon={Wallet} subtitle={caixaAberto ? "Caixa aberto" : "Sem caixa aberto"} />
         </motion.div>
         <motion.div variants={fadeUp}>
           <MetricCard title="Comissão do Mês" value={formatCurrency(metrics.comissaoMes)} icon={TrendingUp} subtitle="Sobre receita operação" className="border-l-4 border-l-primary" />
