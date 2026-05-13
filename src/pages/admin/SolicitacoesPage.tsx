@@ -64,13 +64,14 @@ export default function SolicitacoesPage() {
   const getClienteNome = (id: string) => clientes.find((c) => c.id === id)?.nome ?? id;
   const getEntregadorNome = (id: string | null | undefined) => !id ? "—" : (entregadores.find((e) => e.id === id)?.nome ?? id);
   const STATUS_TABS = [
-    { value: "todas", label: "Todas" },
-    { value: "pendente", label: "Pendentes" },
-    { value: "aceita", label: "Aceitas" },
-    { value: "em_andamento", label: "Em Andamento" },
-    { value: "concluida", label: "Concluídas" },
-    { value: "cancelada", label: "Canceladas" },
-    { value: "rejeitada", label: "Rejeitadas" },
+    { value: "todas",          label: "Todas" },
+    { value: "pendente",       label: "Pendentes" },
+    { value: "aceita",         label: "Aceitas" },
+    { value: "em_andamento",   label: "Em Andamento" },
+    { value: "nao_conciliada", label: "Não Conciliadas" },
+    { value: "concluida",      label: "Concluídas" },
+    { value: "cancelada",      label: "Canceladas" },
+    { value: "rejeitada",      label: "Rejeitadas" },
   ] as const;
 
   // Initialize state from URL params
@@ -104,10 +105,12 @@ export default function SolicitacoesPage() {
   const dateTo = dateRange?.to ? dateRange.to.toISOString().slice(0, 10) : undefined;
 
   // Server-side paginated table data
+  const isNaoConciliadaTab = activeTab === "nao_conciliada";
   const { data: pagedResult, isFetching: isTableFetching } = useSolicitacoesPageable({
     page,
     pageSize,
-    status: activeTab,
+    status: isNaoConciliadaTab ? undefined : activeTab,
+    naoConciliada: isNaoConciliadaTab ? true : undefined,
     search: search.trim() || undefined,
     clienteIds: matchedClienteIds.length > 0 ? matchedClienteIds : undefined,
     dateFrom,
@@ -168,7 +171,7 @@ export default function SolicitacoesPage() {
   // Single-pass metrics + status counts
   const { metrics, statusCounts } = useMemo(() => {
     const hoje = new Date().toISOString().slice(0, 10);
-    const counts: Record<string, number> = { todas: 0, pendente: 0, aceita: 0, em_andamento: 0, concluida: 0, cancelada: 0, rejeitada: 0 };
+    const counts: Record<string, number> = { todas: 0, pendente: 0, aceita: 0, em_andamento: 0, nao_conciliada: 0, concluida: 0, cancelada: 0, rejeitada: 0 };
     let concluidasHoje = 0;
     let naoConciliadas = 0;
 
@@ -178,7 +181,10 @@ export default function SolicitacoesPage() {
 
       if (s.status === "concluida") {
         if (s.data_conclusao?.startsWith(hoje)) concluidasHoje++;
-        if (!s.admin_conciliada_at) naoConciliadas++;
+        if (!s.admin_conciliada_at) {
+          naoConciliadas++;
+          counts.nao_conciliada++;
+        }
       }
     }
 
@@ -650,11 +656,11 @@ export default function SolicitacoesPage() {
     >
       {/* Metrics */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-        <MetricCard title="Pendentes" value={metrics.pendentes} icon={ClipboardList} />
-        <MetricCard title="Aceitas" value={metrics.aceitas} icon={CheckCircle} />
-        <MetricCard title="Em Andamento" value={metrics.emAndamento} icon={Truck} />
-        <MetricCard title="Concluídas Hoje" value={metrics.concluidasHoje} icon={CheckCircle} />
-        <MetricCard title="Não Conciliadas" value={metrics.naoConciliadas} icon={ClipboardCheck} />
+        <MetricCard title="Pendentes" value={metrics.pendentes} icon={ClipboardList} onClick={() => setActiveTab("pendente")} />
+        <MetricCard title="Aceitas" value={metrics.aceitas} icon={CheckCircle} onClick={() => setActiveTab("aceita")} />
+        <MetricCard title="Em Andamento" value={metrics.emAndamento} icon={Truck} onClick={() => setActiveTab("em_andamento")} />
+        <MetricCard title="Concluídas Hoje" value={metrics.concluidasHoje} icon={CheckCircle} onClick={() => setActiveTab("concluida")} />
+        <MetricCard title="Não Conciliadas" value={metrics.naoConciliadas} icon={ClipboardCheck} onClick={() => setActiveTab("nao_conciliada")} />
       </div>
 
       {/* Tabs + Table */}

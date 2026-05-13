@@ -61,6 +61,7 @@ export interface SolicitacoesPageParams {
   clienteIds?: string[]; // optional: match by cliente_id (combined with search via OR)
   dateFrom?: string;  // ISO date string "YYYY-MM-DD"
   dateTo?: string;    // ISO date string "YYYY-MM-DD"
+  naoConciliada?: boolean; // when true: status=concluida AND admin_conciliada_at IS NULL
 }
 
 export interface SolicitacoesPage {
@@ -74,7 +75,7 @@ export interface SolicitacoesPage {
 export async function fetchSolicitacoesPageable(
   params: SolicitacoesPageParams
 ): Promise<SolicitacoesPage> {
-  const { page, pageSize, status, search, clienteIds, dateFrom, dateTo } = params;
+  const { page, pageSize, status, search, clienteIds, dateFrom, dateTo, naoConciliada } = params;
   const from = page * pageSize;
   const to = from + pageSize - 1;
 
@@ -84,7 +85,11 @@ export async function fetchSolicitacoesPageable(
     .order("data_solicitacao", { ascending: false })
     .range(from, to);
 
-  if (status && status !== "todas") q = q.eq("status", status);
+  if (naoConciliada) {
+    q = q.eq("status", "concluida").is("admin_conciliada_at", null);
+  } else if (status && status !== "todas") {
+    q = q.eq("status", status);
+  }
 
   // Search: match by codigo ILIKE OR by any matched cliente_id
   if (search && clienteIds && clienteIds.length > 0) {

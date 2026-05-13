@@ -12,6 +12,7 @@ interface MetricCardProps {
   loading?: boolean;
   className?: string;
   valueColor?: string;
+  onClick?: () => void;
 }
 
 export function MetricCard({
@@ -24,6 +25,7 @@ export function MetricCard({
   loading = false,
   className,
   valueColor,
+  onClick,
 }: MetricCardProps) {
   const safeValue = value === undefined || value === null || (typeof value === "number" && isNaN(value)) ? "0" : value;
   const safeDelta = delta !== undefined && !isNaN(delta) ? delta : undefined;
@@ -46,7 +48,12 @@ export function MetricCard({
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }}
-      className={cn("rounded-lg border border-border bg-card p-5 shadow-sm", className)}
+      onClick={onClick}
+      className={cn(
+        "rounded-lg border border-border bg-card p-5 shadow-sm",
+        onClick && "cursor-pointer hover:border-primary/50 hover:shadow-md active:scale-[0.97] active:brightness-95 transition-all select-none",
+        className
+      )}
     >
       <div className="flex items-center justify-between mb-3">
         <p className="text-sm font-medium text-muted-foreground">{title}</p>
