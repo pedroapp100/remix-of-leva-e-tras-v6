@@ -50,6 +50,8 @@ interface DataTableProps<T> {
   className?: string;
   /** When provided, disables internal pagination and uses server-side controls. */
   externalPagination?: ExternalPaginationProps;
+  /** Optional per-row className for custom styling (e.g. group separators). */
+  rowClassName?: (row: T, index: number) => string | undefined;
 }
 
 type SortDirection = "asc" | "desc" | null;
@@ -70,6 +72,7 @@ export function DataTable<T extends { id?: string }>({
   renderMobileCard,
   className,
   externalPagination,
+  rowClassName,
 }: DataTableProps<T>) {
   const [page, setPage] = useState(0);
   const [currentPageSize, setCurrentPageSize] = useState(initialPageSize);
@@ -171,7 +174,8 @@ export function DataTable<T extends { id?: string }>({
                   key={(row as Record<string, unknown>).id as string || i}
                   className={cn(
                     "border-b border-border/50 hover:bg-muted/30 transition-colors duration-200",
-                    onRowClick && "cursor-pointer"
+                    onRowClick && "cursor-pointer",
+                    rowClassName?.(row, i)
                   )}
                   onClick={() => onRowClick?.(row)}
                 >

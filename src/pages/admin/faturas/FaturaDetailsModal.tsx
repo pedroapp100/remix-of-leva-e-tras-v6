@@ -469,7 +469,7 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate,
 
               <div className="flex items-center gap-2">
                 <Badge variant={STATUS_GERAL_VARIANT[fatura.status_geral]}>{fatura.status_geral}</Badge>
-                <Badge variant="outline">{fatura.total_entregas} entregas</Badge>
+                <Badge variant="outline">{liveFatura?.total_entregas ?? fatura.total_entregas} entregas</Badge>
               </div>
 
               <Separator />
@@ -526,7 +526,7 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate,
                       <CardTitle className="text-base flex items-center justify-between">
                         <span className="flex items-center gap-2">
                           <Package className="h-4 w-4" />
-                          Entregas Incluídas ({fatura.total_entregas})
+                          Entregas Incluídas ({liveFatura?.total_entregas ?? fatura.total_entregas})
                         </span>
                         {entregasExpanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
                       </CardTitle>
@@ -534,7 +534,7 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate,
                   </CollapsibleTrigger>
                   <CardContent className="pb-2">
                     <p className="text-sm text-muted-foreground mb-3">
-                      {fatura.total_entregas} entregas realizadas no período de {formatDateBR(fatura.data_emissao)} a {formatDateBR(fatura.data_vencimento)}.
+                      {liveFatura?.total_entregas ?? fatura.total_entregas} entregas realizadas no período de {formatDateBR(fatura.data_emissao)} a {formatDateBR(fatura.data_vencimento)}.
                     </p>
                     <CollapsibleContent>
                       {entregas.length === 0 ? (

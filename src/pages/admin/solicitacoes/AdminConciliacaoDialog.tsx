@@ -93,6 +93,7 @@ export function AdminConciliacaoDialog({
 
   // Controle de expansão do painel de configuração original por rota
   const [expandedRotas, setExpandedRotas] = useState<Set<string>>(new Set());
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Admin pagamentos state — synced from driver data when queries resolve
   const [pagamentosPorRota, setPagamentosPorRota] = useState<Record<string, PagamentoLinha[]>>({});
@@ -220,6 +221,7 @@ export function AdminConciliacaoDialog({
   const totalAdmin = (totalOperacaoCents + totalLojaCents) / 100;
 
   const handleConfirm = async () => {
+    if (isSubmitting) return;
     if (allPagamentos.length === 0) {
       toast.error("Registre ao menos um pagamento.");
       return;
@@ -232,6 +234,8 @@ export function AdminConciliacaoDialog({
       toast.error("Os valores não estão balanceados. Verifique os pagamentos.");
       return;
     }
+    setIsSubmitting(true);
+    try {
 
     // Save admin-validated payments (exclude FATURAR_ID sentinel — handled by the fatura system)
     const persistedPagamentos = allPagamentos
@@ -345,7 +349,10 @@ export function AdminConciliacaoDialog({
         metadata: faturaId ? { fatura_id: faturaId, fatura_numero: faturaNumero } : null,
       },
     });
-    toast.success("Conciliação conferida e fatura gerada! ✅");
+      toast.success("Conciliação conferida e fatura gerada! ✅");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -828,9 +835,9 @@ export function AdminConciliacaoDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button onClick={handleConfirm} disabled={!isBalanced}>
+          <Button onClick={handleConfirm} disabled={!isBalanced || isSubmitting}>
             <CheckCircle className="h-4 w-4 mr-1.5" />
-            Conferir e Gerar Fatura
+            {isSubmitting ? "Processando..." : "Conferir e Gerar Fatura"}
           </Button>
         </DialogFooter>
       </DialogContent>

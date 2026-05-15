@@ -39,6 +39,8 @@ interface EntregaView {
   data_solicitacao: string;
   data_conclusao: string | null | undefined;
   bairro_nome: string;
+  isFirstInGroup: boolean;
+  groupSize: number;
 }
 
 // Status efetivo: usa o status da solicitação como fonte confiável.
@@ -48,6 +50,13 @@ const statusEfetivo = (e: EntregaView): StatusRota => {
   if (e.sol_status === "cancelada") return "cancelada";
   return e.rota.status as StatusRota;
 };
+
+// Valor deve ser repassado à empresa apenas quando o meio de cobrança é
+// pix_empresa OU dinheiro com destino repassar_empresa.
+const temRepasse = (rota: Rota): boolean =>
+  !!rota.receber_do_cliente &&
+  (rota.meio_cobranca_destino === "pix_empresa" ||
+    (rota.meio_cobranca_destino === "dinheiro" && rota.destino_dinheiro === "repassar_empresa"));
 
 const STATUS_ROTA_LABELS: Record<StatusRota, string> = {
   ativa: "Ativa",
@@ -96,12 +105,14 @@ export default function EntregasPage() {
   }, [search, activeTab, setSearchParams]);
 
   // Build flat list of entregas (each rota = 1 entrega) — O(n+m) with Map.
-  // Rotas without a matching solicitação in the active window are skipped gracefully.
+  // Sorted by solicitacao_id so rows of the same solicitação are always adjacent.
+  // isFirstInGroup / groupSize enable visual row-grouping in the table.
   const entregas: EntregaView[] = useMemo(() => {
     const solMap = new Map(solicitacoes.map((s) => [s.id, s]));
-    return rotas.flatMap((rota) => {
+
+    const flat = rotas.flatMap((rota) => {
       const sol = solMap.get(rota.solicitacao_id);
-      if (!sol) return []; // solicitação outside active window — skip
+      if (!sol) return [];
       return [{
         id: rota.id,
         rota,
@@ -114,8 +125,31 @@ export default function EntregasPage() {
         data_solicitacao: sol.data_solicitacao,
         data_conclusao: sol.data_conclusao,
         bairro_nome: getBairroName(rota.bairro_destino_id, bairros),
+        isFirstInGroup: false,
+        groupSize: 1,
       }];
     });
+
+    // Sort: primary = data_solicitacao desc, secondary = solicitacao_id (groups adjacent)
+    flat.sort((a, b) => {
+      const dateCmp = b.data_solicitacao.localeCompare(a.data_solicitacao);
+      if (dateCmp !== 0) return dateCmp;
+      return a.solicitacao_id.localeCompare(b.solicitacao_id);
+    });
+
+    // Count group sizes
+    const groupSizeMap = new Map<string, number>();
+    for (const e of flat) groupSizeMap.set(e.solicitacao_id, (groupSizeMap.get(e.solicitacao_id) ?? 0) + 1);
+
+    // Mark first-in-group
+    let prevSolId = "";
+    for (const e of flat) {
+      e.isFirstInGroup = e.solicitacao_id !== prevSolId;
+      e.groupSize = groupSizeMap.get(e.solicitacao_id) ?? 1;
+      prevSolId = e.solicitacao_id;
+    }
+
+    return flat;
   }, [rotas, solicitacoes]);
 
   // Single-pass: options + metrics + status counts
@@ -136,7 +170,7 @@ export default function EntregasPage() {
       else if (st === "concluida") {
         concluidas++;
         totalTaxas += e.rota.taxa_resolvida ?? 0;
-        if (e.rota.receber_do_cliente) totalRepasse += e.rota.valor_a_receber ?? 0;
+        if (temRepasse(e.rota)) totalRepasse += e.rota.valor_a_receber ?? 0;
       } else if (st === "cancelada") canceladas++;
     }
 
@@ -174,7 +208,12 @@ export default function EntregasPage() {
       }
 
       return matchSearch && matchTab && matchDate && matchTipo && matchEntregador;
-    });
+    }).map((e, i, arr) => ({
+      // Re-mark isFirstInGroup after filtering — a filter may remove the actual
+      // first row of a group, so the next row of that group must become the new first.
+      ...e,
+      isFirstInGroup: i === 0 || arr[i - 1].solicitacao_id !== e.solicitacao_id,
+    }));
   }, [entregas, search, activeTab, dateRange, filterTipo, filterEntregador]);
 
   const statusVariant = (s: StatusRota): "default" | "secondary" | "destructive" | "outline" => {
@@ -191,12 +230,16 @@ export default function EntregasPage() {
       key: "codigo",
       header: "Solicitação",
       sortable: true,
-      cell: (r) => <span className="font-mono text-sm font-medium">{r.codigo}</span>,
+      cell: (r) => r.isFirstInGroup
+        ? <span className="font-mono text-sm font-medium">{r.codigo}</span>
+        : <span className="text-muted-foreground/40 text-xs pl-1">↳</span>,
     },
     {
       key: "cliente_id",
       header: "Cliente",
-      cell: (r) => <span className="font-medium">{getClienteNome(r.cliente_id)}</span>,
+      cell: (r) => r.isFirstInGroup
+        ? <span className="font-medium">{getClienteNome(r.cliente_id)}</span>
+        : null,
     },
     {
       key: "bairro_nome",
@@ -216,14 +259,16 @@ export default function EntregasPage() {
     {
       key: "entregador_id",
       header: "Entregador",
-      cell: (r) => (
-        <span className="text-muted-foreground">{getEntregadorNome(r.entregador_id)}</span>
-      ),
+      cell: (r) => r.isFirstInGroup
+        ? <span className="text-muted-foreground">{getEntregadorNome(r.entregador_id)}</span>
+        : null,
     },
     {
       key: "tipo_operacao",
       header: "Tipo",
-      cell: (r) => <TipoOperacaoBadge tipoOperacao={r.tipo_operacao} />,
+      cell: (r) => r.isFirstInGroup
+        ? <TipoOperacaoBadge tipoOperacao={r.tipo_operacao} />
+        : null,
     },
     {
       key: "taxa_resolvida",
@@ -235,11 +280,11 @@ export default function EntregasPage() {
       header: "Valor de Repasse",
       cell: (r) => {
         const rota = r.rota;
-        const temRepasse =
+        const hasRepasse =
           rota.receber_do_cliente &&
           (rota.meio_cobranca_destino === "pix_empresa" ||
             (rota.meio_cobranca_destino === "dinheiro" && rota.destino_dinheiro === "repassar_empresa"));
-        return temRepasse ? (
+        return hasRepasse ? (
           <span className="tabular-nums font-medium text-destructive">{fmt(rota.valor_a_receber)}</span>
         ) : (
           <span className="text-muted-foreground text-sm">—</span>
@@ -255,11 +300,13 @@ export default function EntregasPage() {
       key: "data_solicitacao",
       header: "Data",
       sortable: true,
-      cell: (r) => (
-        <span className="tabular-nums text-sm text-muted-foreground">
-          {r.data_solicitacao ? fmtDate(r.data_solicitacao) : "—"}
-        </span>
-      ),
+      cell: (r) => r.isFirstInGroup
+        ? (
+          <span className="tabular-nums text-sm text-muted-foreground">
+            {r.data_solicitacao ? fmtDate(r.data_solicitacao) : "—"}
+          </span>
+        )
+        : null,
     },
     {
       key: "actions",
@@ -383,48 +430,71 @@ export default function EntregasPage() {
             onRowClick={(r) => setViewEntrega(r)}
             emptyTitle="Nenhuma entrega encontrada"
             emptySubtitle="As entregas aparecerão aqui conforme solicitações forem criadas."
+            rowClassName={(r, i) => r.isFirstInGroup && i > 0 ? "border-t-2 border-border" : undefined}
             renderMobileCard={(r) => (
-              <div className="rounded-lg border border-border bg-card p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="font-mono text-sm font-medium">{r.codigo}</span>
-                  <StatusBadge status={statusEfetivo(r)} label={STATUS_ROTA_LABELS[statusEfetivo(r)]} />
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="font-medium">{getClienteNome(r.cliente_id)}</span>
-                  <TipoOperacaoBadge tipoOperacao={r.tipo_operacao} />
-                </div>
-                <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                  <MapPin className="h-3.5 w-3.5" />
-                  <span>{r.bairro_nome}</span>
-                  <span className="mx-1">•</span>
-                  <span>{r.rota.responsavel || "—"}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm text-muted-foreground">
-                  <span>{getEntregadorNome(r.entregador_id)}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="tabular-nums font-medium text-status-completed">{fmt(r.rota.taxa_resolvida)}</span>
-                    {r.rota.receber_do_cliente && (
-                      <span className="tabular-nums text-destructive">{fmt(r.rota.valor_a_receber)}</span>
-                    )}
+              r.isFirstInGroup ? (
+                /* First rota of a group — full card */
+                <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-sm font-medium">{r.codigo}</span>
+                    <StatusBadge status={statusEfetivo(r)} label={STATUS_ROTA_LABELS[statusEfetivo(r)]} />
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium">{getClienteNome(r.cliente_id)}</span>
+                    <TipoOperacaoBadge tipoOperacao={r.tipo_operacao} />
+                  </div>
+                  <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                    <MapPin className="h-3.5 w-3.5" />
+                    <span>{r.bairro_nome}</span>
+                    <span className="mx-1">•</span>
+                    <span>{r.rota.responsavel || "—"}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm text-muted-foreground">
+                    <span>{getEntregadorNome(r.entregador_id)}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="tabular-nums font-medium text-status-completed">{fmt(r.rota.taxa_resolvida)}</span>
+                      {temRepasse(r.rota) && (
+                        <span className="tabular-nums text-destructive">{fmt(r.rota.valor_a_receber)}</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between border-t border-border pt-2">
+                    <span className="text-xs text-muted-foreground tabular-nums">
+                      {r.data_solicitacao ? fmtDate(r.data_solicitacao) : "—"}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 rounded-full text-primary hover:bg-primary/10"
+                      onClick={(e) => { e.stopPropagation(); setViewEntrega(r); }}
+                    >
+                      <Eye className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
-                <div className="flex items-center justify-between border-t border-border pt-2">
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    {r.data_solicitacao ? fmtDate(r.data_solicitacao) : "—"}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 rounded-full text-primary hover:bg-primary/10"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setViewEntrega(r);
-                    }}
-                  >
-                    <Eye className="h-4 w-4" />
-                  </Button>
+              ) : (
+                /* Subsequent rota in same group — compact card */
+                <div className="rounded-lg border border-border/50 bg-muted/20 px-4 py-2.5 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-sm min-w-0">
+                    <span className="text-muted-foreground/50 text-xs shrink-0">↳</span>
+                    <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <span className="truncate">{r.bairro_nome}</span>
+                    <span className="text-muted-foreground mx-0.5">·</span>
+                    <span className="text-muted-foreground truncate">{r.rota.responsavel || "—"}</span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="tabular-nums text-sm font-medium text-status-completed">{fmt(r.rota.taxa_resolvida)}</span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 rounded-full text-primary hover:bg-primary/10"
+                      onClick={(e) => { e.stopPropagation(); setViewEntrega(r); }}
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
-              </div>
+              )
             )}
           />
         </CardContent>

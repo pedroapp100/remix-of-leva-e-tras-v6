@@ -1,6 +1,5 @@
 import React from "react";
 import {
-  LayoutDashboard,
   ClipboardList,
   Users,
   Truck,
@@ -40,7 +39,6 @@ import {
 } from "@/components/ui/sidebar";
 
 const navItems = [
-  { title: "Dashboard", url: "/admin", icon: LayoutDashboard },
   { title: "Solicitações", url: "/admin/solicitacoes", icon: ClipboardList },
   { title: "Clientes", url: "/admin/clientes", icon: Users },
   { title: "Entregadores", url: "/admin/entregadores", icon: Truck },

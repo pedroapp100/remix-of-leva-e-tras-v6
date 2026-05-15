@@ -51,7 +51,6 @@ const LoginPage = lazyWithRetry(() => import("./pages/auth/LoginPage"));
 const ForgotPasswordPage = lazyWithRetry(() => import("./pages/auth/ForgotPasswordPage"));
 const ResetPasswordPage = lazyWithRetry(() => import("./pages/auth/ResetPasswordPage"));
 
-const AdminDashboard = lazyWithRetry(() => import("./pages/admin/Dashboard"));
 const SolicitacoesPage = lazyWithRetry(() => import("./pages/admin/SolicitacoesPage"));
 const ClientesPage = lazyWithRetry(() => import("./pages/admin/ClientesPage"));
 const EntregadoresPage = lazyWithRetry(() => import("./pages/admin/EntregadoresPage"));
@@ -178,7 +177,7 @@ const App = () => (
 
                   {/* Admin */}
                   <Route path="/admin" element={<ProtectedAppShell allowedRoles={["admin"]}><AdminLayout /></ProtectedAppShell>}>
-                    <Route index element={<PageBoundary><AdminDashboard /></PageBoundary>} />
+                    <Route index element={<Navigate to="solicitacoes" replace />} />
                     <Route path="solicitacoes" element={<PageBoundary><SolicitacoesPage /></PageBoundary>} />
                     <Route path="clientes" element={<PageBoundary><ClientesPage /></PageBoundary>} />
                     <Route path="entregadores" element={<PageBoundary><EntregadoresPage /></PageBoundary>} />

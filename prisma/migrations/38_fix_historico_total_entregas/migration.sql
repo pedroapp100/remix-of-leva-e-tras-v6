@@ -1,79 +1,71 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- Migration: 37_lancamentos_unique_sol_tipo
+-- Migration: 38_fix_historico_total_entregas
 --
 -- PROBLEMA:
---   A tabela lancamentos_financeiros não tinha proteção contra duplicatas.
---   O RPC concluir_fatura_entrega podia ser chamado duas vezes para a mesma
---   solicitação, gerando lançamentos duplicados e inflando os totais da fatura.
+--   A migration 37 corrigiu lancamentos_financeiros e os totais financeiros,
+--   mas deixou três problemas abertos:
+--   1) historico_faturas ainda tem entradas duplicadas (uma por chamada ao RPC)
+--   2) total_entregas não foi recalculado (continua inflado, ex: 2 → deveria ser 1)
+--   3) O RPC step 4 (INSERT em historico_faturas) não tem ON CONFLICT DO NOTHING,
+--      deixando uma janela de race condition entre chamadas simultâneas.
 --
 -- SOLUÇÃO:
---   1. Remove os lançamentos duplicados já existentes (mantém apenas o mais antigo)
---   2. Recalcula os totais das faturas afetadas (total_creditos_loja,
---      total_debitos_loja, saldo_liquido)
---   3. Adiciona UNIQUE partial index em (solicitacao_id, tipo)
---      WHERE solicitacao_id IS NOT NULL
---      → lançamentos manuais sem solicitacao_id não são afetados
---   4. Atualiza o RPC para usar INSERT ... ON CONFLICT DO NOTHING (idempotente)
+--   1. Remove entradas duplicadas em historico_faturas (tipo = entrega_adicionada)
+--   2. Recalcula total_entregas de todas as faturas a partir de lancamentos_financeiros
+--   3. Adiciona UNIQUE partial index em (fatura_id, descricao) WHERE tipo = entrega_adicionada
+--   4. Substitui o RPC pela versão com ON CONFLICT DO NOTHING no historico insert
 -- ─────────────────────────────────────────────────────────────────────────────
 
--- ── Passo 1: Remover duplicatas ───────────────────────────────────────────────
--- Para cada (solicitacao_id, tipo) duplicado, mantém o registro mais antigo
+-- ── Passo 1: Remover duplicatas em historico_faturas ─────────────────────────
+-- Para cada (fatura_id, tipo, descricao) duplicado, mantém o registro mais antigo
 -- (menor created_at / menor id como desempate) e deleta os demais.
--- Desabilita triggers de imutabilidade temporariamente para a limpeza de dados.
 
-ALTER TABLE lancamentos_financeiros DISABLE TRIGGER USER;
-
-DELETE FROM lancamentos_financeiros
+DELETE FROM historico_faturas
 WHERE id IN (
   SELECT id FROM (
     SELECT
       id,
       ROW_NUMBER() OVER (
-        PARTITION BY solicitacao_id, tipo
+        PARTITION BY fatura_id, tipo, descricao
         ORDER BY created_at ASC, id ASC
       ) AS rn
-    FROM lancamentos_financeiros
-    WHERE solicitacao_id IS NOT NULL
+    FROM historico_faturas
+    WHERE tipo = 'entrega_adicionada'
   ) ranked
   WHERE rn > 1
 );
 
-ALTER TABLE lancamentos_financeiros ENABLE TRIGGER USER;
-
--- ── Passo 2: Recalcular totais das faturas afetadas ───────────────────────────
--- Recalcula total_creditos_loja, total_debitos_loja e saldo_liquido
--- somando apenas os lançamentos que restaram após a limpeza.
+-- ── Passo 2: Recalcular total_entregas para todas as faturas ─────────────────
+-- total_entregas = número de solicitações distintas com lançamentos vinculados.
+-- Esta é a fonte de verdade mais confiável após a limpeza da migration 37.
 
 UPDATE faturas f
 SET
-  total_creditos_loja = COALESCE(agg.creditos, 0),
-  total_debitos_loja  = COALESCE(agg.debitos, 0),
-  saldo_liquido       = COALESCE(agg.creditos, 0) - COALESCE(agg.debitos, 0),
-  updated_at          = now()
+  total_entregas = COALESCE(agg.total, 0),
+  updated_at     = now()
 FROM (
   SELECT
     fatura_id,
-    SUM(CASE WHEN sinal = 'credito' THEN valor ELSE 0 END) AS creditos,
-    SUM(CASE WHEN sinal = 'debito'  THEN valor ELSE 0 END) AS debitos
+    COUNT(DISTINCT solicitacao_id) AS total
   FROM lancamentos_financeiros
   WHERE fatura_id IS NOT NULL
+    AND solicitacao_id IS NOT NULL
   GROUP BY fatura_id
 ) agg
 WHERE f.id = agg.fatura_id;
 
--- ── Passo 3: UNIQUE partial index ────────────────────────────────────────────
--- Bloqueia fisicamente duplicatas futuras.
--- Partial (WHERE solicitacao_id IS NOT NULL) para não restringir
--- lançamentos manuais de ajuste que não têm solicitação vinculada.
+-- ── Passo 3: UNIQUE partial index em historico_faturas ───────────────────────
+-- Bloqueia fisicamente duplicatas futuras para entradas de tipo entrega_adicionada.
+-- Entradas manuais (tipo diferente) não são afetadas.
 
-CREATE UNIQUE INDEX IF NOT EXISTS uq_lancamentos_sol_tipo
-  ON lancamentos_financeiros (solicitacao_id, tipo)
-  WHERE solicitacao_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_historico_entrega_adicionada
+  ON historico_faturas (fatura_id, descricao)
+  WHERE tipo = 'entrega_adicionada';
 
--- ── Passo 4: Atualizar RPC para ser idempotente ───────────────────────────────
--- Substitui INSERT simples por INSERT ... ON CONFLICT DO NOTHING.
--- Se a constraint já barrou a duplicata no banco, o RPC não lança exceção —
--- simplesmente ignora a tentativa e continua.
+-- ── Passo 4: Atualizar RPC — historico com ON CONFLICT DO NOTHING ─────────────
+-- Mesma lógica da migration 37, com uma adição:
+-- O INSERT em historico_faturas agora usa ON CONFLICT DO NOTHING,
+-- respaldado pelo index uq_historico_entrega_adicionada criado acima.
 
 CREATE OR REPLACE FUNCTION concluir_fatura_entrega(
   p_fatura_id       UUID,
@@ -101,14 +93,11 @@ DECLARE
   v_lancamento_novo BOOLEAN := false;
 BEGIN
   -- ── Guard: se já existem lançamentos para esta solicitação, skip ──
-  -- A constraint uq_lancamentos_sol_tipo garante isso no banco,
-  -- mas este check evita atualizar o total_entregas e saldo da fatura de novo.
   IF EXISTS (
     SELECT 1 FROM lancamentos_financeiros
     WHERE solicitacao_id = p_sol_id
     LIMIT 1
   ) THEN
-    -- Retorna sucesso sem reprocessar (idempotente)
     SELECT id INTO v_fatura_id FROM faturas
     WHERE id = p_fatura_id OR (
       cliente_id = p_cliente_id AND status_geral = 'Aberta'
@@ -209,7 +198,9 @@ BEGIN
     DO NOTHING;
   END IF;
 
-  -- ── 4) Histórico da fatura ──
+  -- ── 4) Histórico da fatura — ON CONFLICT DO NOTHING ──
+  -- Respaldado pelo index uq_historico_entrega_adicionada (fatura_id, descricao)
+  -- WHERE tipo = entrega_adicionada criado no Passo 3 desta migration.
   INSERT INTO historico_faturas (fatura_id, tipo, descricao)
   VALUES (
     v_fatura_id,
@@ -218,7 +209,10 @@ BEGIN
       || p_num_rotas || ' rota'
       || CASE WHEN p_num_rotas > 1 THEN 's' ELSE '' END
       || ', taxas R$ ' || to_char(p_total_taxas, 'FM999G999D00')
-  );
+  )
+  ON CONFLICT (fatura_id, descricao)
+  WHERE tipo = 'entrega_adicionada'
+  DO NOTHING;
 
   -- ── 5) Auto-close para frequência por_entrega ──
   SELECT

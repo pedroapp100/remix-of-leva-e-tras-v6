@@ -655,7 +655,7 @@ export default function SolicitacoesPage() {
       }
     >
       {/* Metrics */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+      <div className="hidden sm:grid sm:grid-cols-3 lg:grid-cols-5 gap-4">
         <MetricCard title="Pendentes" value={metrics.pendentes} icon={ClipboardList} onClick={() => setActiveTab("pendente")} />
         <MetricCard title="Aceitas" value={metrics.aceitas} icon={CheckCircle} onClick={() => setActiveTab("aceita")} />
         <MetricCard title="Em Andamento" value={metrics.emAndamento} icon={Truck} onClick={() => setActiveTab("em_andamento")} />
