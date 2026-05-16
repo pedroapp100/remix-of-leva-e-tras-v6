@@ -269,19 +269,19 @@ export default function ClientesPage() {
             onEmptyAction={openCreate}
             renderMobileCard={(r) => (
               <div className="rounded-lg border border-border bg-card p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <AvatarWithFallback name={r.nome} className="h-10 w-10" />
-                    <div>
-                      <p className="font-medium">{r.nome}</p>
-                      <p className="text-sm text-muted-foreground">{r.email}</p>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <AvatarWithFallback name={r.nome} className="h-10 w-10 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="font-medium truncate">{r.nome}</p>
+                      <p className="text-sm text-muted-foreground truncate">{r.email}</p>
                     </div>
                   </div>
-                  <StatusBadge status={r.status} />
+                  <div className="shrink-0"><StatusBadge status={r.status} /></div>
                 </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground tabular-nums">{r.telefone}</span>
-                  <div className="flex items-center gap-2">
+                <div className="flex items-center justify-between gap-2 text-sm">
+                  <span className="text-muted-foreground tabular-nums shrink-0">{r.telefone}</span>
+                  <div className="flex items-center gap-2 flex-wrap justify-end">
                     <Badge variant={r.modalidade === "faturado" ? "default" : "secondary"}>
                       {MODALIDADE_LABELS[r.modalidade]}
                     </Badge>

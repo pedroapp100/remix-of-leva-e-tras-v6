@@ -62,6 +62,7 @@ export interface SolicitacoesPageParams {
   dateFrom?: string;  // ISO date string "YYYY-MM-DD"
   dateTo?: string;    // ISO date string "YYYY-MM-DD"
   naoConciliada?: boolean; // when true: status=concluida AND admin_conciliada_at IS NULL
+  entregadorId?: string;   // optional: filter by entregador_id
 }
 
 export interface SolicitacoesPage {
@@ -75,7 +76,7 @@ export interface SolicitacoesPage {
 export async function fetchSolicitacoesPageable(
   params: SolicitacoesPageParams
 ): Promise<SolicitacoesPage> {
-  const { page, pageSize, status, search, clienteIds, dateFrom, dateTo, naoConciliada } = params;
+  const { page, pageSize, status, search, clienteIds, dateFrom, dateTo, naoConciliada, entregadorId } = params;
   const from = page * pageSize;
   const to = from + pageSize - 1;
 
@@ -105,6 +106,7 @@ export async function fetchSolicitacoesPageable(
     // Include the full last day
     q = q.lte("data_solicitacao", `${dateTo}T23:59:59.999Z`);
   }
+  if (entregadorId) q = q.eq("entregador_id", entregadorId);
 
   const { data, error, count } = await q;
   if (error) throw new Error(error.message);

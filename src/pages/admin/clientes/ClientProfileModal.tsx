@@ -115,11 +115,11 @@ export function ClientProfileModal({ client, onClose, onEdit }: ClientProfileMod
   return (
     <>
     <Dialog open={!!client} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto p-0">
+      <DialogContent className="gap-0 max-w-[calc(100%-1rem)] sm:max-w-3xl max-h-[90vh] overflow-y-auto p-0">
         {/* Header */}
         <div className="px-6 pt-6 pb-4 space-y-1">
           <DialogHeader>
-            <DialogTitle className="text-base sm:text-xl">Perfil de {client.nome}</DialogTitle>
+            <DialogTitle className="text-base sm:text-xl pr-8">Perfil de {client.nome}</DialogTitle>
             <DialogDescription>Visualize todas as informações e históricos do cliente.</DialogDescription>
           </DialogHeader>
         </div>

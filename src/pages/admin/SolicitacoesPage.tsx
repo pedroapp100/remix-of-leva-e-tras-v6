@@ -15,6 +15,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { DatePickerWithRange } from "@/components/shared/DatePickerWithRange";
 import type { DateRange } from "react-day-picker";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -78,13 +79,14 @@ export default function SolicitacoesPage() {
   const [search, setSearch] = useState(searchParams.get("q") ?? "");
   const [activeTab, setActiveTab] = useState<string>(searchParams.get("tab") ?? "todas");
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
+  const [filterEntregador, setFilterEntregador] = useState<string>("todos");
 
   // Server-side pagination state
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(25);
 
   // Reset to page 0 whenever filters change
-  useEffect(() => { setPage(0); }, [search, activeTab, dateRange, pageSize]);
+  useEffect(() => { setPage(0); }, [search, activeTab, dateRange, pageSize, filterEntregador]);
 
   // Compute matched cliente IDs for name search (client-side lookup from cached list)
   const matchedClienteIds = useMemo(() => {
@@ -115,6 +117,7 @@ export default function SolicitacoesPage() {
     clienteIds: matchedClienteIds.length > 0 ? matchedClienteIds : undefined,
     dateFrom,
     dateTo,
+    entregadorId: filterEntregador !== "todos" ? filterEntregador : undefined,
   });
 
   // Rotas scoped to current page's solicitation IDs (max 25 at a time)
@@ -686,8 +689,22 @@ export default function SolicitacoesPage() {
           <div className="flex flex-col sm:flex-row gap-3 flex-wrap items-end">
             <SearchInput value={search} onChange={setSearch} placeholder="Buscar por código ou cliente..." className="flex-1" />
             <DatePickerWithRange value={dateRange} onChange={setDateRange} />
-            {(search || activeTab !== "todas" || dateRange?.from) && (
-              <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground w-full sm:w-auto" onClick={() => { setSearch(""); setActiveTab("todas"); setDateRange(undefined); }}>
+            <Select value={filterEntregador} onValueChange={setFilterEntregador}>
+              <SelectTrigger className="w-full sm:w-[200px]">
+                <SelectValue placeholder="Todos entregadores" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos entregadores</SelectItem>
+                {entregadores
+                  .filter((e) => e.status === "ativo")
+                  .sort((a, b) => a.nome.localeCompare(b.nome))
+                  .map((e) => (
+                    <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+            {(search || activeTab !== "todas" || dateRange?.from || filterEntregador !== "todos") && (
+              <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground w-full sm:w-auto" onClick={() => { setSearch(""); setActiveTab("todas"); setDateRange(undefined); setFilterEntregador("todos"); }}>
                 <X className="h-3.5 w-3.5" /> Limpar filtros
               </Button>
             )}

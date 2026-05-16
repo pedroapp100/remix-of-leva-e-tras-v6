@@ -362,9 +362,9 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
   return (
     <>
       <Dialog open={!!solicitacao} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-[calc(100%-1rem)] sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex flex-col gap-1">
+          <DialogTitle className="flex flex-col gap-1 pr-8">
             <span className="text-base font-semibold">Entrega {solicitacao.codigo}</span>
             <Badge variant={statusVariant(solicitacao.status)} className="w-fit">
               {STATUS_SOLICITACAO_LABELS[solicitacao.status]}
@@ -434,10 +434,10 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                 )}
               </div>
 
-              <div className="grid grid-cols-3 gap-3 text-sm">
-                <div><span className="text-muted-foreground">Criação</span><p className="tabular-nums">{fmtDate(solicitacao.data_solicitacao)}</p></div>
-                <div><span className="text-muted-foreground">Início</span><p className="tabular-nums">{fmtDate(solicitacao.data_inicio)}</p></div>
-                <div><span className="text-muted-foreground">Conclusão</span><p className="tabular-nums">{fmtDate(solicitacao.data_conclusao)}</p></div>
+              <div className="grid grid-cols-3 gap-1 sm:gap-3 text-sm">
+                <div><span className="text-muted-foreground">Criação</span><p className="tabular-nums text-xs sm:text-sm">{fmtDate(solicitacao.data_solicitacao)}</p></div>
+                <div><span className="text-muted-foreground">Início</span><p className="tabular-nums text-xs sm:text-sm">{fmtDate(solicitacao.data_inicio)}</p></div>
+                <div><span className="text-muted-foreground">Conclusão</span><p className="tabular-nums text-xs sm:text-sm">{fmtDate(solicitacao.data_conclusao)}</p></div>
               </div>
 
               {solicitacao.justificativa && (
