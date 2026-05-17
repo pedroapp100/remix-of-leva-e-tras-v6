@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useSolicitacoes, useUpdateSolicitacao, useUpdateRotasBulk } from "@/hooks/useSolicitacoes";
 import { fetchRotasBySolicitacao, fetchTaxasExtrasByRotaIds } from "@/services/solicitacoes";
 import { rowToRota } from "@/lib/mappers";
@@ -7,6 +7,7 @@ import { useEntregadores } from "@/hooks/useEntregadores";
 import { useFaturas, useConcluirFaturaEntrega, useUpdateFatura } from "@/hooks/useFaturas";
 import { useCaixaStore } from "@/contexts/CaixaStore";
 import { useSettingsStore } from "@/contexts/SettingsStore";
+import { useFormasPagamento } from "@/hooks/useSettings";
 import { notificarEntregaConcluida, notificarFaturaGerada, notificarFaturaFechada, notificarSaldoBaixo } from "@/services/whatsapp";
 import type { SolicitacaoUpdate } from "@/services/solicitacoes";
 import { useCreateReceita } from "@/hooks/useFinanceiro";
@@ -26,6 +27,7 @@ export function useConcluirComCaixa() {
   const { data: entregadores = [] } = useEntregadores();
   const { data: faturas = [] } = useFaturas();
   const { getClienteSaldo } = useClienteSaldoMap();
+  const { data: formasPagamento = [] } = useFormasPagamento();
 
   const updateSolMut = useUpdateSolicitacao();
   const updateRotasBulkMut = useUpdateRotasBulk();
@@ -35,6 +37,12 @@ export function useConcluirComCaixa() {
   const createHistoricoFatura = useCreateHistoricoFatura();
 
   const { addRecebimentoAutomatico } = useCaixaStore();
+
+  const maquinaLojaIdSet = useMemo(() => new Set(
+    formasPagamento
+      .filter((f) => f.name.toLowerCase().includes("máquina") || f.name.toLowerCase().includes("maquina"))
+      .map((f) => f.id)
+  ), [formasPagamento]);
 
   const concluirComCaixa = useCallback(
     async (solId: string, options?: { skipFatura?: boolean }): Promise<{ success: boolean; error?: string }> => {
@@ -61,9 +69,11 @@ export function useConcluirComCaixa() {
       // For invoiced clients: routes marked 'faturar' go to fatura.
       // Also includes pago_na_hora routes paid via maquina_loja — the loja kept the
       // operation fee and must be billed (money never reached the empresa).
+      // meios_pagamento_operacao stores UUIDs, so we match by name from the settings snapshot.
       const isFaturavelRoute = (r: (typeof solRotas)[0]) =>
         r.pagamento_operacao === "faturar" ||
-        (r.pagamento_operacao === "pago_na_hora" && r.meios_pagamento_operacao?.includes("maquina_loja"));
+        (r.pagamento_operacao === "pago_na_hora" &&
+          r.meios_pagamento_operacao?.some((id) => maquinaLojaIdSet.has(id)));
       const totalTaxasFaturar = solRotas
         .filter(isFaturavelRoute)
         .reduce((s, r) => s + getRotaTotal(r), 0);
@@ -289,7 +299,7 @@ export function useConcluirComCaixa() {
 
           // WhatsApp: nova fatura
           if (cliente.telefone) {
-            const valorFmt = totalTaxas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+            const valorFmt = totalTaxasFaturar.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
             notificarFaturaGerada(cliente.telefone, {
               cliente_nome: cliente.nome,
               fatura_numero: result.fatura_numero,
@@ -328,7 +338,7 @@ export function useConcluirComCaixa() {
 
       return { success: true };
     },
-    [solicitacoes, clientes, entregadores, faturas, getClienteSaldo, updateSolMut, updateRotasBulkMut, concluirFaturaMut, updateFaturaMut, createReceita, createHistoricoFatura, addRecebimentoAutomatico]
+    [solicitacoes, clientes, entregadores, faturas, getClienteSaldo, maquinaLojaIdSet, updateSolMut, updateRotasBulkMut, concluirFaturaMut, updateFaturaMut, createReceita, createHistoricoFatura, addRecebimentoAutomatico]
   );
 
   return concluirComCaixa;

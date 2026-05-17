@@ -100,7 +100,7 @@ export function AdminConciliacaoDialog({
   const hasSyncedRef = useRef(false);
 
   useEffect(() => {
-    if (hasSyncedRef.current || rotas.length === 0) return;
+    if (hasSyncedRef.current || rotas.length === 0 || isLoadingPagamentos) return;
     hasSyncedRef.current = true;
     const initial: Record<string, PagamentoLinha[]> = {};
     rotas.forEach((r) => {
@@ -123,7 +123,7 @@ export function AdminConciliacaoDialog({
       }
     });
     setPagamentosPorRota(initial);
-  }, [rotas, driverByRota]);
+  }, [rotas, driverByRota, isLoadingPagamentos]);
 
   const addPagamento = (rotaId: string) => {
     setPagamentosPorRota((prev) => ({
@@ -158,8 +158,12 @@ export function AdminConciliacaoDialog({
       [rotaId]: (prev[rotaId] || []).map((p) => {
         if (p.id !== pagId) return p;
         const updated = { ...p, [field]: value };
-        if (field === "forma_pagamento_id" && value === DEVOLVER_LOJA_ID) {
-          updated.pertence_a = "loja";
+        if (field === "forma_pagamento_id") {
+          if (value === DEVOLVER_LOJA_ID) {
+            updated.pertence_a = "loja";
+          } else if (p.forma_pagamento_id === DEVOLVER_LOJA_ID) {
+            updated.pertence_a = "operacao";
+          }
         }
         return updated;
       }),
@@ -254,7 +258,7 @@ export function AdminConciliacaoDialog({
     }));
     if (persistedPagamentos.length > 0) {
       await deletePagamentosMut.mutateAsync(solicitacao.id);
-      createPagamentosMut.mutate(persistedPagamentos);
+      await createPagamentosMut.mutateAsync(persistedPagamentos);
     }
 
     // Generate invoice / conclude delivery

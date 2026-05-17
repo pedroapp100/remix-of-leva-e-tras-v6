@@ -12,7 +12,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CurrencyInput } from "@/components/shared/CurrencyInput";
 import { Plus, Trash2, AlertTriangle, CheckCircle, Info, Store, User } from "lucide-react";
 import { toast } from "sonner";
-import { useCreatePagamentos, useAppendHistorico, useDeletePagamentosByRota } from "@/hooks/useSolicitacoes";
+import { useCreatePagamentos, useAppendHistorico, useDeletePagamentosByRota, useTaxasExtrasByRotaIds } from "@/hooks/useSolicitacoes";
 import { useClienteSaldoMap, useClientes } from "@/hooks/useClientes";
 
 interface PagamentoLinha {
@@ -49,7 +49,11 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
   const { data: clientes = [] } = useClientes();
   const { data: formasPagamento = [] } = useFormasPagamento();
   const { data: bairros = [] } = useBairros();
+  const rotaIds = useMemo(() => rotas.map((r) => r.id), [rotas]);
+  const { data: taxasExtrasMap = new Map() } = useTaxasExtrasByRotaIds(rotaIds);
   const getBairroName = (id: string) => bairros.find((b) => b.id === id)?.nome ?? id;
+  const getExtrasForRota = (rotaId: string) =>
+    (taxasExtrasMap.get(rotaId) ?? []).reduce((s: number, e: { valor: number }) => s + e.valor, 0);
   const formasAtivas = formasPagamento.filter((f) => f.enabled);
 
   // Helper to find a forma de pagamento by keyword(s) in its name
@@ -208,12 +212,18 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
   // Only faturar routes generate an expected taxa; pago_na_hora is collected in cash at destination
   const totalEsperadoTaxasCents = rotas
     .filter((r) => r.pagamento_operacao === "faturar")
-    .reduce((s, r) => s + Math.round((r.taxa_resolvida ?? 0) * 100), 0);
+    .reduce(
+      (s, r) => s + Math.round((r.taxa_resolvida ?? 0) * 100) + Math.round(getExtrasForRota(r.id) * 100),
+      0
+    );
   const totalEsperadoReceberCents = rotas.filter((r) => r.receber_do_cliente).reduce((s, r) => s + Math.round((r.valor_a_receber ?? 0) * 100), 0);
   // For pago_na_hora routes on faturado clients the driver also collects the operation fee
   const totalEsperadoPagoNaHoraCents = rotas
     .filter((r) => r.pagamento_operacao === "pago_na_hora")
-    .reduce((s, r) => s + Math.round((r.taxa_resolvida ?? 0) * 100), 0);
+    .reduce(
+      (s, r) => s + Math.round((r.taxa_resolvida ?? 0) * 100) + Math.round(getExtrasForRota(r.id) * 100),
+      0
+    );
   
   const diffOperacaoCents = totalOperacaoCents - totalEsperadoTaxasCents;
   const diffLojaCents = totalLojaCents - totalEsperadoReceberCents;
