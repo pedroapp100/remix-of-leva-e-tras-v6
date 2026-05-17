@@ -73,7 +73,6 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate,
   const [pagamentoOpen, setPagamentoOpen] = useState(false);
   const [ajusteOpen, setAjusteOpen] = useState(false);
   const [lancandoReceita, setLancandoReceita] = useState(false);
-  const [finalizando, setFinalizando] = useState(false);
   const [entregasExpanded, setEntregasExpanded] = useState(false);
   const [expandedEntrega, setExpandedEntrega] = useState<string | null>(null);
   const [fecharConfirmOpen, setFecharConfirmOpen] = useState(false);
@@ -167,6 +166,10 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate,
   const handleAjuste = async (tipo: TipoAjuste, valor: number, motivo: string) => {
     const ajusteValor = tipo === "credito" ? valor : -valor;
     const novoSaldo = saldo + ajusteValor;
+    const statusAtual = liveFatura?.status_geral ?? fatura.status_geral;
+    const deveAutoFinalizar =
+      novoSaldo === 0 &&
+      (statusAtual === "Fechada" || statusAtual === "Vencida");
     try {
       await createAjuste.mutateAsync({
         fatura_id: fatura.id,
@@ -178,7 +181,10 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate,
       });
       await updateFatura.mutateAsync({
         id: fatura.id,
-        patch: { saldo_liquido: novoSaldo },
+        patch: {
+          saldo_liquido: novoSaldo,
+          ...(deveAutoFinalizar && { status_geral: "Finalizada" }),
+        },
       });
       await createHistorico.mutateAsync({
         fatura_id: fatura.id,
@@ -189,8 +195,27 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate,
         valor_novo: novoSaldo,
         metadata: null,
       });
+      if (deveAutoFinalizar) {
+        await createHistorico.mutateAsync({
+          fatura_id: fatura.id,
+          tipo: "finalizada",
+          descricao: "Fatura finalizada automaticamente — ajuste zerou o saldo",
+          usuario_id: user?.id ?? null,
+          valor_anterior: null,
+          valor_novo: null,
+          metadata: null,
+        });
+      }
       setAjusteOpen(false);
-      toast.success(`Ajuste de ${formatCurrency(valor)} (${tipo}) adicionado com sucesso`);
+      if (deveAutoFinalizar) {
+        toast.success(`Fatura ${fatura.numero} finalizada!`, {
+          description: `Ajuste de ${formatCurrency(valor)} zerou o saldo.`,
+          duration: 5000,
+        });
+        onOpenChange(false);
+      } else {
+        toast.success(`Ajuste de ${formatCurrency(valor)} (${tipo}) adicionado com sucesso`);
+      }
     } catch (err) {
       toast.error("Erro ao adicionar ajuste");
     }
@@ -234,85 +259,71 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate,
     }
   };
 
-  const handleFinalizar = async () => {
-    setFinalizando(true);
-    try {
-      await updateFatura.mutateAsync({
-        id: fatura.id,
-        patch: { status_geral: "Finalizada" },
-      });
-      await createHistorico.mutateAsync({
-        fatura_id: fatura.id,
-        tipo: "finalizada",
-        descricao: "Fatura finalizada — saldo zerado",
-        usuario_id: user?.id ?? null,
-        valor_anterior: null,
-        valor_novo: null,
-        metadata: null,
-      });
-      toast.success(`Fatura ${fatura.numero} finalizada!`, {
-        description: "Saldo zerado — fatura aguardando lançamento no financeiro.",
-        duration: 5000,
-      });
-      onOpenChange(false);
-    } catch (err) {
-      toast.error("Erro ao finalizar fatura");
-    } finally {
-      setFinalizando(false);
-    }
-  };
-
   const handleFechar = async () => {
+    const saldoZerado = saldo === 0;
+    const taxas = (liveFatura ?? fatura).total_debitos_loja ?? 0;
     try {
       await updateFatura.mutateAsync({
         id: fatura.id,
-        patch: { status_geral: "Fechada" },
+        patch: { status_geral: saldoZerado ? "Finalizada" : "Fechada" },
       });
       await createHistorico.mutateAsync({
         fatura_id: fatura.id,
-        tipo: "fechada",
-        descricao: `Fatura fechada — saldo: ${formatCurrency(saldo)}`,
+        tipo: saldoZerado ? "finalizada" : "fechada",
+        descricao: saldoZerado
+          ? "Fatura finalizada automaticamente — saldo zerado ao fechar"
+          : `Fatura fechada — saldo: ${formatCurrency(saldo)}`,
         usuario_id: user?.id ?? null,
         valor_anterior: null,
         valor_novo: null,
         metadata: null,
       });
+      if (saldoZerado && taxas > 0 && !receitaJaLancada) {
+        const receitaTaxas = buildReceitaFromFatura({
+          faturaId: fatura.id,
+          faturaNumero: fatura.numero,
+          clienteId: fatura.cliente_id,
+          valor: taxas,
+          tipo: "pagamento",
+        });
+        if (receitaTaxas) {
+          await createReceita.mutateAsync(receitaTaxas);
+          await createHistorico.mutateAsync({
+            fatura_id: fatura.id,
+            tipo: "receita_lancada",
+            descricao: `Receita de taxas ${formatCurrency(taxas)} lançada automaticamente ao fechar fatura`,
+            usuario_id: user?.id ?? null,
+            valor_anterior: null,
+            valor_novo: taxas,
+            metadata: null,
+          });
+        }
+      }
       setFecharConfirmOpen(false);
-      toast.success("Fatura fechada com sucesso");
+      if (saldoZerado) {
+        toast.success(`Fatura ${fatura.numero} finalizada!`, {
+          description: "Saldo zerado — nenhuma movimentação pendente.",
+          duration: 5000,
+        });
+        onOpenChange(false);
+      } else {
+        toast.success("Fatura fechada com sucesso");
+      }
     } catch (err) {
       toast.error("Erro ao fechar fatura");
     }
   };
 
-  const handleCobranca = async () => {
-    try {
-      await updateFatura.mutateAsync({
-        id: fatura.id,
-        patch: { status_cobranca: "Cobrado" },
-      });
-      await createHistorico.mutateAsync({
-        fatura_id: fatura.id,
-        tipo: "cobranca",
-        descricao: `Cobrança de ${formatCurrency(Math.abs(saldo))} registrada`,
-        usuario_id: user?.id ?? null,
-        valor_anterior: null,
-        valor_novo: null,
-        metadata: null,
-      });
-      toast.success(`Cobrança de ${formatCurrency(Math.abs(saldo))} registrada`);
-    } catch (err) {
-      toast.error("Erro ao registrar cobrança");
-    }
-  };
-
   const handlePagamento = async (valor: number, formaPagamento: string, observacao: string) => {
     const novoSaldo = saldo < 0 ? saldo + valor : saldo - valor;
+    const faturaFinalizada = novoSaldo === 0;
+    const taxas = (liveFatura ?? fatura).total_debitos_loja ?? 0;
     try {
       await updateFatura.mutateAsync({
         id: fatura.id,
         patch: {
           saldo_liquido: novoSaldo,
-          status_geral: novoSaldo === 0 ? "Finalizada" : fatura.status_geral,
+          status_geral: faturaFinalizada ? "Finalizada" : fatura.status_geral,
         },
       });
       await createHistorico.mutateAsync({
@@ -324,8 +335,50 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate,
         valor_novo: novoSaldo,
         metadata: { forma_pagamento: formaPagamento, observacao: observacao || null },
       });
+      if (faturaFinalizada && taxas > 0 && !receitaJaLancada) {
+        const receitaTaxas = buildReceitaFromFatura({
+          faturaId: fatura.id,
+          faturaNumero: fatura.numero,
+          clienteId: fatura.cliente_id,
+          valor: taxas,
+          tipo: "pagamento",
+          formaPagamento,
+          observacao: observacao || undefined,
+        });
+        if (receitaTaxas) {
+          await createReceita.mutateAsync(receitaTaxas);
+          await createHistorico.mutateAsync({
+            fatura_id: fatura.id,
+            tipo: "receita_lancada",
+            descricao: `Receita de taxas ${formatCurrency(taxas)} lançada automaticamente ao registrar pagamento`,
+            usuario_id: user?.id ?? null,
+            valor_anterior: null,
+            valor_novo: taxas,
+            metadata: null,
+          });
+        }
+      }
+      if (faturaFinalizada) {
+        await createHistorico.mutateAsync({
+          fatura_id: fatura.id,
+          tipo: "finalizada",
+          descricao: "Fatura finalizada automaticamente após pagamento total",
+          usuario_id: user?.id ?? null,
+          valor_anterior: null,
+          valor_novo: null,
+          metadata: null,
+        });
+      }
       setPagamentoOpen(false);
-      toast.success(`Pagamento de ${formatCurrency(valor)} registrado com sucesso`);
+      if (faturaFinalizada) {
+        toast.success(`Fatura ${fatura.numero} finalizada!`, {
+          description: `Pagamento de ${formatCurrency(valor)} registrado — saldo zerado.`,
+          duration: 5000,
+        });
+        onOpenChange(false);
+      } else {
+        toast.success(`Pagamento de ${formatCurrency(valor)} registrado com sucesso`);
+      }
     } catch (err) {
       toast.error("Erro ao registrar pagamento");
     }
@@ -804,17 +857,12 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate,
                 <>
                   <Separator />
                   <div className="flex flex-wrap gap-2">
-                    {fatura.status_geral === "Fechada" && saldo > 0 && (
+                    {(fatura.status_geral === "Fechada" || fatura.status_geral === "Vencida") && saldo > 0 && (
                       <Button variant="outline" onClick={() => setRepasseOpen(true)}>
                         <ArrowUpRight className="h-4 w-4 mr-1.5" /> Registrar Repasse
                       </Button>
                     )}
-                    {fatura.status_geral === "Fechada" && saldo < 0 && (
-                      <Button variant="outline" onClick={handleCobranca}>
-                        <ArrowDownRight className="h-4 w-4 mr-1.5" /> Registrar Cobrança
-                      </Button>
-                    )}
-                    {fatura.status_geral === "Fechada" && saldo !== 0 && (
+                    {(fatura.status_geral === "Fechada" || fatura.status_geral === "Vencida") && saldo < 0 && (
                       <Button variant="outline" onClick={() => setPagamentoOpen(true)}>
                         <Banknote className="h-4 w-4 mr-1.5" /> Registrar Pagamento
                       </Button>
@@ -825,18 +873,9 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate,
                     <Button variant="outline" onClick={handleGerarPDF}>
                       <Download className="h-4 w-4 mr-1.5" /> Gerar PDF
                     </Button>
-                    {fatura.status_geral === "Aberta" || fatura.status_geral === "Vencida" ? (
+                    {fatura.status_geral === "Aberta" && (
                       <Button variant="outline" onClick={() => setFecharConfirmOpen(true)}>
                         <Lock className="h-4 w-4 mr-1.5" /> Fechar Fatura
-                      </Button>
-                    ) : null}
-                    {fatura.status_geral === "Fechada" && saldo === 0 && (
-                      <Button onClick={handleFinalizar} disabled={finalizando}>
-                        {finalizando ? (
-                          <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Finalizando...</>
-                        ) : (
-                          "Finalizar Fatura"
-                        )}
                       </Button>
                     )}
                   </div>

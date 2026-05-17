@@ -3,11 +3,11 @@
  * Funções puras Supabase para a tabela profiles (usuários admin).
  */
 import { supabase } from "@/lib/supabase";
-import type { TableRow, TableInsert, TableUpdate } from "@/types/supabase";
+import type { Tables, TablesInsert, TablesUpdate } from "@/types/supabase";
 
-export type ProfileRow = TableRow<"profiles">;
-export type ProfileInsert = TableInsert<"profiles">;
-export type ProfileUpdate = TableUpdate<"profiles">;
+export type ProfileRow = Tables<"profiles">;
+export type ProfileInsert = TablesInsert<"profiles">;
+export type ProfileUpdate = TablesUpdate<"profiles">;
 
 // ── Listagem ──────────────────────────────────────────────────────────────────
 

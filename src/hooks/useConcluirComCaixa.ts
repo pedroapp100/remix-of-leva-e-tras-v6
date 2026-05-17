@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { useSolicitacoes, useUpdateSolicitacao, useUpdateRotasBulk } from "@/hooks/useSolicitacoes";
 import { fetchRotasBySolicitacao, fetchTaxasExtrasByRotaIds } from "@/services/solicitacoes";
+import { fetchClienteById } from "@/services/clientes";
 import { rowToRota } from "@/lib/mappers";
 import { useClientes, useClienteSaldoMap } from "@/hooks/useClientes";
 import { useEntregadores } from "@/hooks/useEntregadores";
@@ -49,7 +50,14 @@ export function useConcluirComCaixa() {
       const sol = solicitacoes.find((s) => s.id === solId);
       if (!sol) return { success: false, error: "Solicitação não encontrada." };
 
-      const cliente = clientes.find((c) => c.id === sol.cliente_id);
+      let cliente = clientes.find((c) => c.id === sol.cliente_id);
+      if (!cliente) {
+        try {
+          cliente = await fetchClienteById(sol.cliente_id);
+        } catch {
+          return { success: false, error: "Cliente não encontrado. Tente novamente." };
+        }
+      }
 
       // Fetch rotas fresh at action-time (never stale, uses idx_rotas_sol)
       let solRotas: ReturnType<typeof rowToRota>[];

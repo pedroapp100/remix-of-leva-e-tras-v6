@@ -203,6 +203,7 @@ export interface ConcluirFaturaEntregaResult {
   fatura_numero?: string;
   auto_fechada?: boolean;
   total_entregas?: number;
+  already_processed?: boolean;
   error?: string;
 }
 

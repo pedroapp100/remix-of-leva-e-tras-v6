@@ -111,19 +111,37 @@ export function AdminConciliacaoDialog({
           r.meio_cobranca_destino === "pix_loja" ||
           (r.meio_cobranca_destino === "dinheiro" && r.destino_dinheiro === "devolver_loja"));
       const driverPags = driverByRota[r.id] || [];
-      if (driverPags.length > 0) {
-        initial[r.id] = driverPags.map((dp) => ({
-          id: `admin-${dp.id}`,
-          forma_pagamento_id: dp.forma_pagamento_id,
-          valor: dp.valor,
-          pertence_a: isLojaCobrancaRoute ? "loja" : (dp.pertence_a ?? "operacao"),
-        }));
-      } else {
-        initial[r.id] = [];
+      const linhas: PagamentoLinha[] = driverPags.length > 0
+        ? driverPags.map((dp) => ({
+            id: `admin-${dp.id}`,
+            forma_pagamento_id: dp.forma_pagamento_id,
+            valor: dp.valor,
+            pertence_a: isLojaCobrancaRoute ? "loja" : (dp.pertence_a ?? "operacao"),
+          }))
+        : [];
+
+      // Pre-fill the Operação row based on the route's payment configuration
+      if (r.pagamento_operacao === "faturar") {
+        linhas.push({
+          id: crypto.randomUUID(),
+          forma_pagamento_id: FATURAR_ID,
+          valor: 0,
+          pertence_a: "operacao",
+        });
+      } else if (r.pagamento_operacao === "pago_na_hora") {
+        const meioId = r.meios_pagamento_operacao?.[0] ?? formasAtivas[0]?.id ?? "";
+        linhas.push({
+          id: crypto.randomUUID(),
+          forma_pagamento_id: meioId,
+          valor: 0,
+          pertence_a: "operacao",
+        });
       }
+
+      initial[r.id] = linhas;
     });
     setPagamentosPorRota(initial);
-  }, [rotas, driverByRota, isLoadingPagamentos]);
+  }, [rotas, driverByRota, isLoadingPagamentos, formasAtivas]);
 
   const addPagamento = (rotaId: string) => {
     setPagamentosPorRota((prev) => ({
@@ -273,6 +291,9 @@ export function AdminConciliacaoDialog({
         toast.error(result.error ?? "Erro ao concluir solicitação.");
         return;
       }
+      if (result.error) {
+        toast.warning(result.error);
+      }
     } else if (solicitacao.status === "concluida" && cliente?.modalidade === "faturado") {
       // Already concluded + faturado client: call fatura RPC directly (avoid double-caixa)
       // Inclui rotas 'faturar' e rotas 'pago_na_hora' pagas via maquina_loja —
@@ -317,6 +338,13 @@ export function AdminConciliacaoDialog({
         if (!result.success) {
           toast.error(result.error ?? "Erro ao gerar/atualizar fatura.");
           return;
+        }
+        if (result.already_processed) {
+          toast.info(
+            result.fatura_numero
+              ? `Entrega já registrada na fatura ${result.fatura_numero}.`
+              : "Entrega já registrada anteriormente."
+          );
         }
         faturaNumero = result.fatura_numero;
         faturaId = result.fatura_id;
