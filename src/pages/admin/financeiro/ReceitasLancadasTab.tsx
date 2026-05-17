@@ -29,6 +29,7 @@ export function ReceitasLancadasTab({ receitas, faturas }: ReceitasLancadasTabPr
   const { data: allCategorias = [] } = useCategorias();
   const [search, setSearch] = useState("");
   const [categoriaFilter, setCategoriaFilter] = useState("todos");
+  const [periodoFilter, setPeriodoFilter] = useState("todos");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingReceita, setEditingReceita] = useState<Receita | null>(null);
   const [receitasTabFilter, setReceitasTabFilter] = useState<"todas" | "lancadas" | "manuais">("todas");
@@ -50,6 +51,24 @@ export function ReceitasLancadasTab({ receitas, faturas }: ReceitasLancadasTabPr
     [receitas, getCatNome],
   );
 
+  const periodos = useMemo(() => {
+    const seen = new Set<string>();
+    return receitas
+      .filter((r) => r.data_recebimento)
+      .map((r) => r.data_recebimento!.slice(0, 7))
+      .filter((key) => (seen.has(key) ? false : (seen.add(key), true)))
+      .sort()
+      .reverse()
+      .map((key) => {
+        const [ano, mes] = key.split("-");
+        const label = new Date(Number(ano), Number(mes) - 1, 1)
+          .toLocaleDateString("pt-BR", { month: "short", year: "numeric" })
+          .replace(" de ", "/")
+          .replace(".", "");
+        return { key, label: label.charAt(0).toUpperCase() + label.slice(1) };
+      });
+  }, [receitas]);
+
   const isFaturaReceita = useCallback(
     (r: Receita) =>
       (r.observacao?.startsWith("Fatura ") ?? false) ||
@@ -68,16 +87,17 @@ export function ReceitasLancadasTab({ receitas, faturas }: ReceitasLancadasTabPr
         ? receitasManuais
         : receitas;
 
-  const totalReceitasLancadas = receitas.reduce((s, r) => s + r.valor, 0);
-
   const filtered = receitasBase.filter((r) => {
     const catNome = getCatNome(r);
     const matchSearch =
       r.descricao.toLowerCase().includes(search.toLowerCase()) ||
       catNome.toLowerCase().includes(search.toLowerCase());
     const matchCategoria = categoriaFilter === "todos" || catNome === categoriaFilter;
-    return matchSearch && matchCategoria;
+    const matchPeriodo = periodoFilter === "todos" || r.data_recebimento?.startsWith(periodoFilter);
+    return matchSearch && matchCategoria && matchPeriodo;
   });
+
+  const totalReceitasLancadas = filtered.reduce((s, r) => s + r.valor, 0);
 
   const handleSave = (receita: Receita) => {
     if (editingReceita) {
@@ -236,6 +256,15 @@ export function ReceitasLancadasTab({ receitas, faturas }: ReceitasLancadasTabPr
             placeholder="Buscar receitas..."
             className="flex-1 min-w-[200px]"
           />
+          <Select value={periodoFilter} onValueChange={setPeriodoFilter}>
+            <SelectTrigger className="w-[140px]">
+              <SelectValue placeholder="Período" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos os meses</SelectItem>
+              {periodos.map((p) => <SelectItem key={p.key} value={p.key}>{p.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
           <Select value={categoriaFilter} onValueChange={setCategoriaFilter}>
             <SelectTrigger className="w-[160px]">
               <SelectValue placeholder="Categoria" />
@@ -245,12 +274,12 @@ export function ReceitasLancadasTab({ receitas, faturas }: ReceitasLancadasTabPr
               {categorias.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
             </SelectContent>
           </Select>
-          {(search || categoriaFilter !== "todos") && (
+          {(search || categoriaFilter !== "todos" || periodoFilter !== "todos") && (
             <Button
               variant="ghost"
               size="sm"
               className="gap-1.5 text-muted-foreground hover:text-foreground"
-              onClick={() => { setSearch(""); setCategoriaFilter("todos"); }}
+              onClick={() => { setSearch(""); setCategoriaFilter("todos"); setPeriodoFilter("todos"); }}
             >
               <X className="h-3.5 w-3.5" /> Limpar filtros
             </Button>

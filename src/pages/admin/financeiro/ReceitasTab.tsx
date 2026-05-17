@@ -1,12 +1,13 @@
 import { useState, useMemo, lazy, Suspense } from "react";
-import { DataTable } from "@/components/shared";
+import { DataTable, SearchInput } from "@/components/shared";
 import type { Column } from "@/components/shared/DataTable";
 import type { Fatura, Receita } from "@/types/database";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatCurrency, formatDateBR } from "@/lib/formatters";
-import { FileText, Eye } from "lucide-react";
+import { FileText, Eye, X } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 const FaturaDetailsModal = lazy(() => import("@/pages/admin/faturas/FaturaDetailsModal").then(m => ({ default: m.FaturaDetailsModal })));
 
 interface ReceitasTabProps {
@@ -16,12 +17,14 @@ interface ReceitasTabProps {
 
 export function ReceitasTab({ faturas = [], receitas = [] }: ReceitasTabProps) {
   const [viewingFatura, setViewingFatura] = useState<Fatura | null>(null);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"todos" | "lancada" | "aguardando">("todos");
+  const [periodoFilter, setPeriodoFilter] = useState("todos");
 
   const faturasRecebidas = faturas.filter(
     (f) => f.status_geral === "Paga" || f.status_geral === "Finalizada",
   );
 
-  // Set de números de faturas que já têm receita lançada manualmente
   const faturasLancadas = useMemo(() => {
     const set = new Set<string>();
     for (const r of receitas) {
@@ -33,9 +36,44 @@ export function ReceitasTab({ faturas = [], receitas = [] }: ReceitasTabProps) {
     return set;
   }, [receitas]);
 
-  const totalFaturasRecebidas = faturasRecebidas
+  const periodos = useMemo(() => {
+    const seen = new Set<string>();
+    return faturasRecebidas
+      .filter((f) => f.data_emissao)
+      .map((f) => f.data_emissao!.slice(0, 7))
+      .filter((key) => (seen.has(key) ? false : (seen.add(key), true)))
+      .sort()
+      .reverse()
+      .map((key) => {
+        const [ano, mes] = key.split("-");
+        const label = new Date(Number(ano), Number(mes) - 1, 1)
+          .toLocaleDateString("pt-BR", { month: "short", year: "numeric" })
+          .replace(" de ", "/")
+          .replace(".", "");
+        return { key, label: label.charAt(0).toUpperCase() + label.slice(1) };
+      });
+  }, [faturasRecebidas]);
+
+  const filtered = faturasRecebidas.filter((f) => {
+    const lancada = faturasLancadas.has(f.numero);
+    const matchSearch =
+      search === "" ||
+      f.numero.toLowerCase().includes(search.toLowerCase()) ||
+      (f.cliente_nome ?? "").toLowerCase().includes(search.toLowerCase());
+    const matchStatus =
+      statusFilter === "todos" ||
+      (statusFilter === "lancada" && lancada) ||
+      (statusFilter === "aguardando" && !lancada);
+    const matchPeriodo =
+      periodoFilter === "todos" || (f.data_emissao?.startsWith(periodoFilter) ?? false);
+    return matchSearch && matchStatus && matchPeriodo;
+  });
+
+  const totalFaturasRecebidas = filtered
     .filter((f) => faturasLancadas.has(f.numero))
     .reduce((s, f) => s + (f.total_debitos_loja || 0), 0);
+
+  const hasFilters = search !== "" || statusFilter !== "todos" || periodoFilter !== "todos";
 
   const faturaColumns: Column<Fatura>[] = [
     {
@@ -71,7 +109,7 @@ export function ReceitasTab({ faturas = [], receitas = [] }: ReceitasTabProps) {
       cell: (f) => {
         const lancada = faturasLancadas.has(f.numero);
         return lancada ? (
-          <Badge variant="default">Finalizada</Badge>
+          <Badge variant="default">Lançada</Badge>
         ) : (
           <Badge className="bg-amber-500/15 text-amber-600 border border-amber-500/30 text-xs">
             Aguardando Lançamento
@@ -119,8 +157,49 @@ export function ReceitasTab({ faturas = [], receitas = [] }: ReceitasTabProps) {
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
           Faturas Recebidas
         </h3>
+
+        <div className="flex flex-col sm:flex-row gap-3 flex-wrap items-end">
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder="Buscar fatura ou cliente..."
+            className="flex-1 min-w-[200px]"
+          />
+          <Select value={periodoFilter} onValueChange={setPeriodoFilter}>
+            <SelectTrigger className="w-[140px]">
+              <SelectValue placeholder="Período" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos os meses</SelectItem>
+              {periodos.map((p) => (
+                <SelectItem key={p.key} value={p.key}>{p.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos</SelectItem>
+              <SelectItem value="lancada">Lançada</SelectItem>
+              <SelectItem value="aguardando">Aguardando Lançamento</SelectItem>
+            </SelectContent>
+          </Select>
+          {hasFilters && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5 text-muted-foreground hover:text-foreground"
+              onClick={() => { setSearch(""); setStatusFilter("todos"); setPeriodoFilter("todos"); }}
+            >
+              <X className="h-3.5 w-3.5" /> Limpar filtros
+            </Button>
+          )}
+        </div>
+
         <DataTable
-          data={faturasRecebidas}
+          data={filtered}
           columns={faturaColumns}
           pageSize={10}
           emptyTitle="Nenhuma fatura recebida"
