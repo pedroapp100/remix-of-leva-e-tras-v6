@@ -14,18 +14,27 @@ import { OfflineBanner } from "@/components/OfflineBanner";
 import Index from "./pages/Index";
 
 // Retries the dynamic import once before giving up; on the second failure it
-// forces a full page reload so the browser fetches the new index.html and the
-// updated chunk hashes that come with a fresh deployment.
+// unregisters the Service Worker and clears all caches so the subsequent
+// reload fetches fresh chunks from the server instead of the stale SW cache.
 function lazyWithRetry<T extends ComponentType<unknown>>(
   factory: () => Promise<{ default: T }>
 ): React.LazyExoticComponent<T> {
   return lazy(() =>
     factory().catch(() =>
-      factory().catch(() => {
+      factory().catch(async () => {
         const reloaded = sessionStorage.getItem("chunk_reload_attempted");
         if (!reloaded) {
           sessionStorage.setItem("chunk_reload_attempted", "1");
+          if ("serviceWorker" in navigator) {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(registrations.map((r) => r.unregister()));
+          }
+          if ("caches" in window) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map((key) => caches.delete(key)));
+          }
           window.location.reload();
+          return new Promise<{ default: T }>(() => {});
         }
         return Promise.reject(new Error("Failed to load module after retry"));
       })

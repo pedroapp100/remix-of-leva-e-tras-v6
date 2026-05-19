@@ -81,15 +81,44 @@ export function UsuariosTab() {
 
     try {
       if (editingId) {
-        await updateProfile.mutateAsync({
-          id: editingId,
-          patch: {
-            nome: form.nome.trim(),
-            cargo_id: form.cargo_id || null,
-            ativo: form.status === "ativo",
-            documento: form.documento.replace(/\D/g, "") || null,
-          },
-        });
+        const hasPassword = form.password.trim().length > 0;
+
+        if (hasPassword && form.password.trim().length < 6) {
+          toast.error("A senha deve ter no mínimo 6 caracteres.");
+          return;
+        }
+
+        if (hasPassword) {
+          const targetProfile = adminUsers.find((u) => u.id === editingId);
+          const { data, error } = await supabase.functions.invoke("update-user", {
+            body: {
+              user_id: editingId,
+              email: targetProfile?.email ?? form.email.trim().toLowerCase(),
+              password: form.password.trim(),
+              nome: form.nome.trim(),
+              cargo_id: form.cargo_id || null,
+              ativo: form.status === "ativo",
+              documento: form.documento.replace(/\D/g, "") || null,
+            },
+          });
+          if (error || data?.error) {
+            const ctx = (error as any)?.context;
+            const msg = ctx?.data?.error ?? data?.error ?? error?.message ?? "Erro ao atualizar usuário.";
+            toast.error(msg);
+            return;
+          }
+          await refetch();
+        } else {
+          await updateProfile.mutateAsync({
+            id: editingId,
+            patch: {
+              nome: form.nome.trim(),
+              cargo_id: form.cargo_id || null,
+              ativo: form.status === "ativo",
+              documento: form.documento.replace(/\D/g, "") || null,
+            },
+          });
+        }
         toast.success("Usuário atualizado com sucesso.");
       } else {
         if (!form.password.trim()) {
