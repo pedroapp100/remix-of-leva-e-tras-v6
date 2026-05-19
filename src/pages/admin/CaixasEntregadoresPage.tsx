@@ -114,9 +114,13 @@ export default function CaixasEntregadoresPage() {
     }
   };
 
-  const handleFecharCaixa = (caixaId: string, valorDevolvido: number, observacoes: string) => {
-    fecharCaixa(caixaId, valorDevolvido, observacoes);
-    toast.success("Caixa fechado com sucesso");
+  const handleFecharCaixa = async (caixaId: string, valorDevolvido: number, observacoes: string) => {
+    const sucesso = await fecharCaixa(caixaId, valorDevolvido, observacoes);
+    if (sucesso) {
+      toast.success("Caixa fechado com sucesso");
+    } else {
+      toast.error("Erro ao fechar caixa. Verifique sua conexão e tente novamente.");
+    }
   };
 
   const handleEditarCaixa = (caixaId: string, trocoInicial: number, observacoes: string) => {

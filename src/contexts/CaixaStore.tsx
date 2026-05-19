@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase";
 interface CaixaStoreContextType {
   caixas: CaixaEntregador[];
   abrirCaixa: (entregadorId: string, trocoInicial: number) => boolean;
-  fecharCaixa: (caixaId: string, valorDevolvido: number, observacoes: string) => void;
+  fecharCaixa: (caixaId: string, valorDevolvido: number, observacoes: string) => Promise<boolean>;
   editarCaixa: (caixaId: string, trocoInicial: number, observacoes: string) => void;
   justificarDivergencia: (caixaId: string, justificativa: string) => void;
   addRecebimentoAutomatico: (entregadorId: string, solicitacaoId: string, solicitacaoCodigo: string, clienteNome: string, valor: number) => void;
@@ -143,37 +143,46 @@ export function CaixaStoreProvider({ children }: { children: ReactNode }) {
     return true;
   }, [addLog, caixas, entregadoresCache]);
 
-  const fecharCaixa = useCallback((caixaId: string, valorDevolvido: number, observacoes: string) => {
-    setCaixas((prev) =>
-      prev.map((c) => {
-        if (c.id !== caixaId) return c;
-        const diferenca = valorDevolvido - c.total_esperado;
-        const novoStatus: StatusCaixa = diferenca === 0 ? "fechado" : "divergente";
-        addLog({
-          categoria: "financeiro",
-          acao: "caixa_fechado",
-          entidade_id: c.entregador_id,
-          descricao: `Caixa de ${c.entregador_nome} fechado. Diferença: ${formatCurrency(diferenca)}`,
-          detalhes: { esperado: c.total_esperado, devolvido: valorDevolvido, diferenca, status: novoStatus },
-        });
-        const updated = {
-          ...c,
-          valor_devolvido: valorDevolvido,
-          diferenca,
-          status: novoStatus,
-          observacoes: observacoes || c.observacoes,
-          closed_at: new Date().toISOString(),
-        };
-        supabase.from("caixas_entregadores").update({
-          valor_devolvido: updated.valor_devolvido,
-          diferenca: updated.diferenca,
-          status: updated.status,
-          observacoes: updated.observacoes,
-        }).eq("id", caixaId);
-        return updated;
-      })
-    );
-  }, [addLog]);
+  const fecharCaixa = useCallback(async (caixaId: string, valorDevolvido: number, observacoes: string): Promise<boolean> => {
+    const caixa = caixas.find((c) => c.id === caixaId);
+    if (!caixa) return false;
+
+    const diferenca = valorDevolvido - caixa.total_esperado;
+    const novoStatus: StatusCaixa = diferenca === 0 ? "fechado" : "divergente";
+    const updated: CaixaEntregador = {
+      ...caixa,
+      valor_devolvido: valorDevolvido,
+      diferenca,
+      status: novoStatus,
+      observacoes: observacoes || caixa.observacoes,
+      closed_at: new Date().toISOString(),
+    };
+
+    // Atualização otimista: tela muda imediatamente
+    setCaixas((prev) => prev.map((c) => (c.id === caixaId ? updated : c)));
+
+    const { error } = await supabase.from("caixas_entregadores").update({
+      valor_devolvido: updated.valor_devolvido,
+      diferenca: updated.diferenca,
+      status: updated.status,
+      observacoes: updated.observacoes,
+    }).eq("id", caixaId);
+
+    if (error) {
+      // Reverte a tela para o estado anterior se o banco falhou
+      setCaixas((prev) => prev.map((c) => (c.id === caixaId ? caixa : c)));
+      return false;
+    }
+
+    addLog({
+      categoria: "financeiro",
+      acao: "caixa_fechado",
+      entidade_id: caixa.entregador_id,
+      descricao: `Caixa de ${caixa.entregador_nome} fechado. Diferença: ${formatCurrency(diferenca)}`,
+      detalhes: { esperado: caixa.total_esperado, devolvido: valorDevolvido, diferenca, status: novoStatus },
+    });
+    return true;
+  }, [addLog, caixas]);
 
   const editarCaixa = useCallback((caixaId: string, trocoInicial: number, observacoes: string) => {
     setCaixas((prev) =>
