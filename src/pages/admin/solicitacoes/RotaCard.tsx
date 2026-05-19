@@ -39,6 +39,7 @@ export interface RotaForm {
   meios_pagamento: string[];
   taxa_resolvida: number | null;
   is_fallback?: boolean;
+  nivel_tarifa?: "bairro" | "regiao" | "geral" | "fallback";
   taxas_extras: TaxaExtra[];
   pagamento_operacao: PagamentoOperacaoMode;
   meios_pagamento_operacao: string[];
@@ -203,6 +204,27 @@ export function RotaCard({
               <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-2.5 py-1.5">
                 <p className="text-[11px] text-amber-700 dark:text-amber-400">
                   ⚠ Usando taxa padrão do bairro. Configure uma regra na Tabela de Preços do cliente para tarifa personalizada.
+                </p>
+              </div>
+            )}
+            {!rota.is_fallback && rota.nivel_tarifa === "bairro" && (
+              <div className="rounded-md bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 px-2.5 py-1.5">
+                <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                  ✓ Regra personalizada por bairro aplicada.
+                </p>
+              </div>
+            )}
+            {!rota.is_fallback && rota.nivel_tarifa === "regiao" && (
+              <div className="rounded-md bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 px-2.5 py-1.5">
+                <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                  ✓ Regra personalizada por região aplicada.
+                </p>
+              </div>
+            )}
+            {!rota.is_fallback && rota.nivel_tarifa === "geral" && (
+              <div className="rounded-md bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 px-2.5 py-1.5">
+                <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                  ✓ Regra geral do cliente aplicada.
                 </p>
               </div>
             )}

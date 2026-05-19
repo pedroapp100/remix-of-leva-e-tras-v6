@@ -37,9 +37,9 @@ function resolverTarifa(
   bairroId: string,
   clienteId?: string,
   tipoOp?: string
-): { taxa: number; fallback: boolean } {
+): { taxa: number; fallback: boolean; nivel: "bairro" | "regiao" | "geral" | "fallback" } {
   const bairro = bairros.find((b) => b.id === bairroId);
-  if (!bairro) return { taxa: 0, fallback: false };
+  if (!bairro) return { taxa: 0, fallback: false, nivel: "fallback" };
 
   if (clienteId) {
     const regrasFiltradas = tabelaPrecos
@@ -53,22 +53,22 @@ function resolverTarifa(
     const porBairro = regrasFiltradas.find(
       (p) => p.bairro_destino_id === bairroId && matchTipo(p)
     );
-    if (porBairro) return { taxa: porBairro.taxa_base, fallback: false };
+    if (porBairro) return { taxa: porBairro.taxa_base, fallback: false, nivel: "bairro" };
 
     // Nível 2: região do bairro + tipo
     const porRegiao = regrasFiltradas.find(
       (p) => !p.bairro_destino_id && p.regiao_id === bairro.region_id && matchTipo(p)
     );
-    if (porRegiao) return { taxa: porRegiao.taxa_base, fallback: false };
+    if (porRegiao) return { taxa: porRegiao.taxa_base, fallback: false, nivel: "regiao" };
 
     // Nível 3: regra geral (sem bairro e sem região) + tipo
     const geral = regrasFiltradas.find(
       (p) => !p.bairro_destino_id && !p.regiao_id && matchTipo(p)
     );
-    if (geral) return { taxa: geral.taxa_base, fallback: false };
+    if (geral) return { taxa: geral.taxa_base, fallback: false, nivel: "geral" };
   }
 
-  return { taxa: bairro.taxa_entrega, fallback: true };
+  return { taxa: bairro.taxa_entrega, fallback: true, nivel: "fallback" };
 }
 
 interface RotaWithExtras extends Rota {
@@ -237,6 +237,7 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit, initialD
         const tarifa = resolverTarifa(bairros, tabelaPrecos, value, clienteId || undefined, tipoOperacao || undefined);
         updated.taxa_resolvida = tarifa.taxa;
         updated.is_fallback = tarifa.fallback;
+        updated.nivel_tarifa = tarifa.nivel;
       }
       return updated;
     }));
