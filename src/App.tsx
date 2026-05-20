@@ -2,7 +2,6 @@ import { lazy, Suspense, useEffect, useRef, useState, type ReactNode, type Compo
 import { QueryClient, QueryCache, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes, Navigate, useLocation } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
-import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth, ROLE_REDIRECTS } from "@/contexts/AuthContext";
 import { ThemeProvider } from "@/contexts/ThemeProvider";
@@ -167,7 +166,6 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider>
       <TooltipProvider>
-        <Toaster />
         <Sonner />
         <OfflineBanner />
         <PWAInstallBanner />

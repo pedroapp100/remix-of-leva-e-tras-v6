@@ -163,7 +163,13 @@ export function useConcluirComCaixa() {
 
       // ── Auto-add cash to driver's caixa ──
       if (sol.entregador_id) {
-        const recebimentosDinheiro = solRotas.filter((r) => r.receber_do_cliente && r.valor_a_receber);
+        const recebimentosDinheiro = solRotas.filter(
+          (r) =>
+            r.receber_do_cliente &&
+            r.valor_a_receber &&
+            r.meio_cobranca_destino === "dinheiro" &&
+            r.destino_dinheiro === "repassar_empresa"
+        );
         const totalDinheiro = recebimentosDinheiro.reduce((s, r) => s + (r.valor_a_receber ?? 0), 0);
         if (totalDinheiro > 0) {
           const clienteNome = clientes.find((c) => c.id === sol.cliente_id)?.nome ?? sol.cliente_id;

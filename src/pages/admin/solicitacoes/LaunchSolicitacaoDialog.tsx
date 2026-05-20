@@ -212,8 +212,6 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit, initialD
       setDataRetroativa(undefined);
       setRetroativoConcluida(false);
       setRotas(initialData.rotas.map(rotaToForm));
-    } else {
-      resetForm();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -384,7 +382,11 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit, initialD
             <p className="text-sm text-muted-foreground">Qual tipo de operação você deseja lançar?</p>
           )}
           {step === 1 && (
-            <p className="text-sm text-muted-foreground">Preencha os dados da coleta na loja do cliente e das rotas de destino.</p>
+            <p className="text-sm text-muted-foreground">
+              {tipoColeta === "cliente_loja"
+                ? "Preencha os dados do cliente e as rotas de coleta para retorno à loja."
+                : "Preencha os dados da coleta na loja do cliente e das rotas de destino."}
+            </p>
           )}
         </DialogHeader>
 
@@ -695,7 +697,7 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit, initialD
                 <div className="grid grid-cols-2 gap-2">
                   <span className="text-muted-foreground">Operação</span>
                   <span className="font-medium">{TIPOS_COLETA.find((t) => t.value === tipoColeta)?.label}</span>
-                  <span className="text-muted-foreground">Cliente</span>
+                  <span className="text-muted-foreground">{tipoColeta === "cliente_loja" ? "Cliente/Logista" : "Cliente"}</span>
                   <span className="font-medium flex items-center gap-2">
                     {clienteNome}
                     {clienteModalidade && (
@@ -705,7 +707,7 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit, initialD
                     )}
                   </span>
                   <span className="text-muted-foreground">Prioridade</span><span><Badge variant="outline">{tiposAtivos.find((t) => t.id === tipoOperacao)?.nome ?? tipoOperacao}</Badge></span>
-                  <span className="text-muted-foreground">Coleta</span><span>{pontoColeta}</span>
+                  <span className="text-muted-foreground">{tipoColeta === "cliente_loja" ? "Destino Final" : "Coleta"}</span><span>{pontoColeta}</span>
                   {entregadorId && entregadorId !== "none" && (
                     <>
                       <span className="text-muted-foreground">Entregador</span>
@@ -740,7 +742,11 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit, initialD
               {/* Route details */}
               {rotas.map((r, i) => (
                 <div key={r.id} className="rounded-lg border border-border p-4 space-y-3 text-sm">
-                  <div className="font-medium">Rota {i + 1}: {bairros.find((b) => b.id === r.bairro_destino_id)?.nome} → {r.responsavel}</div>
+                  <div className="font-medium">
+                    {tipoColeta === "cliente_loja"
+                      ? `Rota ${i + 1}: Buscar ${r.responsavel} em ${bairros.find((b) => b.id === r.bairro_destino_id)?.nome}`
+                      : `Rota ${i + 1}: ${bairros.find((b) => b.id === r.bairro_destino_id)?.nome} → ${r.responsavel}`}
+                  </div>
 
                   {/* Operação section */}
                   <div className="rounded-md bg-primary/5 border border-primary/10 p-2.5 space-y-1">

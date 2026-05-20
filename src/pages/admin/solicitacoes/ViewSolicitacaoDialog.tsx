@@ -386,21 +386,12 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
 
           {/* Ponto de Coleta — sempre visível */}
           {solicitacao.tipo_coleta === "cliente_loja" ? (
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div>
-                <span className="text-muted-foreground">Local de Coleta</span>
-                <p className="font-medium flex items-center gap-1.5 mt-0.5">
-                  <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                  {solicitacao.ponto_coleta}
-                </p>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Local de Entrega</span>
-                <p className="font-medium flex items-center gap-1.5 mt-0.5">
-                  <Store className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                  {clienteData ? `${clienteData.endereco}, ${clienteData.bairro}` : clienteName}
-                </p>
-              </div>
+            <div className="text-sm">
+              <span className="text-muted-foreground">Destino de Entrega</span>
+              <p className="font-medium flex items-center gap-1.5 mt-0.5">
+                <Store className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                {solicitacao.ponto_coleta}
+              </p>
             </div>
           ) : (
             <div className="text-sm">
@@ -477,7 +468,9 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                   >
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <span className="font-medium truncate">
-                        Rota {i + 1}: {getBairroName(rota.bairro_destino_id)} → {rota.responsavel}
+                        {solicitacao.tipo_coleta === "cliente_loja"
+                          ? `Rota ${i + 1}: Buscar ${rota.responsavel} em ${getBairroName(rota.bairro_destino_id)}`
+                          : `Rota ${i + 1}: ${getBairroName(rota.bairro_destino_id)} → ${rota.responsavel}`}
                       </span>
                       {isMarcadaConcluida && (
                         <span className="inline-flex items-center gap-1 shrink-0 text-[10px] font-semibold text-emerald-500 bg-emerald-500/10 border border-emerald-500/25 rounded-full px-2 py-0.5">

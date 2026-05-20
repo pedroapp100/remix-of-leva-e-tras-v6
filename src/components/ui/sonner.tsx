@@ -12,9 +12,11 @@ const Toaster = ({ ...props }: ToasterProps) => {
       className="toaster group"
       position="top-center"
       richColors
+      expand
       closeButton
       duration={4000}
       mobileOffset={{ top: 16 }}
+      containerStyle={{ zIndex: 9999 }}
       toastOptions={{
         classNames: {
           toast:
@@ -23,6 +25,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
           actionButton: "group-[.toast]:bg-primary group-[.toast]:text-primary-foreground",
           cancelButton: "group-[.toast]:bg-muted group-[.toast]:text-muted-foreground",
         },
+        style: { filter: "brightness(1.25)", opacity: 1 },
       }}
       {...props}
     />

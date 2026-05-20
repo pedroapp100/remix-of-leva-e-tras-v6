@@ -3,6 +3,7 @@ import type { CaixaEntregador, StatusCaixa, RecebimentoDinheiro } from "@/types/
 import { formatCurrency } from "@/lib/formatters";
 import { useLogStore } from "@/contexts/LogStore";
 import { supabase } from "@/lib/supabase";
+import { fetchRotasBySolicitacao } from "@/services/solicitacoes";
 
 interface CaixaStoreContextType {
   caixas: CaixaEntregador[];
@@ -11,6 +12,8 @@ interface CaixaStoreContextType {
   editarCaixa: (caixaId: string, trocoInicial: number, observacoes: string) => void;
   justificarDivergencia: (caixaId: string, justificativa: string) => void;
   addRecebimentoAutomatico: (entregadorId: string, solicitacaoId: string, solicitacaoCodigo: string, clienteNome: string, valor: number) => void;
+  removeRecebimento: (caixaId: string, recebimentoId: string) => Promise<void>;
+  recalcularCaixa: (caixaId: string) => Promise<void>;
   getCaixasByEntregador: (entregadorId: string) => CaixaEntregador[];
   getCaixaAberto: (entregadorId: string) => CaixaEntregador | undefined;
   ensureLoaded: () => void;
@@ -48,6 +51,7 @@ export function CaixaStoreProvider({ children }: { children: ReactNode }) {
             const [codigo, ...rest] = obs.split(" - ");
             return {
               id: r.id as string,
+              solicitacao_id: r.solicitacao_id as string | null,
               solicitacao_codigo: codigo || "",
               cliente_nome: rest.join(" - ") || "",
               valor_recebido: Number(r.valor),
@@ -289,6 +293,83 @@ export function CaixaStoreProvider({ children }: { children: ReactNode }) {
     [addLog, caixas]
   );
 
+  const removeRecebimento = useCallback(async (caixaId: string, recebimentoId: string) => {
+    await supabase.from("recebimentos_caixa").delete().eq("id", recebimentoId);
+    setCaixas((prev) =>
+      prev.map((c) => {
+        if (c.id !== caixaId) return c;
+        const novosRec = c.recebimentos.filter((r) => r.id !== recebimentoId);
+        const novoTotal = novosRec.reduce((s, r) => s + r.valor_recebido, 0);
+        return { ...c, recebimentos: novosRec, total_recebido: novoTotal, total_esperado: c.troco_inicial + novoTotal };
+      })
+    );
+  }, []);
+
+  const recalcularCaixa = useCallback(async (caixaId: string) => {
+    const { data: dbRows } = await supabase
+      .from("recebimentos_caixa")
+      .select("id, solicitacao_id, observacao")
+      .eq("caixa_id", caixaId);
+
+    if (!dbRows || dbRows.length === 0) return;
+
+    // For each entry, derive the correct cash total from the actual rotas
+    const results = await Promise.all(
+      dbRows.map(async (row) => {
+        if (!row.solicitacao_id) return { id: row.id, valor: 0 };
+        const rotas = await fetchRotasBySolicitacao(row.solicitacao_id as string);
+        const cashTotal = rotas
+          .filter(
+            (r) =>
+              r.receber_do_cliente &&
+              r.valor_a_receber &&
+              r.meio_cobranca_destino === "dinheiro" &&
+              r.destino_dinheiro === "repassar_empresa"
+          )
+          .reduce((s, r) => s + (r.valor_a_receber ?? 0), 0);
+        return { id: row.id as string, valor: cashTotal };
+      })
+    );
+
+    const toDelete = results.filter((r) => r.valor === 0).map((r) => r.id);
+    const toUpdate = results.filter((r) => r.valor > 0);
+
+    if (toDelete.length > 0) {
+      await supabase.from("recebimentos_caixa").delete().in("id", toDelete);
+    }
+    await Promise.all(
+      toUpdate.map((r) =>
+        supabase.from("recebimentos_caixa").update({ valor: r.valor }).eq("id", r.id)
+      )
+    );
+
+    // Reload recebimentos from DB and update state
+    const { data: reloaded } = await supabase
+      .from("recebimentos_caixa")
+      .select("id, solicitacao_id, valor, observacao, created_at")
+      .eq("caixa_id", caixaId);
+
+    const recebimentos: RecebimentoDinheiro[] = (reloaded ?? []).map((r) => {
+      const obs = (r.observacao as string) ?? "";
+      const [codigo, ...rest] = obs.split(" - ");
+      return {
+        id: r.id as string,
+        solicitacao_id: r.solicitacao_id as string | null,
+        solicitacao_codigo: codigo || "",
+        cliente_nome: rest.join(" - ") || "",
+        valor_recebido: Number(r.valor),
+        hora: new Date(r.created_at as string).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+      };
+    });
+    const novoTotal = recebimentos.reduce((s, r) => s + r.valor_recebido, 0);
+    setCaixas((prev) =>
+      prev.map((c) => {
+        if (c.id !== caixaId) return c;
+        return { ...c, recebimentos, total_recebido: novoTotal, total_esperado: c.troco_inicial + novoTotal };
+      })
+    );
+  }, []);
+
   const getCaixasByEntregador = useCallback(
     (entregadorId: string) =>
       caixas.filter((c) => c.entregador_id === entregadorId).sort((a, b) => b.data.localeCompare(a.data)),
@@ -311,11 +392,13 @@ export function CaixaStoreProvider({ children }: { children: ReactNode }) {
       editarCaixa,
       justificarDivergencia,
       addRecebimentoAutomatico,
+      removeRecebimento,
+      recalcularCaixa,
       getCaixasByEntregador,
       getCaixaAberto,
       ensureLoaded,
     }),
-    [caixas, abrirCaixa, fecharCaixa, editarCaixa, justificarDivergencia, addRecebimentoAutomatico, getCaixasByEntregador, getCaixaAberto, ensureLoaded]
+    [caixas, abrirCaixa, fecharCaixa, editarCaixa, justificarDivergencia, addRecebimentoAutomatico, removeRecebimento, recalcularCaixa, getCaixasByEntregador, getCaixaAberto, ensureLoaded]
   );
 
   return <CaixaStoreContext.Provider value={value}>{children}</CaixaStoreContext.Provider>;

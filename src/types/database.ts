@@ -489,6 +489,7 @@ export type StatusCaixa = "aberto" | "fechado" | "divergente";
 
 export interface RecebimentoDinheiro {
   id: string;
+  solicitacao_id?: string | null;
   solicitacao_codigo: string;
   cliente_nome: string;
   valor_recebido: number;

@@ -175,13 +175,18 @@ describe("useConcluirComCaixa", () => {
     expect(mockConcluirFaturaMutateAsync).toHaveBeenCalled();
   });
 
-  it("auto-adds cash recebimento to caixa when rota has valor_a_receber", async () => {
+  it("auto-adds cash recebimento to caixa only for dinheiro+repassar_empresa rotas", async () => {
     const addReceb = vi.fn();
     vi.mocked(useSolicitacoes).mockReturnValue({ data: [makeSol()] } as never);
     vi.mocked(useClientes).mockReturnValue({ data: [makeCliente({ modalidade: "avulso" })] } as never);
     vi.mocked(useCaixaStore).mockReturnValue({ addRecebimentoAutomatico: addReceb } as never);
     vi.mocked(fetchRotasBySolicitacao).mockResolvedValueOnce([
-      makeRota({ receber_do_cliente: true, valor_a_receber: 30 }),
+      makeRota({
+        receber_do_cliente: true,
+        valor_a_receber: 30,
+        meio_cobranca_destino: "dinheiro",
+        destino_dinheiro: "repassar_empresa",
+      }),
     ] as never);
 
     const { result } = renderHook(() => useConcluirComCaixa(), { wrapper });
@@ -189,6 +194,79 @@ describe("useConcluirComCaixa", () => {
       await result.current("sol-1");
     });
     expect(addReceb).toHaveBeenCalledWith("ent-1", "sol-1", "S001", "Loja Teste", 30);
+  });
+
+  it("does NOT add to caixa when rota uses maquina_loja (cartão da loja)", async () => {
+    const addReceb = vi.fn();
+    vi.mocked(useSolicitacoes).mockReturnValue({ data: [makeSol()] } as never);
+    vi.mocked(useClientes).mockReturnValue({ data: [makeCliente({ modalidade: "avulso" })] } as never);
+    vi.mocked(useCaixaStore).mockReturnValue({ addRecebimentoAutomatico: addReceb } as never);
+    vi.mocked(fetchRotasBySolicitacao).mockResolvedValueOnce([
+      makeRota({ receber_do_cliente: true, valor_a_receber: 100, meio_cobranca_destino: "maquina_loja" }),
+    ] as never);
+
+    const { result } = renderHook(() => useConcluirComCaixa(), { wrapper });
+    await act(async () => {
+      await result.current("sol-1");
+    });
+    expect(addReceb).not.toHaveBeenCalled();
+  });
+
+  it("does NOT add to caixa when rota uses pix_loja", async () => {
+    const addReceb = vi.fn();
+    vi.mocked(useSolicitacoes).mockReturnValue({ data: [makeSol()] } as never);
+    vi.mocked(useClientes).mockReturnValue({ data: [makeCliente({ modalidade: "avulso" })] } as never);
+    vi.mocked(useCaixaStore).mockReturnValue({ addRecebimentoAutomatico: addReceb } as never);
+    vi.mocked(fetchRotasBySolicitacao).mockResolvedValueOnce([
+      makeRota({ receber_do_cliente: true, valor_a_receber: 197, meio_cobranca_destino: "pix_loja" }),
+    ] as never);
+
+    const { result } = renderHook(() => useConcluirComCaixa(), { wrapper });
+    await act(async () => {
+      await result.current("sol-1");
+    });
+    expect(addReceb).not.toHaveBeenCalled();
+  });
+
+  it("does NOT add to caixa when dinheiro é devolvido à loja (devolver_loja)", async () => {
+    const addReceb = vi.fn();
+    vi.mocked(useSolicitacoes).mockReturnValue({ data: [makeSol()] } as never);
+    vi.mocked(useClientes).mockReturnValue({ data: [makeCliente({ modalidade: "avulso" })] } as never);
+    vi.mocked(useCaixaStore).mockReturnValue({ addRecebimentoAutomatico: addReceb } as never);
+    vi.mocked(fetchRotasBySolicitacao).mockResolvedValueOnce([
+      makeRota({
+        receber_do_cliente: true,
+        valor_a_receber: 50,
+        meio_cobranca_destino: "dinheiro",
+        destino_dinheiro: "devolver_loja",
+      }),
+    ] as never);
+
+    const { result } = renderHook(() => useConcluirComCaixa(), { wrapper });
+    await act(async () => {
+      await result.current("sol-1");
+    });
+    expect(addReceb).not.toHaveBeenCalled();
+  });
+
+  it("soma apenas rotas dinheiro+repassar quando há mix de meios de pagamento", async () => {
+    const addReceb = vi.fn();
+    vi.mocked(useSolicitacoes).mockReturnValue({ data: [makeSol()] } as never);
+    vi.mocked(useClientes).mockReturnValue({ data: [makeCliente({ modalidade: "avulso" })] } as never);
+    vi.mocked(useCaixaStore).mockReturnValue({ addRecebimentoAutomatico: addReceb } as never);
+    vi.mocked(fetchRotasBySolicitacao).mockResolvedValueOnce([
+      makeRota({ id: "r1", receber_do_cliente: true, valor_a_receber: 37.99, meio_cobranca_destino: "dinheiro", destino_dinheiro: "repassar_empresa" }),
+      makeRota({ id: "r2", receber_do_cliente: true, valor_a_receber: 100, meio_cobranca_destino: "maquina_loja" }),
+      makeRota({ id: "r3", receber_do_cliente: true, valor_a_receber: 197, meio_cobranca_destino: "pix_loja" }),
+    ] as never);
+
+    const { result } = renderHook(() => useConcluirComCaixa(), { wrapper });
+    await act(async () => {
+      await result.current("sol-1");
+    });
+    // Só R$ 37,99 (dinheiro+repassar) deve ir ao caixa — R$ 100 e R$ 197 não
+    expect(addReceb).toHaveBeenCalledWith("ent-1", "sol-1", "S001", "Loja Teste", 37.99);
+    expect(addReceb).toHaveBeenCalledTimes(1);
   });
 
   it("returns success with error message when fatura RPC fails", async () => {

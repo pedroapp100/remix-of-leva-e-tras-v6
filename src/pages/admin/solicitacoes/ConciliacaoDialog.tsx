@@ -56,6 +56,14 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
     (taxasExtrasMap.get(rotaId) ?? []).reduce((s: number, e: { valor: number }) => s + e.valor, 0);
   const formasAtivas = formasPagamento.filter((f) => f.enabled);
 
+  // Determines if a route requires physical cash handling by the driver.
+  // maquina_loja / pix_loja / pix_empresa / devolver_loja → never touch the driver's pocket.
+  const isDriverCashRoute = (r: Rota): boolean =>
+    (r.pagamento_operacao === "pago_na_hora" && (r.taxa_resolvida ?? 0) > 0) ||
+    (r.receber_do_cliente === true &&
+      r.meio_cobranca_destino === "dinheiro" &&
+      r.destino_dinheiro === "repassar_empresa");
+
   // Helper to find a forma de pagamento by keyword(s) in its name
   const findFormaByKeyword = (...keywords: string[]) => {
     const lower = keywords.map((k) => k.toLowerCase());
@@ -204,6 +212,12 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
 
   // Resumo — use integer cents to avoid floating-point issues
   const allPagamentos = Object.values(pagamentosPorRota).flat();
+  // In driver view: only cash routes are shown/counted — non-cash are auto-saved silently
+  const driverCashPagamentos = isDriverView
+    ? Object.entries(pagamentosPorRota)
+        .filter(([rotaId]) => rotas.some((r) => r.id === rotaId && isDriverCashRoute(r)))
+        .flatMap(([, pags]) => pags)
+    : allPagamentos;
   const totalFaturarCents = allPagamentos.filter((p) => p.forma_pagamento_id === FATURAR_ID && p.pertence_a === "operacao").reduce((s, p) => s + Math.round(p.valor * 100), 0);
   const totalOperacaoCents = allPagamentos.filter((p) => p.pertence_a === "operacao").reduce((s, p) => s + Math.round(p.valor * 100), 0);
   const totalDevolvidoCents = allPagamentos.filter((p) => p.forma_pagamento_id === DEVOLVER_LOJA_ID).reduce((s, p) => s + Math.round(p.valor * 100), 0);
@@ -377,7 +391,7 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
             </Alert>
           )}
 
-          {rotas.map((rota, i) => {
+          {(isDriverView ? rotas.filter(isDriverCashRoute) : rotas).map((rota, i) => {
             const MEIO_COBRANCA_LABELS: Record<string, string> = {
               dinheiro: "Dinheiro",
               maquina_loja: "Máquina da Loja",
@@ -574,9 +588,9 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
               <h4 className="text-sm font-semibold">Resumo dos Recebimentos</h4>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <span className="text-muted-foreground">Total Recebido</span>
-                <span className="tabular-nums text-right font-medium">{fmt(allPagamentos.reduce((s, p) => s + p.valor, 0))}</span>
+                <span className="tabular-nums text-right font-medium">{fmt(driverCashPagamentos.reduce((s, p) => s + p.valor, 0))}</span>
               </div>
-              {allPagamentos.length === 0 ? (
+              {driverCashPagamentos.length === 0 ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Info className="h-4 w-4" />
                   Nenhum valor recebido — clique em Registrar para confirmar.
@@ -586,7 +600,7 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
                   <Separator />
                   <div className="flex items-center gap-2 text-sm font-medium text-primary">
                     <CheckCircle className="h-4 w-4" />
-                    {allPagamentos.length} pagamento(s) registrado(s)
+                    {driverCashPagamentos.length} pagamento(s) registrado(s)
                   </div>
                 </>
               )}

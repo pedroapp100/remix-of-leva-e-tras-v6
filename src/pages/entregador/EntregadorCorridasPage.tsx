@@ -174,7 +174,7 @@ export default function EntregadorCorridasPage() {
                     <div className="flex items-center gap-2 text-sm text-muted-foreground mb-3">
                       <Navigation className="h-3.5 w-3.5 shrink-0 text-primary" />
                       <span className="text-xs shrink-0">
-                        {sol.tipo_coleta === "cliente_loja" ? "Coletar no cliente:" : "Coletar em:"}
+                        {sol.tipo_coleta === "cliente_loja" ? "Entregar em:" : "Coletar em:"}
                       </span>
                       <span className="truncate">{sol.ponto_coleta}</span>
                     </div>

@@ -786,6 +786,7 @@ export default function SolicitacoesPage() {
             onConcluir={() => { handleConcluir(conciliacaoTarget); setConciliacaoTarget(null); }}
             isEditing={conciliacaoTarget.status === "concluida"}
             isConcluding={conciliacaoTarget.status === "em_andamento"}
+            isDriverView={conciliacaoTarget.status === "em_andamento"}
           />
         )}
         {adminConciliacaoTarget && (
