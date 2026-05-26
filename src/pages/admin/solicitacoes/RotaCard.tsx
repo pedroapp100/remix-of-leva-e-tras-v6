@@ -489,7 +489,7 @@ export function RotaCard({
                     <RadioGroupItem value="repassar_empresa" />
                     <div className="flex items-center gap-1.5">
                       <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span className="text-xs font-medium">Repassar à Empresa</span>
+                      <span className="text-xs font-medium">Repassar à Leva e Traz</span>
                     </div>
                     <span className="text-[10px] text-muted-foreground ml-auto">Entrega o valor na empresa</span>
                   </label>
