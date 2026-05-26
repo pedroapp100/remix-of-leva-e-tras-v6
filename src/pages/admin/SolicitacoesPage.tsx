@@ -19,7 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, ClipboardList, CheckCircle, CheckCircle2, Truck, Eye, UserPlus, Play, X, Trash2, Pencil, CheckCheck, Calculator, ClipboardCheck, History, ArrowLeftRight } from "lucide-react";
+import { Plus, ClipboardList, CheckCircle, CheckCircle2, Truck, Eye, UserPlus, Play, X, Trash2, Pencil, CheckCheck, Calculator, ClipboardCheck, History, ArrowLeftRight, RotateCcw } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { SimuladorOperacoes } from "@/components/shared/SimuladorOperacoes";
 import { toast } from "sonner";
@@ -163,6 +163,7 @@ export default function SolicitacoesPage() {
   const [transferMotivo, setTransferMotivo] = useState("");
   const [conciliacaoTarget, setConciliacaoTarget] = useState<Solicitacao | null>(null);
   const [justifyTarget, setJustifyTarget] = useState<{ sol: Solicitacao; action: "cancelar" | "rejeitar" } | null>(null);
+  const [liberarTarget, setLiberarTarget] = useState<Solicitacao | null>(null);
   const [simuladorOpen, setSimuladorOpen] = useState(false);
   const [adminConciliacaoTarget, setAdminConciliacaoTarget] = useState<Solicitacao | null>(null);
   // Session-local set for instant icon feedback before server refetch completes
@@ -460,6 +461,15 @@ export default function SolicitacoesPage() {
     setJustifyTarget(null);
   };
 
+  const handleLiberarParaPendente = (justificativa: string) => {
+    if (!liberarTarget) return;
+    const sol = liberarTarget;
+    updateSolMut.mutate({ id: sol.id, patch: { status: "pendente", entregador_id: null, data_inicio: null } });
+    appendHistoricoMut.mutate({ solId: sol.id, tipo: "liberacao", descricao: `Entrega liberada para pendente. Motivo: ${justificativa}`, extra: { usuario_id: user?.id ?? null, status_anterior: "em_andamento", status_novo: "pendente" } });
+    toast.success(`Solicitação ${sol.codigo} liberada para pendente!`);
+    setLiberarTarget(null);
+  };
+
   const handleTransfer = (newEntregadorId: string) => {
     if (!transferTarget) return;
     const sol = transferTarget;
@@ -545,6 +555,7 @@ export default function SolicitacoesPage() {
         {sol.status === "em_andamento" && (
           <PermissionGuard permission="solicitacoes.edit">
             <ActionButton tooltip="Transferir entregador" icon={ArrowLeftRight} onClick={() => setTransferJustify(sol)} variant="info" />
+            <ActionButton tooltip="Liberar para pendente" icon={RotateCcw} onClick={() => setLiberarTarget(sol)} variant="warning" />
             <ActionButton tooltip="Concluir entrega" icon={CheckCheck} onClick={() => setConciliacaoTarget(sol)} variant="success" />
           </PermissionGuard>
         )}
@@ -821,6 +832,13 @@ export default function SolicitacoesPage() {
         title={justifyTarget?.action === "cancelar" ? "Cancelar Solicitação" : "Rejeitar Solicitação"}
         description="Informe o motivo (mínimo 10 caracteres)."
         onConfirm={handleJustify}
+      />
+      <JustificationDialog
+        open={!!liberarTarget}
+        onOpenChange={(open) => { if (!open) setLiberarTarget(null); }}
+        title="Liberar para Pendente"
+        description="Informe o motivo (ex: pneu furado, problema mecânico). Mínimo 10 caracteres."
+        onConfirm={handleLiberarParaPendente}
       />
       <Dialog open={simuladorOpen} onOpenChange={setSimuladorOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
