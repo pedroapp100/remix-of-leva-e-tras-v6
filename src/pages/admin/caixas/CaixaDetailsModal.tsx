@@ -61,14 +61,14 @@ function RotasRecebimentoDialog({
 
     void Promise.all([
       fetchRotasBySolicitacao(solicitacaoId),
-      supabase.from("formas_pagamento").select("id, nome"),
+      supabase.from("formas_pagamento").select("id, name"),
     ]).then(([rawRotas, { data: formasPagamento }]) => {
       setRotas(rawRotas.map(rowToRota));
-      const allForms = (formasPagamento ?? []) as { id: string; nome: string }[];
+      const allForms = (formasPagamento ?? []) as { id: string; name: string }[];
       setDinheiroPagamentoIds(
-        new Set(allForms.filter((f) => f.nome.toLowerCase().includes("dinheiro")).map((f) => f.id))
+        new Set(allForms.filter((f) => f.name.toLowerCase().includes("dinheiro")).map((f) => f.id))
       );
-      setFormasPagamentoNomes(new Map(allForms.map((f) => [f.id, f.nome])));
+      setFormasPagamentoNomes(new Map(allForms.map((f) => [f.id, f.name])));
       setLoading(false);
     });
   }, [open, solicitacaoId]);

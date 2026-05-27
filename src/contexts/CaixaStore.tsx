@@ -355,7 +355,7 @@ export function CaixaStoreProvider({ children }: { children: ReactNode }) {
     const { data: formasDinheiro } = await supabase
       .from("formas_pagamento")
       .select("id")
-      .ilike("nome", "%dinheiro%");
+      .ilike("name", "%dinheiro%");
     const dinheiroPagamentoIds = new Set<string>(
       (formasDinheiro ?? []).map((f: { id: string }) => f.id)
     );
