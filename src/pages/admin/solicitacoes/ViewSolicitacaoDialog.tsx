@@ -315,8 +315,13 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
       return s + (r.taxa_resolvida ?? 0) + extras.reduce((a, t) => a + t.valor, 0);
     }, 0);
     const totalLoja = rotas.filter((r) => r.receber_do_cliente).reduce((s, r) => s + (r.valor_a_receber ?? 0), 0);
-    const totalEntregadorRecebe = (isFaturado || isPrePago) ? totalLoja : totalTaxas + totalLoja;
-    return { totalTaxas, totalLoja, totalEntregadorRecebe };
+    // Para clientes faturados ou pré-pagos a taxa não é cobrada em mãos pelo entregador,
+    // então "total que o entregador recebe" é apenas o que ele coleta para repassar (totalLoja).
+    // Para operações sem modalidade faturada/pré-paga, o entregador coleta taxa + loja.
+    // totalColetadoParaRepassar = dinheiro que o entregador carrega fisicamente e entrega à empresa/loja
+    const totalColetadoParaRepassar = totalLoja;
+    const totalEntregadorRecebe = (!isFaturado && !isPrePago) ? totalTaxas + totalLoja : 0;
+    return { totalTaxas, totalLoja, totalColetadoParaRepassar, totalEntregadorRecebe };
   }, [rotas, isFaturado, isPrePago, taxasExtrasMap]);
 
   // Per-rota registration state (driver view) — merged: BD real data + local session
@@ -758,31 +763,51 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                 <h4 className="text-sm font-semibold mb-2">
                   {isConcluida ? "Resumo da Conciliação" : "Resumo da Operação"}
                 </h4>
+
+                {/* Taxa de operação — sempre visível */}
                 <div className="flex items-center justify-between text-sm">
                   <span className="flex items-center gap-1.5 text-muted-foreground">
                     <Building2 className="h-3.5 w-3.5" />
-                    Total Operação
+                    Taxa de Operação
                   </span>
                   <span className="tabular-nums font-medium">{fmt(conciliacao.totalTaxas)}</span>
                 </div>
+
+                {/* Cobrança das lojas — separada com label claro */}
                 {conciliacao.totalLoja > 0 && (
                   <div className="flex items-center justify-between text-sm">
                     <span className="flex items-center gap-1.5 text-muted-foreground">
                       <Store className="h-3.5 w-3.5" />
-                      Total Loja (cobrar no destino)
+                      Cobrança das lojas (repasse)
                     </span>
                     <span className="tabular-nums font-medium">{fmt(conciliacao.totalLoja)}</span>
                   </div>
                 )}
+
                 <Separator />
-                <div className="flex items-center justify-between text-sm font-semibold">
-                  <span>🏆 Total que o entregador recebe</span>
-                  <span className="tabular-nums text-primary">{fmt(conciliacao.totalEntregadorRecebe)}</span>
-                </div>
+
+                {/* Para clientes faturados/pré-pagos: mostra o total que o entregador carrega para repassar */}
+                {(isFaturado || isPrePago) && conciliacao.totalColetadoParaRepassar > 0 && (
+                  <div className="flex items-center justify-between text-sm font-semibold text-amber-600 dark:text-amber-400">
+                    <span className="flex items-center gap-1.5">
+                      <Store className="h-3.5 w-3.5" />
+                      Total a repassar (lojas)
+                    </span>
+                    <span className="tabular-nums">{fmt(conciliacao.totalColetadoParaRepassar)}</span>
+                  </div>
+                )}
                 {(isFaturado || isPrePago) && (
                   <p className="text-xs text-muted-foreground italic">
-                    * {isFaturado ? "Operação faturada" : "Cliente pré-pago"} — taxa não somada ao total do entregador.
+                    * {isFaturado ? "Operação faturada" : "Cliente pré-pago"} — taxa não cobrada em mãos pelo entregador.
                   </p>
+                )}
+
+                {/* Para demais clientes: total que o entregador efetivamente recebe */}
+                {!isFaturado && !isPrePago && conciliacao.totalEntregadorRecebe > 0 && (
+                  <div className="flex items-center justify-between text-sm font-semibold">
+                    <span>Total que o entregador recebe</span>
+                    <span className="tabular-nums text-primary">{fmt(conciliacao.totalEntregadorRecebe)}</span>
+                  </div>
                 )}
               </div>
             </>

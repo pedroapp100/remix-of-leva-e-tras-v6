@@ -14,6 +14,7 @@ import type { SolicitacaoUpdate } from "@/services/solicitacoes";
 import { useCreateReceita } from "@/hooks/useFinanceiro";
 import { useCreateHistoricoFatura } from "@/hooks/useFaturas";
 import { buildReceitaFromFatura } from "@/lib/faturaReceita";
+import { calcTotalDinheiroNoCaixa } from "@/lib/rotasHelpers";
 
 /**
  * Hook that concludes a solicitação, auto-creates/updates fatura for
@@ -42,6 +43,12 @@ export function useConcluirComCaixa() {
   const maquinaLojaIdSet = useMemo(() => new Set(
     formasPagamento
       .filter((f) => f.name.toLowerCase().includes("máquina") || f.name.toLowerCase().includes("maquina"))
+      .map((f) => f.id)
+  ), [formasPagamento]);
+
+  const dinheiroPagamentoIds = useMemo(() => new Set(
+    formasPagamento
+      .filter((f) => f.name.toLowerCase().includes("dinheiro"))
       .map((f) => f.id)
   ), [formasPagamento]);
 
@@ -162,15 +169,9 @@ export function useConcluirComCaixa() {
       }
 
       // ── Auto-add cash to driver's caixa ──
+      // Inclui: taxas pago_na_hora pagas em dinheiro + cobranças de loja com repassar_empresa em dinheiro
       if (sol.entregador_id) {
-        const recebimentosDinheiro = solRotas.filter(
-          (r) =>
-            r.receber_do_cliente &&
-            r.valor_a_receber &&
-            r.meio_cobranca_destino === "dinheiro" &&
-            r.destino_dinheiro === "repassar_empresa"
-        );
-        const totalDinheiro = recebimentosDinheiro.reduce((s, r) => s + (r.valor_a_receber ?? 0), 0);
+        const totalDinheiro = calcTotalDinheiroNoCaixa(solRotas, dinheiroPagamentoIds);
         if (totalDinheiro > 0) {
           const clienteNome = clientes.find((c) => c.id === sol.cliente_id)?.nome ?? sol.cliente_id;
           addRecebimentoAutomatico(sol.entregador_id, solId, sol.codigo, clienteNome, totalDinheiro);
@@ -352,7 +353,7 @@ export function useConcluirComCaixa() {
 
       return { success: true };
     },
-    [solicitacoes, clientes, entregadores, faturas, getClienteSaldo, maquinaLojaIdSet, updateSolMut, updateRotasBulkMut, concluirFaturaMut, updateFaturaMut, createReceita, createHistoricoFatura, addRecebimentoAutomatico]
+    [solicitacoes, clientes, entregadores, faturas, getClienteSaldo, maquinaLojaIdSet, dinheiroPagamentoIds, updateSolMut, updateRotasBulkMut, concluirFaturaMut, updateFaturaMut, createReceita, createHistoricoFatura, addRecebimentoAutomatico]
   );
 
   return concluirComCaixa;

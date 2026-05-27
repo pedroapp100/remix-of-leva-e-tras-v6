@@ -4,6 +4,8 @@ import { formatCurrency } from "@/lib/formatters";
 import { useLogStore } from "@/contexts/LogStore";
 import { supabase } from "@/lib/supabase";
 import { fetchRotasBySolicitacao } from "@/services/solicitacoes";
+import { calcTotalDinheiroNoCaixa } from "@/lib/rotasHelpers";
+import { rowToRota } from "@/lib/mappers";
 
 interface CaixaStoreContextType {
   caixas: CaixaEntregador[];
@@ -243,7 +245,28 @@ export function CaixaStoreProvider({ children }: { children: ReactNode }) {
       const caixa = caixas.find(
         (c) => c.entregador_id === entregadorId && c.status === "aberto"
       );
-      if (!caixa) return;
+      if (!caixa) {
+        // Entregador sem caixa aberto: registra log e avisa o admin via evento global
+        addLog({
+          categoria: "financeiro",
+          acao: "recebimento_sem_caixa",
+          entidade_id: entregadorId,
+          descricao: `Recebimento de ${formatCurrency(valor)} (${solicitacaoCodigo}) não registrado — entregador sem caixa aberto`,
+          detalhes: { solicitacaoId, solicitacaoCodigo, clienteNome, valor },
+        });
+        window.dispatchEvent(
+          new CustomEvent("recebimento-sem-caixa", {
+            detail: {
+              entregadorId,
+              solicitacaoCodigo,
+              clienteNome,
+              valor,
+              message: `Entregador sem caixa aberto — ${formatCurrency(valor)} de ${solicitacaoCodigo} não registrado no caixa`,
+            },
+          })
+        );
+        return;
+      }
 
       // Verifica duplicata antes de inserir — protege contra duplo clique no "Concluir"
       supabase
@@ -263,7 +286,7 @@ export function CaixaStoreProvider({ children }: { children: ReactNode }) {
               rota_id: null,
               forma_pagamento_id: null,
               valor,
-              pertence_a: "loja" as const,
+              pertence_a: "operacao" as const,
               observacao: `${solicitacaoCodigo} - ${clienteNome}`,
             })
             .select("id, created_at")
@@ -328,20 +351,22 @@ export function CaixaStoreProvider({ children }: { children: ReactNode }) {
 
     if (!dbRows || dbRows.length === 0) return;
 
-    // For each entry, derive the correct cash total from the actual rotas
+    // Busca os IDs de formas de pagamento do tipo "dinheiro" para o helper
+    const { data: formasDinheiro } = await supabase
+      .from("formas_pagamento")
+      .select("id")
+      .ilike("nome", "%dinheiro%");
+    const dinheiroPagamentoIds = new Set<string>(
+      (formasDinheiro ?? []).map((f: { id: string }) => f.id)
+    );
+
+    // Para cada recebimento recalcula o total em dinheiro a partir das rotas reais
     const results = await Promise.all(
       dbRows.map(async (row) => {
         if (!row.solicitacao_id) return { id: row.id, valor: 0 };
-        const rotas = await fetchRotasBySolicitacao(row.solicitacao_id as string);
-        const cashTotal = rotas
-          .filter(
-            (r) =>
-              r.receber_do_cliente &&
-              r.valor_a_receber &&
-              r.meio_cobranca_destino === "dinheiro" &&
-              r.destino_dinheiro === "repassar_empresa"
-          )
-          .reduce((s, r) => s + (r.valor_a_receber ?? 0), 0);
+        const rawRotas = await fetchRotasBySolicitacao(row.solicitacao_id as string);
+        const rotas = rawRotas.map(rowToRota);
+        const cashTotal = calcTotalDinheiroNoCaixa(rotas, dinheiroPagamentoIds);
         return { id: row.id as string, valor: cashTotal };
       })
     );

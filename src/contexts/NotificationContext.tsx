@@ -294,13 +294,28 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       });
     };
 
+    const handleRecebimentoSemCaixa = (e: Event) => {
+      const detail = (e as CustomEvent).detail as {
+        message: string;
+        solicitacaoCodigo: string;
+      };
+      addNotification({
+        title: "Recebimento sem caixa aberto",
+        message: detail.message,
+        type: "warning",
+        link: "/admin/caixas",
+      });
+    };
+
     window.addEventListener("saldo-baixo-pre-pago", handleSaldoBaixo);
     window.addEventListener("nova-fatura-gerada", handleNovaFatura);
     window.addEventListener("fatura-auto-fechada", handleFaturaAutoFechada);
+    window.addEventListener("recebimento-sem-caixa", handleRecebimentoSemCaixa);
     return () => {
       window.removeEventListener("saldo-baixo-pre-pago", handleSaldoBaixo);
       window.removeEventListener("nova-fatura-gerada", handleNovaFatura);
       window.removeEventListener("fatura-auto-fechada", handleFaturaAutoFechada);
+      window.removeEventListener("recebimento-sem-caixa", handleRecebimentoSemCaixa);
     };
   }, [addNotification]);
 
