@@ -307,6 +307,15 @@ export default function SolicitacoesPage() {
       const sol = pagedResult?.data.find(s => s.id === data.solicitacaoId) ?? editTarget;
       const isEmAndamento = sol?.status === "em_andamento";
 
+      // Soft-cancel routes removed from the form
+      if (editInitialData) {
+        const formRotaDbIds = new Set(data.rotas.map(r => r.rotaDbId).filter(Boolean));
+        const removedRotas = editInitialData.rotas.filter(r => !formRotaDbIds.has(r.id));
+        for (const removed of removedRotas) {
+          await updateRotaMut.mutateAsync({ id: removed.id, patch: { status: "cancelada", taxa_resolvida: 0, valor_a_receber: null } });
+        }
+      }
+
       const valorTotalTaxas = data.rotas.reduce((sum, r) => {
         return sum + (r.taxa_resolvida ?? 0) + r.taxas_extras.reduce((s, te) => s + te.valor, 0);
       }, 0);
@@ -363,9 +372,13 @@ export default function SolicitacoesPage() {
       }
 
       const newRotasCount = data.rotas.filter(r => !r.rotaDbId).length;
+      const removedCount = editInitialData ? editInitialData.rotas.filter(r => !new Set(data.rotas.map(f => f.rotaDbId).filter(Boolean)).has(r.id)).length : 0;
       let descricao = "Solicitação editada pelo administrador";
       if (newRotasCount > 0) {
         descricao += ` — ${newRotasCount} nova${newRotasCount > 1 ? "s" : ""} rota${newRotasCount > 1 ? "s" : ""} adicionada${newRotasCount > 1 ? "s" : ""}`;
+      }
+      if (removedCount > 0) {
+        descricao += ` — ${removedCount} rota${removedCount > 1 ? "s" : ""} cancelada${removedCount > 1 ? "s" : ""}`;
       }
       appendHistoricoMut.mutate({
         solId: data.solicitacaoId,
@@ -529,7 +542,7 @@ export default function SolicitacoesPage() {
         {["pendente", "aceita", "em_andamento"].includes(sol.status) && (
           <PermissionGuard permission="solicitacoes.edit">
             <ActionButton
-              tooltip={sol.status === "em_andamento" ? "Adicionar rota" : "Editar solicitação"}
+              tooltip="Editar solicitação"
               icon={Pencil}
               onClick={() => setEditTarget(sol)}
               variant="info"

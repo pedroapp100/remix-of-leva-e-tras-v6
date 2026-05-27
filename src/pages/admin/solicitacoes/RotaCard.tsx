@@ -107,7 +107,7 @@ export function RotaCard({
           )}
         </div>
         <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
-          {canRemove && !isReadonly && (
+          {canRemove && (
             <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => onRemove(rota.id)}>
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
@@ -123,7 +123,7 @@ export function RotaCard({
         </div>
       </div>
 
-      {!collapsed && (<div className={cn(isReadonly && "pointer-events-none select-none")}>
+      {!collapsed && (<div className={cn("space-y-5 mt-4", isReadonly && "pointer-events-none select-none")}>
       {/* Destination & Contact */}
       <div className="space-y-2">
         <Label className="text-xs">Bairro Destino *</Label>
@@ -168,19 +168,19 @@ export function RotaCard({
         </Popover>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1">
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
           <Label className="text-xs">Responsável *</Label>
           <Input value={rota.responsavel} onChange={(e) => onUpdate(rota.id, "responsavel", e.target.value)} placeholder="Nome" />
         </div>
-        <div className="space-y-1">
+        <div className="space-y-2">
           <Label className="text-xs">Telefone</Label>
           <PhoneInput value={rota.telefone} onChange={(v) => onUpdate(rota.id, "telefone", v)} />
         </div>
       </div>
 
       {/* ── SECTION: RECEITA DA OPERAÇÃO ── */}
-      <div className="rounded-md border border-primary/20 bg-primary/5 p-3 space-y-3">
+      <div className="rounded-md border border-primary/20 bg-primary/5 p-4 space-y-4">
         <div className="flex items-center gap-2">
           <Briefcase className="h-4 w-4 text-primary" />
           <span className="text-xs font-semibold text-primary uppercase tracking-wide">Receita da Operação</span>
@@ -263,7 +263,7 @@ export function RotaCard({
 
         {/* Subtotal operação */}
         {rota.taxa_resolvida != null && (
-          <div className="flex items-center justify-between pt-1 border-t border-primary/10">
+          <div className="flex items-center justify-between pt-2 border-t border-primary/10">
             <span className="text-xs font-medium text-primary">Subtotal Operação</span>
             <span className="text-sm font-bold tabular-nums text-primary">{fmt(getRotaSubtotalOperacao(rota))}</span>
           </div>
@@ -271,7 +271,7 @@ export function RotaCard({
 
         {/* ── FORMA DE PAGAMENTO DA TAXA ── */}
         {rota.taxa_resolvida != null && (
-          <div className="space-y-2 pt-2 border-t border-primary/10">
+          <div className="space-y-3 pt-3 border-t border-primary/10">
             <div className="flex items-center gap-1.5">
               <CreditCard className="h-3.5 w-3.5 text-primary" />
               <Label className="text-xs font-semibold text-primary">Como será pago?</Label>
@@ -329,7 +329,7 @@ export function RotaCard({
 
             {/* Payment methods when "pago_na_hora" */}
             {rota.pagamento_operacao === "pago_na_hora" && (
-              <div className="space-y-1.5 pt-1">
+              <div className="space-y-2 pt-2">
                 <Label className="text-xs text-muted-foreground">Meio de Pagamento</Label>
                 <div className="flex flex-wrap gap-2">
                   {formasPagamentoAtivas.map((fp) => {
@@ -353,7 +353,7 @@ export function RotaCard({
       </div>
 
       {/* ── SECTION: COBRANÇA PARA A LOJA ── */}
-      <div className="rounded-md border border-amber-500/20 bg-amber-500/5 p-3 space-y-3">
+      <div className="rounded-md border border-amber-500/20 bg-amber-500/5 p-4 space-y-4">
         <div className="flex items-center gap-2">
           <Store className="h-4 w-4 text-amber-600" />
           <span className="text-xs font-semibold text-amber-600 uppercase tracking-wide">Cobrança para a Loja</span>
@@ -374,14 +374,14 @@ export function RotaCard({
         </div>
 
         {rota.receber_do_cliente && (
-          <div className="space-y-3">
-            <div className="space-y-1">
+          <div className="space-y-4">
+            <div className="space-y-2">
               <Label className="text-xs">Valor a Cobrar no Destino</Label>
               <CurrencyInput value={rota.valor_a_receber} onChange={(v) => onUpdate(rota.id, "valor_a_receber", v)} />
             </div>
 
             {/* ── COMO O ENTREGADOR RECEBE ── */}
-            <div className="space-y-2">
+            <div className="space-y-3">
               <div className="flex items-center gap-1.5">
                 <CreditCard className="h-3.5 w-3.5 text-amber-600" />
                 <Label className="text-xs font-semibold text-amber-600">Como o entregador recebe?</Label>
@@ -457,7 +457,7 @@ export function RotaCard({
 
             {/* ── SUB-OPÇÃO: DESTINO DO DINHEIRO ── */}
             {rota.meio_cobranca_destino === "dinheiro" && (
-              <div className="space-y-2 pt-1 ml-4 border-l-2 border-amber-500/20 pl-3">
+              <div className="space-y-3 pt-1 ml-4 border-l-2 border-amber-500/20 pl-3">
                 <div className="flex items-center gap-1.5">
                   <ArrowLeftRight className="h-3.5 w-3.5 text-amber-600" />
                   <Label className="text-xs font-semibold text-amber-600">O que o entregador faz com o dinheiro?</Label>
@@ -506,7 +506,7 @@ export function RotaCard({
 
       {/* ── TOTAL DO ENTREGADOR ── */}
       {rota.taxa_resolvida != null && (
-        <div className="rounded-md bg-muted/50 p-3 flex items-center justify-between">
+        <div className="rounded-md bg-muted/50 p-4 flex items-center justify-between">
           <span className="text-xs font-medium">💰 Total que o entregador recebe nesta rota</span>
           <span className="text-sm font-bold tabular-nums">{fmt(getRotaTotalEntregador(rota))}</span>
         </div>

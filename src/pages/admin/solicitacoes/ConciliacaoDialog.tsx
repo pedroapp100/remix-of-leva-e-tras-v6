@@ -225,15 +225,15 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
   const totalLojaCents = totalCreditoLojaCents + totalDevolvidoCents;
   // Only faturar routes generate an expected taxa; pago_na_hora is collected in cash at destination
   const totalEsperadoTaxasCents = rotas
-    .filter((r) => r.pagamento_operacao === "faturar")
+    .filter((r) => r.status !== "cancelada" && r.pagamento_operacao === "faturar")
     .reduce(
       (s, r) => s + Math.round((r.taxa_resolvida ?? 0) * 100) + Math.round(getExtrasForRota(r.id) * 100),
       0
     );
-  const totalEsperadoReceberCents = rotas.filter((r) => r.receber_do_cliente).reduce((s, r) => s + Math.round((r.valor_a_receber ?? 0) * 100), 0);
+  const totalEsperadoReceberCents = rotas.filter((r) => r.status !== "cancelada" && r.receber_do_cliente).reduce((s, r) => s + Math.round((r.valor_a_receber ?? 0) * 100), 0);
   // For pago_na_hora routes on faturado clients the driver also collects the operation fee
   const totalEsperadoPagoNaHoraCents = rotas
-    .filter((r) => r.pagamento_operacao === "pago_na_hora")
+    .filter((r) => r.status !== "cancelada" && r.pagamento_operacao === "pago_na_hora")
     .reduce(
       (s, r) => s + Math.round((r.taxa_resolvida ?? 0) * 100) + Math.round(getExtrasForRota(r.id) * 100),
       0

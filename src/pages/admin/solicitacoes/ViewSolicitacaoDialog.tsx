@@ -309,7 +309,7 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
   }, [isConcluida, rotas, allPagamentos]);
 
   const conciliacao = useMemo(() => {
-    if (!isConcluida || !rotas.length) return null;
+    if (!rotas.length) return null;
     const totalTaxas = rotas.reduce((s, r) => {
       const extras = taxasExtrasMap.get(r.id) ?? [];
       return s + (r.taxa_resolvida ?? 0) + extras.reduce((a, t) => a + t.valor, 0);
@@ -317,7 +317,7 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
     const totalLoja = rotas.filter((r) => r.receber_do_cliente).reduce((s, r) => s + (r.valor_a_receber ?? 0), 0);
     const totalEntregadorRecebe = (isFaturado || isPrePago) ? totalLoja : totalTaxas + totalLoja;
     return { totalTaxas, totalLoja, totalEntregadorRecebe };
-  }, [isConcluida, rotas, isFaturado, isPrePago, taxasExtrasMap]);
+  }, [rotas, isFaturado, isPrePago, taxasExtrasMap]);
 
   // Per-rota registration state (driver view) — merged: BD real data + local session
   const rotasComPagamentoBD = useMemo(
@@ -331,8 +331,9 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
   );
   const [rotaSelecionada, setRotaSelecionada] = useState<Rota | null>(null);
   const [expandedRotas, setExpandedRotas] = useState<Set<string>>(new Set());
+  const [adminExpandedRotas, setAdminExpandedRotas] = useState<Set<string>>(new Set());
   const [rotasFaturadaVisitadas, setRotasFaturadaVisitadas] = useState<Set<string>>(new Set());
-  const [historicoAberto, setHistoricoAberto] = useState(!isDriverView);
+  const [historicoAberto, setHistoricoAberto] = useState(false);
   const [cabecalhoAberto, setCabecalhoAberto] = useState(!isDriverView);
   const marcarRotaFaturadaConcluida = useCallback((rotaId: string) => {
     setRotasFaturadaVisitadas((prev) => new Set([...prev, rotaId]));
@@ -340,6 +341,13 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
   }, []);
   const toggleExpandRota = useCallback((rotaId: string) => {
     setExpandedRotas((prev) => {
+      const next = new Set(prev);
+      if (next.has(rotaId)) next.delete(rotaId); else next.add(rotaId);
+      return next;
+    });
+  }, []);
+  const toggleAdminExpandRota = useCallback((rotaId: string) => {
+    setAdminExpandedRotas((prev) => {
       const next = new Set(prev);
       if (next.has(rotaId)) next.delete(rotaId); else next.add(rotaId);
       return next;
@@ -362,8 +370,8 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
   return (
     <>
       <Dialog open={!!solicitacao} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-[calc(100%-1rem)] sm:max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="max-w-[calc(100%-1rem)] sm:max-w-lg max-h-[90vh] flex flex-col p-0 gap-0">
+        <DialogHeader className="px-6 pt-5 pb-3 shrink-0 border-b border-border">
           <DialogTitle className="flex flex-col gap-1 pr-8">
             <span className="text-base font-semibold">Entrega {solicitacao.codigo}</span>
             <Badge variant={statusVariant(solicitacao.status)} className="w-fit">
@@ -373,7 +381,8 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
         <DialogDescription className="sr-only">.</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
+        <div className="flex-1 overflow-y-auto">
+        <div className="space-y-4 px-6 py-4">
           {/* Info Geral — sempre visível */}
           <div className="text-sm">
             <span className="text-muted-foreground">Cliente</span>
@@ -453,7 +462,9 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                 const isMarcadaConcluida = isFaturadaSemCobrar && rotasFaturadaVisitadas.has(rota.id);
                 const isVerde = isRegistrada || isMarcadaConcluida;
                 const isExpandable = temCobranca || isMarcadaConcluida;
-                const isExpanded = !isVerde || expandedRotas.has(rota.id);
+                const isExpanded = isDriverView
+                  ? (!isVerde || expandedRotas.has(rota.id))
+                  : adminExpandedRotas.has(rota.id);
                 return (
                 <div
                   key={rota.id}
@@ -463,8 +474,11 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                 >
                   {/* Header */}
                   <div
-                    className={`flex items-center justify-between gap-2 ${isDriverView && isExpandable ? "cursor-pointer select-none" : ""}`}
-                    onClick={() => isDriverView && isExpandable && toggleExpandRota(rota.id)}
+                    className="flex items-center justify-between gap-2 cursor-pointer select-none"
+                    onClick={() => {
+                      if (isDriverView && isExpandable) toggleExpandRota(rota.id);
+                      else if (!isDriverView) toggleAdminExpandRota(rota.id);
+                    }}
                   >
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <span className="font-medium truncate">
@@ -527,7 +541,7 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                           </TooltipContent>
                         </Tooltip>
                       )}
-                      {isDriverView && isExpandable && (
+                      {(isDriverView ? isExpandable : true) && (
                         <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />
                       )}
                       {rota.pagamento_operacao === "faturar" && (
@@ -736,12 +750,14 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
             </>
           )}
 
-          {/* Resumo de Conciliação (só para concluída) */}
-          {isConcluida && conciliacao && !isDriverView && (
+          {/* Resumo — visível para admin em qualquer status */}
+          {conciliacao && !isDriverView && (
             <>
               <Separator />
               <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-2">
-                <h4 className="text-sm font-semibold mb-2">Resumo da Conciliação</h4>
+                <h4 className="text-sm font-semibold mb-2">
+                  {isConcluida ? "Resumo da Conciliação" : "Resumo da Operação"}
+                </h4>
                 <div className="flex items-center justify-between text-sm">
                   <span className="flex items-center gap-1.5 text-muted-foreground">
                     <Building2 className="h-3.5 w-3.5" />
@@ -846,6 +862,7 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
               </div>
             )}
           </div>
+        </div>
         </div>
       </DialogContent>
     </Dialog>

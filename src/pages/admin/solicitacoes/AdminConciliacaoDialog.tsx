@@ -205,14 +205,14 @@ export function AdminConciliacaoDialog({
     .reduce((s, p) => s + Math.round(p.valor * 100), 0);
   // Only faturar routes generate an expected taxa; pago_na_hora is collected in cash at destination
   const totalEsperadoTaxasCents = rotas
-    .filter((r) => r.pagamento_operacao === "faturar")
+    .filter((r) => r.status !== "cancelada" && r.pagamento_operacao === "faturar")
     .reduce((s, r) => s + Math.round((r.taxa_resolvida ?? 0) * 100) + Math.round(getExtrasForRota(r.id) * 100), 0);
   // For pago_na_hora routes on faturado clients the driver also collects the operation fee
   const totalEsperadoPagoNaHoraCents = rotas
-    .filter((r) => r.pagamento_operacao === "pago_na_hora")
+    .filter((r) => r.status !== "cancelada" && r.pagamento_operacao === "pago_na_hora")
     .reduce((s, r) => s + Math.round((r.taxa_resolvida ?? 0) * 100) + Math.round(getExtrasForRota(r.id) * 100), 0);
   const totalEsperadoReceberCents = rotas
-    .filter((r) => r.receber_do_cliente)
+    .filter((r) => r.status !== "cancelada" && r.receber_do_cliente)
     .reduce((s, r) => s + Math.round((r.valor_a_receber ?? 0) * 100), 0);
 
   const diffOperacaoCents = totalOperacaoCents - totalEsperadoTaxasCents;
@@ -303,10 +303,12 @@ export function AdminConciliacaoDialog({
         (f) => f.name.toLowerCase().includes("máquina") || f.name.toLowerCase().includes("maquina")
       )?.id;
       const isFaturavelRota = (r: (typeof rotas)[0]) =>
-        r.pagamento_operacao === "faturar" ||
-        (r.pagamento_operacao === "pago_na_hora" &&
-          !!maquinaLojaId &&
-          r.meios_pagamento_operacao?.includes(maquinaLojaId));
+        r.status !== "cancelada" && (
+          r.pagamento_operacao === "faturar" ||
+          (r.pagamento_operacao === "pago_na_hora" &&
+            !!maquinaLojaId &&
+            r.meios_pagamento_operacao?.includes(maquinaLojaId))
+        );
       const totalTaxas = rotas
         .filter(isFaturavelRota)
         .reduce((s, r) => s + (r.taxa_resolvida ?? 0) + getExtrasForRota(r.id), 0);

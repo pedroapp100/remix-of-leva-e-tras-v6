@@ -275,8 +275,10 @@ export function useCreateRota() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: RotaInsert) => createRota(input),
-    onSuccess: (data) =>
-      qc.invalidateQueries({ queryKey: ["rotas", data.solicitacao_id] }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["rotas", data.solicitacao_id] });
+      qc.invalidateQueries({ queryKey: ["rotas", "by-ids"] });
+    },
   });
 }
 
@@ -285,8 +287,10 @@ export function useUpdateRota() {
   return useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: RotaUpdate }) =>
       updateRota(id, patch),
-    onSuccess: (data) =>
-      qc.invalidateQueries({ queryKey: ["rotas", data.solicitacao_id] }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["rotas", data.solicitacao_id] });
+      qc.invalidateQueries({ queryKey: ["rotas", "by-ids"] });
+    },
   });
 }
 

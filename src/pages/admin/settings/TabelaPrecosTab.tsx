@@ -7,10 +7,13 @@ import type { TabelaPrecoInsert } from "@/services/clientes";
 import { useBairros, useRegioes, useTiposOperacao } from "@/hooks/useSettings";
 import { useClientes, useTabelaPrecos, useUpsertTabelaPreco, useDeleteTabelaPreco } from "@/hooks/useClientes";
 import { Button } from "@/components/ui/button";
-import { Plus, Pencil, Trash2, CircleDot, ArrowUp, ArrowDown, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, Pencil, Trash2, CircleDot, ArrowUp, ArrowDown, ChevronDown, ChevronRight, ChevronsUpDown, Check } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
@@ -41,6 +44,8 @@ export function TabelaPrecosTab({ initialClienteId }: TabelaPrecosTabProps) {
   );
 
   const { data: precos = [] } = useTabelaPrecos(selectedCliente);
+
+  const [clientePopoverOpen, setClientePopoverOpen] = useState(false);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<TabelaPrecoCliente | null>(null);
@@ -214,10 +219,34 @@ export function TabelaPrecosTab({ initialClienteId }: TabelaPrecosTabProps) {
       <CardContent className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           <div className="flex-1 max-w-xs">
-            <Select value={selectedCliente} onValueChange={setSelectedCliente}>
-              <SelectTrigger><SelectValue placeholder="Selecione o cliente" /></SelectTrigger>
-              <SelectContent>{clientes.map((c) => (<SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>))}</SelectContent>
-            </Select>
+            <Popover open={clientePopoverOpen} onOpenChange={setClientePopoverOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" role="combobox" aria-expanded={clientePopoverOpen} className="w-full justify-between font-normal">
+                  {selectedCliente ? clientes.find((c) => c.id === selectedCliente)?.nome : "Selecione o cliente"}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Buscar cliente..." />
+                  <CommandList>
+                    <CommandEmpty>Nenhum cliente encontrado.</CommandEmpty>
+                    <CommandGroup>
+                      {clientes.map((c) => (
+                        <CommandItem
+                          key={c.id}
+                          value={c.nome}
+                          onSelect={() => { setSelectedCliente(c.id); setClientePopoverOpen(false); }}
+                        >
+                          <Check className={cn("mr-2 h-4 w-4", selectedCliente === c.id ? "opacity-100" : "opacity-0")} />
+                          {c.nome}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
           </div>
           <div className={`flex items-center gap-2 text-sm font-medium ${coverage.color}`}>
             <CircleDot className="h-4 w-4" />

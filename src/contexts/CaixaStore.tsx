@@ -96,9 +96,9 @@ export function CaixaStoreProvider({ children }: { children: ReactNode }) {
     const entNome = entregadoresCache[entregadorId] ?? entregadorId;
     const hoje = new Date().toISOString().split("T")[0];
 
-    // Validação anti-duplicata: impede abertura se já existe caixa aberto no mesmo dia
+    // Bloqueia abertura se já existe qualquer caixa aberto — força fechar o anterior primeiro
     const jaAberto = caixas.find(
-      (c) => c.entregador_id === entregadorId && c.status === "aberto" && c.data === hoje
+      (c) => c.entregador_id === entregadorId && c.status === "aberto"
     );
     if (jaAberto) {
       return false;
@@ -238,57 +238,72 @@ export function CaixaStoreProvider({ children }: { children: ReactNode }) {
   // Auto-add recebimento when a solicitação with cash payment is concluded
   const addRecebimentoAutomatico = useCallback(
     (entregadorId: string, solicitacaoId: string, solicitacaoCodigo: string, clienteNome: string, valor: number) => {
-      const hoje = new Date().toISOString().split("T")[0];
+      // Busca qualquer caixa aberto — sem restrição de data, pois o admin pode ter deixado
+      // o caixa do dia anterior aberto e deve fechá-lo antes de abrir um novo
       const caixa = caixas.find(
-        (c) => c.entregador_id === entregadorId && c.status === "aberto" && c.data === hoje
+        (c) => c.entregador_id === entregadorId && c.status === "aberto"
       );
       if (!caixa) return;
 
-      // Persist to recebimentos_caixa table
-      supabase.from("recebimentos_caixa").insert({
-        caixa_id: caixa.id,
-        solicitacao_id: solicitacaoId,
-        rota_id: null,
-        forma_pagamento_id: null,
-        valor,
-        pertence_a: "loja" as const,
-        observacao: `${solicitacaoCodigo} - ${clienteNome}`,
-      }).select("id, created_at").then(({ data: rows }) => {
-        const inserted = rows?.[0];
-        const novoRecebimento: RecebimentoDinheiro = {
-          id: inserted?.id ?? `rec-${Date.now()}`,
-          solicitacao_codigo: solicitacaoCodigo,
-          cliente_nome: clienteNome,
-          valor_recebido: valor,
-          hora: inserted
-            ? new Date(inserted.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
-            : new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
-        };
+      // Verifica duplicata antes de inserir — protege contra duplo clique no "Concluir"
+      supabase
+        .from("recebimentos_caixa")
+        .select("id")
+        .eq("caixa_id", caixa.id)
+        .eq("solicitacao_id", solicitacaoId)
+        .maybeSingle()
+        .then(({ data: existing }) => {
+          if (existing) return;
 
-        setCaixas((prev) => {
-          const idx = prev.findIndex((c) => c.id === caixa.id);
-          if (idx === -1) return prev;
-          const cur = prev[idx];
-          const novoTotalRecebido = cur.total_recebido + valor;
-          const updated: CaixaEntregador = {
-            ...cur,
-            recebimentos: [...cur.recebimentos, novoRecebimento],
-            total_recebido: novoTotalRecebido,
-            total_esperado: cur.troco_inicial + novoTotalRecebido,
-          };
-          const result = [...prev];
-          result[idx] = updated;
-          return result;
+          supabase
+            .from("recebimentos_caixa")
+            .insert({
+              caixa_id: caixa.id,
+              solicitacao_id: solicitacaoId,
+              rota_id: null,
+              forma_pagamento_id: null,
+              valor,
+              pertence_a: "loja" as const,
+              observacao: `${solicitacaoCodigo} - ${clienteNome}`,
+            })
+            .select("id, created_at")
+            .then(({ data: rows }) => {
+              const inserted = rows?.[0];
+              const novoRecebimento: RecebimentoDinheiro = {
+                id: inserted?.id ?? `rec-${Date.now()}`,
+                solicitacao_codigo: solicitacaoCodigo,
+                cliente_nome: clienteNome,
+                valor_recebido: valor,
+                hora: inserted
+                  ? new Date(inserted.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+                  : new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+              };
+
+              setCaixas((prev) => {
+                const idx = prev.findIndex((c) => c.id === caixa.id);
+                if (idx === -1) return prev;
+                const cur = prev[idx];
+                const novoTotalRecebido = cur.total_recebido + valor;
+                const updated: CaixaEntregador = {
+                  ...cur,
+                  recebimentos: [...cur.recebimentos, novoRecebimento],
+                  total_recebido: novoTotalRecebido,
+                  total_esperado: cur.troco_inicial + novoTotalRecebido,
+                };
+                const result = [...prev];
+                result[idx] = updated;
+                return result;
+              });
+
+              addLog({
+                categoria: "financeiro",
+                acao: "recebimento_caixa",
+                entidade_id: entregadorId,
+                descricao: `Recebimento de ${formatCurrency(valor)} registrado automaticamente no caixa (${solicitacaoCodigo})`,
+                detalhes: { solicitacao: solicitacaoCodigo, cliente: clienteNome, valor },
+              });
+            });
         });
-      });
-
-      addLog({
-        categoria: "financeiro",
-        acao: "recebimento_caixa",
-        entidade_id: entregadorId,
-        descricao: `Recebimento de ${formatCurrency(valor)} registrado automaticamente no caixa (${solicitacaoCodigo})`,
-        detalhes: { solicitacao: solicitacaoCodigo, cliente: clienteNome, valor },
-      });
     },
     [addLog, caixas]
   );
@@ -377,10 +392,8 @@ export function CaixaStoreProvider({ children }: { children: ReactNode }) {
   );
 
   const getCaixaAberto = useCallback(
-    (entregadorId: string) => {
-      const hoje = new Date().toISOString().split("T")[0];
-      return caixas.find((c) => c.entregador_id === entregadorId && c.status === "aberto" && c.data === hoje);
-    },
+    (entregadorId: string) =>
+      caixas.find((c) => c.entregador_id === entregadorId && c.status === "aberto"),
     [caixas]
   );
 
