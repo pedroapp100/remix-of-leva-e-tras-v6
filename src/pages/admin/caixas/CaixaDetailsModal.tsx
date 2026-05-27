@@ -321,7 +321,7 @@ export function CaixaDetailsModal({ open, onOpenChange, caixa }: CaixaDetailsMod
               {caixa.recebimentos.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Nenhum recebimento registrado.</p>
               ) : (
-                <div className="rounded-md border">
+                <div className="overflow-x-auto rounded-md border">
                   <Table>
                     <TableHeader>
                       <TableRow>

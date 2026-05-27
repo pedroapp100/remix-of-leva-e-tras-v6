@@ -254,7 +254,7 @@ export function ReceitasLancadasTab({ receitas, faturas }: ReceitasLancadasTabPr
             value={search}
             onChange={setSearch}
             placeholder="Buscar receitas..."
-            className="flex-1 min-w-[200px]"
+            className="flex-1 min-w-0 w-full sm:w-auto"
           />
           <Select value={periodoFilter} onValueChange={setPeriodoFilter}>
             <SelectTrigger className="w-[140px]">

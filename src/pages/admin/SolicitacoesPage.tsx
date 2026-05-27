@@ -854,7 +854,7 @@ export default function SolicitacoesPage() {
         onConfirm={handleLiberarParaPendente}
       />
       <Dialog open={simuladorOpen} onOpenChange={setSimuladorOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Simulador de Operações</DialogTitle>
           <DialogDescription className="sr-only">.</DialogDescription>

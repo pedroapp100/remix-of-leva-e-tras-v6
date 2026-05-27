@@ -8,14 +8,13 @@ import { ExportDropdown } from "@/components/shared/ExportDropdown";
 import { exportCSV, exportPDF } from "@/lib/exportTable";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { formatCurrency, formatDateBR } from "@/lib/formatters";
+import { formatDateBR } from "@/lib/formatters";
 import { useSolicitacoesByEntregador } from "@/hooks/useSolicitacoes";
 import { DatePickerWithRange } from "@/components/shared/DatePickerWithRange";
 import type { DateRange } from "react-day-picker";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { MapPin, Calendar, User, Eye, X } from "lucide-react";
-import type { Solicitacao, StatusSolicitacao } from "@/types/database";
-import { STATUS_SOLICITACAO_LABELS } from "@/types/database";
+import type { Solicitacao } from "@/types/database";
 import { ViewSolicitacaoDialog } from "@/pages/admin/solicitacoes/ViewSolicitacaoDialog";
 import { useEntregadorId } from "@/hooks/useEntregadorId";
 
@@ -139,7 +138,7 @@ export default function EntregadorHistoricoPage() {
       <Card>
         <CardContent className="pt-4 space-y-4">
           <div data-onboarding="driver-history-filters" className="flex flex-col sm:flex-row gap-3 flex-wrap items-end">
-            <SearchInput value={search} onChange={setSearch} placeholder="Buscar por código ou cliente..." className="flex-1 min-w-[200px]" />
+            <SearchInput value={search} onChange={setSearch} placeholder="Buscar por código ou cliente..." className="flex-1 min-w-0 w-full sm:w-auto" />
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-[160px]"><SelectValue placeholder="Status" /></SelectTrigger>
               <SelectContent>

@@ -120,7 +120,7 @@ export function DespesasTab({ despesas }: DespesasTabProps) {
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row gap-3 flex-wrap items-end">
-        <SearchInput value={search} onChange={setSearch} placeholder="Buscar por descrição, fornecedor ou categoria..." className="flex-1 min-w-[200px]" />
+        <SearchInput value={search} onChange={setSearch} placeholder="Buscar por descrição, fornecedor ou categoria..." className="flex-1 min-w-0 w-full sm:w-auto" />
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-[140px]"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>

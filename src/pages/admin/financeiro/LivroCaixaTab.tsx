@@ -86,7 +86,7 @@ export function LivroCaixaTab({ entries }: LivroCaixaTabProps) {
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row gap-3 flex-wrap items-end">
-        <SearchInput value={search} onChange={setSearch} placeholder="Buscar no livro caixa..." className="flex-1 min-w-[200px]" />
+        <SearchInput value={search} onChange={setSearch} placeholder="Buscar no livro caixa..." className="flex-1 min-w-0 w-full sm:w-auto" />
         <Select value={tipoFilter} onValueChange={setTipoFilter}>
           <SelectTrigger className="w-[140px]"><SelectValue placeholder="Tipo" /></SelectTrigger>
           <SelectContent>

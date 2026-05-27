@@ -10,6 +10,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -90,11 +91,12 @@ function DespesaRecorrenteDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
             {editing ? "Editar Despesa Recorrente" : "Nova Despesa Recorrente"}
           </DialogTitle>
+          <DialogDescription className="sr-only">Formulário de despesa recorrente</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
@@ -380,7 +382,7 @@ export function DespesasRecorrentesTab() {
           value={search}
           onChange={setSearch}
           placeholder="Buscar por descrição ou categoria..."
-          className="flex-1 min-w-[200px]"
+          className="flex-1 min-w-0 w-full sm:w-auto"
         />
         <Button size="sm" className="gap-1.5" onClick={handleCreate}>
           <Plus className="h-4 w-4" /> Nova Despesa Recorrente

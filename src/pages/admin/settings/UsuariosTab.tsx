@@ -254,7 +254,7 @@ export function UsuariosTab() {
               value={search}
               onChange={setSearch}
               placeholder="Buscar por nome ou email..."
-              className="flex-1 min-w-[200px]"
+              className="flex-1 min-w-0 w-full sm:w-auto"
             />
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-[140px]">

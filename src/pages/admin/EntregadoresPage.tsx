@@ -248,7 +248,7 @@ export default function EntregadoresPage() {
       <Card>
         <CardContent className="space-y-4 pt-6">
           <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
-            <SearchInput value={search} onChange={setSearch} placeholder="Buscar por nome ou email..." className="flex-1 min-w-[200px]" />
+            <SearchInput value={search} onChange={setSearch} placeholder="Buscar por nome ou email..." className="flex-1 min-w-0 w-full sm:w-auto" />
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-[140px]"><SelectValue placeholder="Status" /></SelectTrigger>
               <SelectContent>

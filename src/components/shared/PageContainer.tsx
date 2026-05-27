@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { ReactNode, Fragment } from "react";
 import { useLocation, Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import {
@@ -63,18 +63,18 @@ export function PageContainer({
         <Breadcrumb>
           <BreadcrumbList>
             {breadcrumbs.map((crumb, i) => (
-              <BreadcrumbItem key={crumb.path}>
-                {i < breadcrumbs.length - 1 ? (
-                  <>
+              <Fragment key={crumb.path}>
+                <BreadcrumbItem>
+                  {i < breadcrumbs.length - 1 ? (
                     <BreadcrumbLink asChild>
                       <Link to={crumb.path}>{crumb.label}</Link>
                     </BreadcrumbLink>
-                    <BreadcrumbSeparator />
-                  </>
-                ) : (
-                  <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
-                )}
-              </BreadcrumbItem>
+                  ) : (
+                    <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
+                  )}
+                </BreadcrumbItem>
+                {i < breadcrumbs.length - 1 && <BreadcrumbSeparator />}
+              </Fragment>
             ))}
           </BreadcrumbList>
         </Breadcrumb>

@@ -477,7 +477,7 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate,
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-3xl max-h-[90vh] p-0 gap-0">
+        <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-3xl max-h-[90vh] p-0 gap-0">
           <DialogHeader className="p-6 pb-4">
             <DialogTitle className="flex items-center gap-3 text-base sm:text-xl">
               <FileText className="h-5 w-5 text-primary" />
@@ -662,6 +662,7 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate,
                   {lancamentos.length === 0 ? (
                     <p className="text-sm text-muted-foreground p-4">Nenhum lançamento registrado.</p>
                   ) : (
+                    <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -692,6 +693,7 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate,
                         ))}
                       </TableBody>
                     </Table>
+                    </div>
                   )}
                 </CardContent>
               </Card>

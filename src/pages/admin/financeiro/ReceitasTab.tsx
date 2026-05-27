@@ -163,7 +163,7 @@ export function ReceitasTab({ faturas = [], receitas = [] }: ReceitasTabProps) {
             value={search}
             onChange={setSearch}
             placeholder="Buscar fatura ou cliente..."
-            className="flex-1 min-w-[200px]"
+            className="flex-1 min-w-0 w-full sm:w-auto"
           />
           <Select value={periodoFilter} onValueChange={setPeriodoFilter}>
             <SelectTrigger className="w-[140px]">

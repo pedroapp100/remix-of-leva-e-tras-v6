@@ -50,7 +50,7 @@ export function RegistrarPagamentoDialog({ fatura, open, onOpenChange, onConfirm
     try {
       await onConfirm(valor, formaPagamento, observacao);
       setValor(0);
-      setFormaPagamento(formasAtivas[0]?.name ?? "");
+      setFormaPagamento("");
       setObservacao("");
       setComprovantes([]);
     } finally {
@@ -60,7 +60,7 @@ export function RegistrarPagamentoDialog({ fatura, open, onOpenChange, onConfirm
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Banknote className="h-5 w-5 text-primary" />

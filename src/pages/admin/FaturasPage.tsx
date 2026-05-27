@@ -234,6 +234,24 @@ export default function FaturasPage() {
           <span>Emissão: {formatDateBR(f.data_emissao)}</span>
           <span>Venc.: {formatDateBR(f.data_vencimento)}</span>
         </div>
+        <div className="flex gap-2 pt-1">
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1 gap-1.5"
+            onClick={() => setSelectedFatura(f)}
+          >
+            <Eye className="h-3.5 w-3.5" /> Ver detalhes
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => setSelectedFatura(f)}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </Card>
     );
   };
@@ -337,7 +355,7 @@ export default function FaturasPage() {
               value={searchInput}
               onChange={setSearchInput}
               placeholder="Buscar por número ou cliente..."
-              className="flex-1 min-w-[200px]"
+              className="flex-1 min-w-0 w-full sm:w-auto"
             />
             <Select value={tipoFilter} onValueChange={setTipoFilter}>
               <SelectTrigger className="w-full sm:w-[180px]">

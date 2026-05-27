@@ -502,7 +502,7 @@ export default function EntregasPage() {
 
       {/* Detail Dialog */}
       <Dialog open={!!viewEntrega} onOpenChange={(open) => !open && setViewEntrega(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Package className="h-5 w-5" />
@@ -520,7 +520,7 @@ export default function EntregasPage() {
                 />
               </div>
               <Separator />
-              <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                 <div>
                   <p className="text-muted-foreground">Cliente</p>
                   <p className="font-medium">{getClienteNome(viewEntrega.cliente_id)}</p>

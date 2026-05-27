@@ -431,15 +431,15 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
           {/* Informações secundárias — retraídas para entregador */}
           {(!isDriverView || cabecalhoAberto) && (
             <>
-              <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                 <div><span className="text-muted-foreground">Entregador</span><p className="font-medium">{entregadorName}</p></div>
-                <div><span className="text-muted-foreground">Tipo</span><p><TipoOperacaoBadge tipoOperacao={solicitacao.tipo_operacao} /></p></div>
+                <div><span className="text-muted-foreground">Tipo</span><span className="block mt-0.5"><TipoOperacaoBadge tipoOperacao={solicitacao.tipo_operacao} /></span></div>
                 {!isDriverView && (
                   <div><span className="text-muted-foreground">Taxas</span><p className="font-medium tabular-nums">{fmt(solicitacao.valor_total_taxas)}</p></div>
                 )}
               </div>
 
-              <div className="grid grid-cols-3 gap-1 sm:gap-3 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-3 text-sm">
                 <div><span className="text-muted-foreground">Criação</span><p className="tabular-nums text-xs sm:text-sm">{fmtDate(solicitacao.data_solicitacao)}</p></div>
                 <div><span className="text-muted-foreground">Início</span><p className="tabular-nums text-xs sm:text-sm">{fmtDate(solicitacao.data_inicio)}</p></div>
                 <div><span className="text-muted-foreground">Conclusão</span><p className="tabular-nums text-xs sm:text-sm">{fmtDate(solicitacao.data_conclusao)}</p></div>

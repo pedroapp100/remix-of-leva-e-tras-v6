@@ -541,7 +541,7 @@ export function NotificacoesTab() {
               value={search}
               onChange={setSearch}
               placeholder="Buscar por evento ou mensagem..."
-              className="flex-1 min-w-[200px]"
+              className="flex-1 min-w-0 w-full sm:w-auto"
             />
             <Select value={categoriaFilter} onValueChange={setCategoriaFilter}>
               <SelectTrigger className="w-[160px]">

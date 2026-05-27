@@ -232,7 +232,7 @@ export default function ClientesPage() {
       <Card>
         <CardContent className="space-y-4 pt-6">
           <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
-            <div data-onboarding="client-search" className="flex-1 min-w-[200px]">
+            <div data-onboarding="client-search" className="flex-1 min-w-0 w-full sm:w-auto">
               <SearchInput value={search} onChange={setSearch} placeholder="Buscar por nome ou email..." className="w-full" />
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
