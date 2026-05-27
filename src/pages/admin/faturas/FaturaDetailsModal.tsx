@@ -5,7 +5,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -21,7 +20,7 @@ import {
   FileText, Calendar, Receipt, ArrowDownUp, Pencil, History,
   Banknote, ArrowUpRight, ArrowDownRight, Download, Package,
   ChevronDown, ChevronRight, User, MapPin, Truck, Phone, DollarSign,
-  Lock, Trash2, Save, X, CheckCircle, Loader2,
+  Lock, Trash2, Save, X, CheckCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { generateFaturaPDF } from "@/lib/generateFaturaPDF";
@@ -46,12 +45,11 @@ interface Props {
   fatura: Fatura | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onFaturaUpdate?: (updated: Fatura) => void;
   /** Quando true, oculta todos os botões de ação — modo somente leitura para o portal do cliente */
   viewOnly?: boolean;
 }
 
-export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate, viewOnly = false }: Props) {
+export function FaturaDetailsModal({ fatura, open, onOpenChange, viewOnly = false }: Props) {
   const { user } = useAuth();
   const faturaId = fatura?.id ?? "";
 
@@ -477,8 +475,8 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate,
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-3xl max-h-[90vh] p-0 gap-0">
-          <DialogHeader className="p-6 pb-4">
+        <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-3xl max-h-[90vh] p-0 gap-0 flex flex-col">
+          <DialogHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4 shrink-0">
             <DialogTitle className="flex items-center gap-3 text-base sm:text-xl">
               <FileText className="h-5 w-5 text-primary" />
               Fatura {fatura.numero}
@@ -486,10 +484,10 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate,
           <DialogDescription className="sr-only">.</DialogDescription>
           </DialogHeader>
 
-          <ScrollArea className="max-h-[calc(90vh-5rem)]">
-            <div className="px-6 pb-6 space-y-6">
+          <div className="flex-1 overflow-y-auto overscroll-contain">
+            <div className="px-4 sm:px-6 pb-6 space-y-6">
               {/* ── 1. Cabeçalho ── */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
                 <div>
                   <p className="text-muted-foreground">Cliente</p>
                   <p className="font-medium">{fatura.cliente_nome}</p>
@@ -532,22 +530,22 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate,
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base flex items-center gap-2"><Receipt className="h-4 w-4" /> Resumo Financeiro</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <CardContent className="px-3 pb-3 sm:px-6 sm:pb-6 pt-0">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
                     <SummaryItem label="Créditos Loja" value={fatura.total_creditos_loja ?? 0} icon={<ArrowDownRight className="h-4 w-4 text-emerald-500" />} />
                     <SummaryItem label="Débitos Loja" value={fatura.total_debitos_loja ?? 0} icon={<ArrowUpRight className="h-4 w-4 text-destructive" />} />
                     <SummaryItem label="Ajustes" value={ajustes.reduce((sum, a) => sum + (a.tipo === "credito" ? a.valor : -a.valor), 0)} icon={<ArrowDownUp className="h-4 w-4 text-amber-500" />} />
                     {fatura.status_geral === "Finalizada" ? (
-                      <div className="col-span-2 sm:col-span-1 flex gap-4">
+                      <div className="col-span-2 sm:col-span-1 flex gap-4 min-w-0">
                         {(fatura.total_creditos_loja ?? 0) > 0 && (
-                          <div>
+                          <div className="min-w-0">
                             <p className="text-muted-foreground text-xs mb-1">Repassado ao lojista</p>
                             <p className="text-base sm:text-lg font-bold tabular-nums">{formatCurrency((fatura.total_creditos_loja ?? 0) - (fatura.total_debitos_loja ?? 0))}</p>
                           </div>
                         )}
                       </div>
                     ) : (
-                      <div>
+                      <div className="min-w-0">
                         <p className="text-muted-foreground text-xs mb-1">Saldo Líquido</p>
                         {saldo === 0 && valorBaseOriginal > 0 && statusRepasse === "Repassado" ? (
                           <>
@@ -562,7 +560,7 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate,
                         ) : (
                           <>
                             <p className={cn("text-base sm:text-lg font-bold tabular-nums", saldoColor)}>{formatCurrency(saldo)}</p>
-                            <p className="text-xs text-muted-foreground">{saldoLabel}</p>
+                            <p className="text-xs text-muted-foreground break-words">{saldoLabel}</p>
                           </>
                         )}
                       </div>
@@ -884,7 +882,7 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, onFaturaUpdate,
                 </>
               )}
             </div>
-          </ScrollArea>
+          </div>
         </DialogContent>
       </Dialog>
 
