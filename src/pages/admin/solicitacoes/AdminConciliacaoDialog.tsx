@@ -391,18 +391,18 @@ export function AdminConciliacaoDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="flex flex-col p-0 gap-0 sm:max-w-3xl w-full max-h-[95dvh] sm:max-h-[90vh] overflow-hidden">
+        <DialogHeader className="shrink-0 px-4 pt-4 pb-3 sm:px-6 sm:pt-6 border-b">
           <DialogTitle className="flex items-center gap-2">
             Conciliação Administrativa
             <Badge variant="outline" className="text-xs">
               {solicitacao.codigo}
             </Badge>
           </DialogTitle>
-        <DialogDescription className="sr-only">.</DialogDescription>
+          <DialogDescription className="sr-only">.</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6 py-2">
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 sm:px-6 space-y-6">
           {/* Cabeçalho — Solicitação + Cliente + Entregador */}
           <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
@@ -690,11 +690,11 @@ export function AdminConciliacaoDialog({
                 )}
 
                 {/* Admin payment rows */}
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {(pagamentosPorRota[rota.id] || []).map((pag) => (
                     <div
                       key={pag.id}
-                      className="grid grid-cols-[1fr_100px_120px_auto] gap-2 items-end"
+                      className="space-y-2 sm:space-y-0 sm:grid sm:grid-cols-[1fr_100px_120px_auto] sm:gap-2 sm:items-end"
                     >
                       <div className="space-y-1">
                         <Label className="text-xs">Meio de Pagamento</Label>
@@ -720,41 +720,44 @@ export function AdminConciliacaoDialog({
                           </SelectContent>
                         </Select>
                       </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs">Valor</Label>
-                        <CurrencyInput
-                          value={pag.valor}
-                          onChange={(v) =>
-                            updatePagamento(rota.id, pag.id, "valor", v)
-                          }
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs">Pertence a</Label>
-                        <Select
-                          value={pag.pertence_a}
-                          onValueChange={(v) =>
-                            updatePagamento(rota.id, pag.id, "pertence_a", v)
-                          }
-                          disabled={pag.forma_pagamento_id === DEVOLVER_LOJA_ID}
+                      {/* Valor + Pertence a + Delete — linha em mobile, colunas em sm+ */}
+                      <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-end sm:contents">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Valor</Label>
+                          <CurrencyInput
+                            value={pag.valor}
+                            onChange={(v) =>
+                              updatePagamento(rota.id, pag.id, "valor", v)
+                            }
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Pertence a</Label>
+                          <Select
+                            value={pag.pertence_a}
+                            onValueChange={(v) =>
+                              updatePagamento(rota.id, pag.id, "pertence_a", v)
+                            }
+                            disabled={pag.forma_pagamento_id === DEVOLVER_LOJA_ID}
+                          >
+                            <SelectTrigger className="h-9">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="operacao">Operação</SelectItem>
+                              <SelectItem value="loja">Loja</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 text-destructive self-end"
+                          onClick={() => removePagamento(rota.id, pag.id)}
                         >
-                          <SelectTrigger className="h-9">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="operacao">Operação</SelectItem>
-                            <SelectItem value="loja">Loja</SelectItem>
-                          </SelectContent>
-                        </Select>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-9 w-9 text-destructive"
-                        onClick={() => removePagamento(rota.id, pag.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
                     </div>
                   ))}
                 </div>
@@ -799,45 +802,45 @@ export function AdminConciliacaoDialog({
             {/* Breakdown */}
             <div className="space-y-1.5 text-sm">
               {/* Header */}
-              <div className="grid grid-cols-[1fr_auto_auto] gap-x-4 text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+              <div className="grid grid-cols-[1fr_auto_auto] gap-x-2 sm:gap-x-4 text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
                 <span />
-                <span className="text-right w-24">Conferido</span>
-                <span className="text-right w-24">Esperado</span>
+                <span className="text-right w-20 sm:w-24">Conferido</span>
+                <span className="text-right w-20 sm:w-24">Esperado</span>
               </div>
 
               {/* Receita Operação */}
-              <div className="grid grid-cols-[1fr_auto_auto] gap-x-4 items-center">
+              <div className="grid grid-cols-[1fr_auto_auto] gap-x-2 sm:gap-x-4 items-center">
                 <span className="text-muted-foreground flex items-center gap-1.5">
-                  <Building2 className="h-3.5 w-3.5" />
+                  <Building2 className="h-3.5 w-3.5 shrink-0" />
                   Receita Operação
                 </span>
-                <span className="tabular-nums text-right w-24 font-medium">{fmt(totalOperacao)}</span>
-                <span className="tabular-nums text-right w-24 text-muted-foreground">{fmt(totalEsperadoOperacao)}</span>
+                <span className="tabular-nums text-right w-20 sm:w-24 font-medium">{fmt(totalOperacao)}</span>
+                <span className="tabular-nums text-right w-20 sm:w-24 text-muted-foreground">{fmt(totalEsperadoOperacao)}</span>
               </div>
 
               {isFaturado && totalFaturar > 0 && (
-                <div className="grid grid-cols-[1fr_auto_auto] gap-x-4 items-center">
+                <div className="grid grid-cols-[1fr_auto_auto] gap-x-2 sm:gap-x-4 items-center">
                   <span className="text-muted-foreground pl-5">↳ A Faturar</span>
-                  <span className="tabular-nums text-right w-24 font-medium">{fmt(totalFaturar)}</span>
-                  <span className="w-24" />
+                  <span className="tabular-nums text-right w-20 sm:w-24 font-medium">{fmt(totalFaturar)}</span>
+                  <span className="w-20 sm:w-24" />
                 </div>
               )}
 
               {/* Crédito Loja */}
-              <div className="grid grid-cols-[1fr_auto_auto] gap-x-4 items-center">
+              <div className="grid grid-cols-[1fr_auto_auto] gap-x-2 sm:gap-x-4 items-center">
                 <span className="text-muted-foreground flex items-center gap-1.5">
-                  <Store className="h-3.5 w-3.5" />
+                  <Store className="h-3.5 w-3.5 shrink-0" />
                   Crédito Loja
                 </span>
-                <span className="tabular-nums text-right w-24 font-medium">{fmt(totalCreditoLoja)}</span>
-                <span className="tabular-nums text-right w-24 text-muted-foreground">{fmt(totalEsperadoReceber)}</span>
+                <span className="tabular-nums text-right w-20 sm:w-24 font-medium">{fmt(totalCreditoLoja)}</span>
+                <span className="tabular-nums text-right w-20 sm:w-24 text-muted-foreground">{fmt(totalEsperadoReceber)}</span>
               </div>
 
               {totalDevolvido > 0 && (
-                <div className="grid grid-cols-[1fr_auto_auto] gap-x-4 items-center">
+                <div className="grid grid-cols-[1fr_auto_auto] gap-x-2 sm:gap-x-4 items-center">
                   <span className="text-muted-foreground pl-5">↳ Devolvido à Loja</span>
-                  <span className="tabular-nums text-right w-24 font-medium">{fmt(totalDevolvido)}</span>
-                  <span className="w-24" />
+                  <span className="tabular-nums text-right w-20 sm:w-24 font-medium">{fmt(totalDevolvido)}</span>
+                  <span className="w-20 sm:w-24" />
                 </div>
               )}
             </div>
@@ -865,11 +868,11 @@ export function AdminConciliacaoDialog({
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+        <DialogFooter className="shrink-0 px-4 py-3 sm:px-6 border-t flex flex-col-reverse gap-2 sm:flex-row sm:gap-0">
+          <Button variant="outline" className="w-full sm:w-auto" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button onClick={handleConfirm} disabled={!isBalanced || isSubmitting}>
+          <Button className="w-full sm:w-auto" onClick={handleConfirm} disabled={!isBalanced || isSubmitting}>
             <CheckCircle className="h-4 w-4 mr-1.5" />
             {isSubmitting ? "Processando..." : "Conferir e Gerar Fatura"}
           </Button>
