@@ -370,8 +370,8 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit, initialD
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-         <DialogHeader>
+      <DialogContent className="flex flex-col p-0 gap-0 sm:max-w-lg max-h-[95dvh] sm:max-h-[90vh] overflow-hidden">
+         <DialogHeader className="shrink-0 px-6 pt-6 pb-3 border-b">
           <DialogTitle>
             {initialData
               ? `Editar Solicitação — ${initialData.sol.codigo} (Etapa ${step}/3)`
@@ -390,7 +390,7 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit, initialD
           )}
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-4">
           {/* Step indicators - only for steps 1-3 */}
           {step > 0 && (
             <div className="flex items-center gap-2">
@@ -648,10 +648,7 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit, initialD
 
           {step === 2 && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-semibold">Rotas ({rotas.length})</h4>
-                <Button variant="outline" size="sm" onClick={addRota}><Plus className="h-3.5 w-3.5 mr-1" /> Adicionar Rota</Button>
-              </div>
+              <h4 className="text-sm font-semibold">Rotas ({rotas.length})</h4>
 
               {rotas.map((rota, i) => {
                 const clienteSel = clientesAtivos.find((c) => c.id === clienteId);
@@ -685,6 +682,12 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit, initialD
                   />
                 );
               })}
+
+              <div className="sticky bottom-0 py-2 bg-background">
+                <Button variant="outline" className="w-full" onClick={addRota}>
+                  <Plus className="h-3.5 w-3.5 mr-1.5" /> Adicionar Rota
+                </Button>
+              </div>
             </div>
           )}
 
@@ -830,7 +833,7 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit, initialD
           )}
         </div>
 
-        <DialogFooter className="flex-row justify-between sm:justify-between">
+        <div className="shrink-0 flex flex-row items-center justify-between px-6 py-3 border-t">
           {step > 0 && !(initialData && step === 1) ? (
             <Button variant="outline" onClick={() => setStep(step - 1)}><ChevronLeft className="h-4 w-4 mr-1" /> Voltar</Button>
           ) : (
@@ -841,7 +844,7 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit, initialD
           ) : (
             <Button onClick={handleSubmit}>{initialData ? "Salvar Alterações" : "Criar Solicitação"}</Button>
           )}
-        </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );

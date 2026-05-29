@@ -340,6 +340,7 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
   const [rotasFaturadaVisitadas, setRotasFaturadaVisitadas] = useState<Set<string>>(new Set());
   const [historicoAberto, setHistoricoAberto] = useState(false);
   const [cabecalhoAberto, setCabecalhoAberto] = useState(!isDriverView);
+  const [activeTab, setActiveTab] = useState<"detalhes" | "configuracao">("detalhes");
   const marcarRotaFaturadaConcluida = useCallback((rotaId: string) => {
     setRotasFaturadaVisitadas((prev) => new Set([...prev, rotaId]));
     setExpandedRotas((prev) => { const next = new Set(prev); next.delete(rotaId); return next; });
@@ -386,8 +387,27 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
         <DialogDescription className="sr-only">.</DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto">
-        <div className="space-y-4 px-6 py-4">
+        {!isDriverView && (
+          <div className="shrink-0 flex border-b border-border">
+            {(["detalhes", "configuracao"] as const).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setActiveTab(tab)}
+                className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
+                  activeTab === tab
+                    ? "border-b-2 border-primary text-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {tab === "detalhes" ? "Detalhes" : "Configuração"}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="flex-1 min-h-0 overflow-y-auto">
+        {activeTab === "detalhes" && <div className="space-y-4 px-6 py-4">
           {/* Info Geral — sempre visível */}
           <div className="text-sm">
             <span className="text-muted-foreground">Cliente</span>
@@ -887,7 +907,174 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
               </div>
             )}
           </div>
-        </div>
+        </div>}
+
+        {activeTab === "configuracao" && !isDriverView && (
+          <div className="px-4 sm:px-6 py-4 space-y-5">
+
+            {/* Etapa 1: Operação */}
+            <div className="space-y-2">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                <span className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">1</span>
+                Operação
+              </h4>
+              <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-3 text-sm">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <span className="text-muted-foreground text-xs">Tipo</span>
+                    <p className="font-medium mt-0.5">
+                      {solicitacao.tipo_coleta === "cliente_loja" ? "Loja → Destino" : "Coleta → Entrega"}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground text-xs">Prioridade</span>
+                    <p className="mt-0.5"><TipoOperacaoBadge tipoOperacao={solicitacao.tipo_operacao} /></p>
+                  </div>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">
+                    {solicitacao.tipo_coleta === "cliente_loja" ? "Cliente / Lojista" : "Cliente"}
+                  </span>
+                  <p className="font-medium flex items-center gap-1.5 mt-0.5">
+                    {clienteName}
+                    {isFaturado && <Badge variant="default" className="text-[10px] px-1.5 py-0">Faturado</Badge>}
+                    {isPrePago && <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Pré-pago</Badge>}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">
+                    {solicitacao.tipo_coleta === "cliente_loja" ? "Destino Final" : "Ponto de Coleta"}
+                  </span>
+                  <p className="font-medium flex items-center gap-1.5 mt-0.5">
+                    <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    {solicitacao.ponto_coleta}
+                  </p>
+                </div>
+                {entregadorName !== "—" && (
+                  <div>
+                    <span className="text-muted-foreground text-xs">Entregador</span>
+                    <p className="font-medium flex items-center gap-1.5 mt-0.5">
+                      <Truck className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      {entregadorName}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Etapa 2: Rotas */}
+            <div className="space-y-2">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                <span className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">2</span>
+                Rotas ({rotas.length})
+              </h4>
+              <div className="space-y-2">
+                {rotas.map((rota, i) => (
+                  <div key={rota.id} className="rounded-lg border border-border bg-muted/20 p-3 space-y-2 text-sm">
+                    <div className="flex items-center gap-2 font-medium">
+                      <MapPin className="h-3.5 w-3.5 text-primary shrink-0" />
+                      <span>Rota {i + 1} — {getBairroName(rota.bairro_destino_id)}</span>
+                      <span className="text-muted-foreground font-normal text-xs hidden sm:inline">({getRegiaoByBairro(rota.bairro_destino_id)})</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-muted-foreground">Responsável</span>
+                        <p className="font-medium mt-0.5">{rota.responsavel}</p>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Telefone</span>
+                        <p className="font-medium mt-0.5">{rota.telefone}</p>
+                      </div>
+                    </div>
+                    {rota.observacoes && (
+                      <p className="text-xs text-muted-foreground italic">{rota.observacoes}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Etapa 3: Configuração Financeira */}
+            <div className="space-y-2">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                <span className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">3</span>
+                Configuração Financeira
+              </h4>
+              <div className="space-y-2">
+                {rotas.map((rota, i) => {
+                  const badge = PAGAMENTO_OPERACAO_BADGE[rota.pagamento_operacao] ?? { label: rota.pagamento_operacao, variant: "outline" as const };
+                  const meioCobrancaLabel = ({"dinheiro": "Dinheiro Leva e Traz", "maquina_loja": "Máquina da Loja", "pix_loja": "PIX da Loja", "pix_empresa": "PIX da Empresa"} as Record<string, string>)[rota.meio_cobranca_destino ?? ""] ?? rota.meio_cobranca_destino;
+                  const taxasExtras = taxasExtrasMap.get(rota.id) ?? [];
+                  return (
+                    <div key={rota.id} className="rounded-lg border border-border bg-muted/20 p-3 space-y-2 text-sm">
+                      <p className="text-xs font-medium text-muted-foreground">
+                        Rota {i + 1} — {getBairroName(rota.bairro_destino_id)}
+                      </p>
+
+                      {/* Operação */}
+                      <div className="rounded-md bg-background/60 border border-border/50 p-2.5 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-primary">
+                            <Building2 className="h-3 w-3 shrink-0" /> Operação
+                          </span>
+                          <Badge
+                            variant={badge.variant}
+                            className={`text-[10px] px-1.5 py-0${rota.pagamento_operacao === "pago_na_hora" ? " border-amber-500 text-amber-600" : ""}`}
+                          >
+                            {badge.label}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-muted-foreground">Taxa de Entrega</span>
+                          <span className="tabular-nums font-medium">{fmt(rota.taxa_resolvida)}</span>
+                        </div>
+                        {taxasExtras.map((te, idx) => (
+                          <div key={idx} className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground">{te.nome}</span>
+                            <span className="tabular-nums font-medium text-amber-600">{fmt(te.valor)}</span>
+                          </div>
+                        ))}
+                        {rota.meios_pagamento_operacao.length > 0 && (
+                          <div className="flex flex-wrap gap-1 pt-0.5">
+                            {rota.meios_pagamento_operacao.map((id) => (
+                              <Badge key={id} variant="secondary" className="text-[10px] px-1.5 py-0">
+                                {getFormaPagamentoName(id)}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Loja */}
+                      {rota.receber_do_cliente ? (
+                        <div className="rounded-md bg-background/60 border border-border/50 p-2.5 space-y-1.5">
+                          <span className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-amber-600">
+                            <Store className="h-3 w-3 shrink-0" /> Cobrança na Loja
+                          </span>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground">Valor a cobrar</span>
+                            <span className="tabular-nums font-medium">{fmt(rota.valor_a_receber)}</span>
+                          </div>
+                          {rota.meio_cobranca_destino && (
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-muted-foreground">Meio</span>
+                              <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{meioCobrancaLabel}</Badge>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="rounded-md bg-background/60 border border-border/50 p-2.5">
+                          <span className="text-xs text-muted-foreground italic">Sem cobrança no destino</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+          </div>
+        )}
         </div>
       </DialogContent>
     </Dialog>

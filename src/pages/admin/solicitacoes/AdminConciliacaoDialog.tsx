@@ -211,8 +211,15 @@ export function AdminConciliacaoDialog({
   const totalEsperadoPagoNaHoraCents = rotas
     .filter((r) => r.status !== "cancelada" && r.pagamento_operacao === "pago_na_hora")
     .reduce((s, r) => s + Math.round((r.taxa_resolvida ?? 0) * 100) + Math.round(getExtrasForRota(r.id) * 100), 0);
+  // Só rotas onde o dinheiro realmente passa pela empresa geram valor esperado de loja.
+  // maquina_loja, pix_loja e dinheiro+devolver_loja → lojista já recebeu direto, empresa nunca tocou.
+  const lojaRecebeuDireto = (r: Rota) =>
+    r.meio_cobranca_destino === "maquina_loja" ||
+    r.meio_cobranca_destino === "pix_loja" ||
+    (r.meio_cobranca_destino === "dinheiro" && r.destino_dinheiro === "devolver_loja");
+
   const totalEsperadoReceberCents = rotas
-    .filter((r) => r.status !== "cancelada" && r.receber_do_cliente)
+    .filter((r) => r.status !== "cancelada" && r.receber_do_cliente && !lojaRecebeuDireto(r))
     .reduce((s, r) => s + Math.round((r.valor_a_receber ?? 0) * 100), 0);
 
   const diffOperacaoCents = totalOperacaoCents - totalEsperadoTaxasCents;
@@ -517,7 +524,7 @@ export function AdminConciliacaoDialog({
             const expectedRotaOperacao = rota.taxa_resolvida != null
               ? rota.taxa_resolvida + extrasRota
               : extrasRota > 0 ? extrasRota : null;
-            const expectedRotaLoja = rota.receber_do_cliente ? (rota.valor_a_receber ?? 0) : null;
+            const expectedRotaLoja = rota.receber_do_cliente && !lojaRecebeuDireto(rota) ? (rota.valor_a_receber ?? 0) : null;
             const rotaOperacaoErro = expectedRotaOperacao !== null &&
               Math.round(pagRotaOperacaoTotal * 100) !== Math.round(expectedRotaOperacao * 100);
             const rotaLojaErro = expectedRotaLoja !== null &&
