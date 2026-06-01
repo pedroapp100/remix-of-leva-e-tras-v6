@@ -330,19 +330,31 @@ export default function CaixasEntregadoresPage() {
                 <div className="space-y-3">
                   {groupedByDate.map(([date, items]) => {
                     const totalRecebidoDia = items.reduce((s, c) => s + c.total_recebido, 0);
+                    const abertosDia = items.filter((c) => c.status === "aberto").length;
+                    const fechadosDia = items.filter((c) => c.status === "fechado").length;
                     const divergentesDia = items.filter((c) => c.status === "divergente").length;
                     return (
                       <Collapsible key={date}>
                         <CollapsibleTrigger className="w-full group">
                           <div className="flex items-center justify-between py-3 px-4 rounded-lg border border-border bg-card hover:bg-muted/50 transition-colors cursor-pointer">
-                            <div className="flex items-center gap-3">
-                              <Calendar className="h-4 w-4 text-muted-foreground" />
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
                               <span className="font-semibold text-sm">
                                 {new Date(date + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit", year: "2-digit" })}
                               </span>
                               <Badge variant="secondary" className="text-xs">
                                 {items.length} {items.length === 1 ? "caixa" : "caixas"}
                               </Badge>
+                              {abertosDia > 0 && (
+                                <Badge className="text-xs bg-status-in-progress/10 text-status-in-progress border border-status-in-progress/25 hover:bg-status-in-progress/20">
+                                  {abertosDia} {abertosDia === 1 ? "aberto" : "abertos"}
+                                </Badge>
+                              )}
+                              {fechadosDia > 0 && (
+                                <Badge className="text-xs bg-status-completed/10 text-status-completed border border-status-completed/25 hover:bg-status-completed/20">
+                                  {fechadosDia} {fechadosDia === 1 ? "fechado" : "fechados"}
+                                </Badge>
+                              )}
                               {divergentesDia > 0 && (
                                 <Badge variant="destructive" className="text-xs">
                                   {divergentesDia} {divergentesDia === 1 ? "divergência" : "divergências"}
