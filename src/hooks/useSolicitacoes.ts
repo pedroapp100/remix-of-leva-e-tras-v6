@@ -139,7 +139,7 @@ export function useSolicitacoesByEntregador(entregadorId: string) {
 }
 
 /**
- * Server-side paginated hook — used by SolicitacoesPage and EntregasPage.
+ * Server-side paginated hook — used by SolicitacoesPage.
  * - Filtering (status, date range, search) happens in Supabase, not in the browser.
  * - `keepPreviousData` prevents flicker when navigating pages.
  * - Returns { data: Solicitacao[], total, page, pageSize, pageCount }.

@@ -261,7 +261,7 @@ export async function createRotaTaxasExtras(
 
 /**
  * Fetches rotas created after a given date (time-window).
- * Used by EntregasPage to avoid loading ALL rotas forever.
+ * Used by SolicitacoesPage to avoid loading ALL rotas forever.
  */
 export async function fetchRotasWindow(since: string): Promise<RotaRow[]> {
   const { data, error } = await supabase

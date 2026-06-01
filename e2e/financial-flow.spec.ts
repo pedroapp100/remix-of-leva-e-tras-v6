@@ -11,7 +11,6 @@ const PASSWORD = process.env.E2E_ADMIN_PASSWORD!;
 
 const SIDEBAR_HREFS: Record<string, string> = {
   Dashboard: "/admin",
-  Entregas: "/admin/entregas",
   Caixas: "/admin/caixas-entregadores",
   Faturas: "/admin/faturas",
   Financeiro: "/admin/financeiro",
@@ -136,9 +135,5 @@ test.describe("Financial Flow — Admin Pages", () => {
     await page.waitForURL(/\/admin\/financeiro/);
     await expect(page.getByRole("heading", { name: /Financeiro/i })).toBeVisible({ timeout: 15_000 });
 
-    // Navigate to Entregas via sidebar
-    await page.locator('a[href="/admin/entregas"]').click();
-    await page.waitForURL(/\/admin\/entregas/);
-    await expect(page.getByRole("heading", { name: /Entregas/i })).toBeVisible({ timeout: 15_000 });
   });
 });

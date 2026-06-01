@@ -62,7 +62,6 @@ const ResetPasswordPage = lazyWithRetry(() => import("./pages/auth/ResetPassword
 const SolicitacoesPage = lazyWithRetry(() => import("./pages/admin/SolicitacoesPage"));
 const ClientesPage = lazyWithRetry(() => import("./pages/admin/ClientesPage"));
 const EntregadoresPage = lazyWithRetry(() => import("./pages/admin/EntregadoresPage"));
-const EntregasPage = lazyWithRetry(() => import("./pages/admin/EntregasPage"));
 const CaixasEntregadoresPage = lazyWithRetry(() => import("./pages/admin/CaixasEntregadoresPage"));
 const FaturasPage = lazyWithRetry(() => import("./pages/admin/FaturasPage"));
 const FinanceiroPage = lazyWithRetry(() => import("./pages/admin/FinanceiroPage"));
@@ -188,7 +187,6 @@ const App = () => (
                     <Route path="solicitacoes" element={<PageBoundary><SolicitacoesPage /></PageBoundary>} />
                     <Route path="clientes" element={<PageBoundary><ClientesPage /></PageBoundary>} />
                     <Route path="entregadores" element={<PageBoundary><EntregadoresPage /></PageBoundary>} />
-                    <Route path="entregas" element={<PageBoundary><EntregasPage /></PageBoundary>} />
                     <Route path="caixas-entregadores" element={<PageBoundary><CaixasEntregadoresPage /></PageBoundary>} />
                     <Route path="faturas" element={<PageBoundary><FaturasPage /></PageBoundary>} />
                     <Route path="financeiro" element={<PageBoundary><FinanceiroPage /></PageBoundary>} />

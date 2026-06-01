@@ -37,7 +37,6 @@ export const SIDEBAR_PERMISSION_MAP: Record<string, string> = {
   "Solicitações": "solicitacoes.view",
   Clientes: "clientes.view",
   Entregadores: "entregadores.view",
-  Entregas: "solicitacoes.view", // entregas uses same permission as solicitacoes
   Faturas: "faturas.view",
   Financeiro: "financeiro.view",
   "Relatórios": "relatorios.view",

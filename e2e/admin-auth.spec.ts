@@ -43,7 +43,6 @@ const SIDEBAR_HREFS: Record<string, string> = {
   "Solicitações": "/admin/solicitacoes",
   Clientes: "/admin/clientes",
   Entregadores: "/admin/entregadores",
-  Entregas: "/admin/entregas",
   Caixas: "/admin/caixas-entregadores",
   Faturas: "/admin/faturas",
   Financeiro: "/admin/financeiro",
