@@ -90,7 +90,7 @@ export function useUpsertTabelaPreco() {
 export function useDeleteTabelaPreco() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, clienteId }: { id: string; clienteId: string }) => deleteTabelaPreco(id),
+    mutationFn: ({ id }: { id: string; clienteId: string }) => deleteTabelaPreco(id),
     onSuccess: (_, { clienteId }) =>
       qc.invalidateQueries({ queryKey: ["tabela_precos", clienteId] }),
   });
