@@ -50,7 +50,8 @@ export function CaixaStoreProvider({ children }: { children: ReactNode }) {
           const dbRecebimentos = (row.recebimentos_caixa as Array<Record<string, unknown>>) ?? [];
           const recebimentos: RecebimentoDinheiro[] = dbRecebimentos.map((r) => {
             const obs = (r.observacao as string) ?? "";
-            const [codigo, ...rest] = obs.split(" - ");
+            const isSyncAuto = obs.startsWith("Sincronizado automaticamente");
+            const [codigo, ...rest] = isSyncAuto ? ["", obs] : obs.split(" - ");
             return {
               id: r.id as string,
               solicitacao_id: r.solicitacao_id as string | null,
@@ -58,6 +59,7 @@ export function CaixaStoreProvider({ children }: { children: ReactNode }) {
               cliente_nome: rest.join(" - ") || "",
               valor_recebido: Number(r.valor),
               hora: new Date(r.created_at as string).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+              observacao: obs || null,
             };
           });
           const totalRecebido = recebimentos.reduce((s, r) => s + r.valor_recebido, 0);

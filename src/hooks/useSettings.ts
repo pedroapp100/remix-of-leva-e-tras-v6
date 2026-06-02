@@ -1,3 +1,4 @@
+
 /**
  * hooks/useSettings.ts
  * React Query hooks para dados de configuração.

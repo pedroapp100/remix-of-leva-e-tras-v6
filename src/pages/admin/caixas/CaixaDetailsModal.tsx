@@ -336,7 +336,20 @@ export function CaixaDetailsModal({ open, onOpenChange, caixa }: CaixaDetailsMod
                       {caixa.recebimentos.map((r) => (
                         <TableRow key={r.id}>
                           <TableCell className="tabular-nums">{r.hora}</TableCell>
-                          <TableCell className="font-mono text-xs">{r.solicitacao_codigo}</TableCell>
+                          <TableCell className="font-mono text-xs">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {r.solicitacao_codigo || "—"}
+                              {r.observacao?.startsWith("Sincronizado automaticamente") && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[9px] px-1 py-0 border-emerald-500/50 text-emerald-600 bg-emerald-500/5"
+                                  title="Registrado automaticamente via pagamento da solicitação"
+                                >
+                                  auto-sync
+                                </Badge>
+                              )}
+                            </div>
+                          </TableCell>
                           <TableCell>{r.cliente_nome}</TableCell>
                           <TableCell className="text-right font-medium tabular-nums">
                             {formatCurrency(r.valor_recebido)}

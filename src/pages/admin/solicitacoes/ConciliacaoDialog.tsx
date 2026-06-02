@@ -9,9 +9,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 import { CurrencyInput } from "@/components/shared/CurrencyInput";
 import { Plus, Trash2, AlertTriangle, CheckCircle, Info, Store, User } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/lib/supabase";
 import { useCreatePagamentos, useAppendHistorico, useDeletePagamentosByRota, useTaxasExtrasByRotaIds } from "@/hooks/useSolicitacoes";
 import { useClienteSaldoMap, useClientes } from "@/hooks/useClientes";
 
@@ -104,10 +107,13 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
     return initial;
   });
 
+  const [pagamentoDivergente, setPagamentoDivergente] = useState(false);
+  const [observacaoDivergencia, setObservacaoDivergencia] = useState("");
+
   // Auto-fill payment lines based on rota configuration (runs when formasAtivas loads)
   const hasAutoFilledRef = useRef(false);
   useEffect(() => {
-    if (!open) { hasAutoFilledRef.current = false; return; }
+    if (!open) { hasAutoFilledRef.current = false; setPagamentoDivergente(false); setObservacaoDivergencia(""); return; }
     if (hasAutoFilledRef.current || formasAtivas.length === 0) return;
     hasAutoFilledRef.current = true;
     setPagamentosPorRota((prev) => {
@@ -303,6 +309,16 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
           return;
         }
       }
+    }
+
+    if (isDriverView && solicitacaoId && pagamentoDivergente) {
+      await supabase
+        .from("solicitacoes")
+        .update({
+          pagamento_divergente: true,
+          observacao_divergencia: observacaoDivergencia.trim() || null,
+        })
+        .eq("id", solicitacaoId);
     }
 
     onConcluir();
@@ -634,6 +650,30 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
             </div>
           )}
         </div>
+
+        {isDriverView && (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
+            <div className="flex items-center gap-3">
+              <Checkbox
+                id="pagamento-divergente"
+                checked={pagamentoDivergente}
+                onCheckedChange={(checked) => setPagamentoDivergente(checked === true)}
+              />
+              <Label htmlFor="pagamento-divergente" className="text-sm cursor-pointer">
+                Algum pagamento foi diferente do esperado?
+              </Label>
+            </div>
+            {pagamentoDivergente && (
+              <Textarea
+                placeholder='Ex: "Cliente pagou R$13 em dinheiro mas era para faturar"'
+                value={observacaoDivergencia}
+                onChange={(e) => setObservacaoDivergencia(e.target.value)}
+                className="text-sm resize-none"
+                rows={2}
+              />
+            )}
+          </div>
+        )}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>

@@ -386,3 +386,4 @@ export function useAppendHistorico() {
       qc.invalidateQueries({ queryKey: ["historico_sol", solId] }),
   });
 }
+

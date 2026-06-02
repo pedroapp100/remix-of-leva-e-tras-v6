@@ -239,6 +239,8 @@ export interface Solicitacao {
   valor_total_repasse?: number | null;
   justificativa?: string | null;
   retroativo?: boolean;
+  pagamento_divergente?: boolean;
+  observacao_divergencia?: string | null;
   historico: HistoricoEvento[];
   created_at: string;
   updated_at: string;
@@ -494,6 +496,7 @@ export interface RecebimentoDinheiro {
   cliente_nome: string;
   valor_recebido: number;
   hora: string;
+  observacao?: string | null;
 }
 
 export interface CaixaEntregador {

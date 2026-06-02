@@ -19,7 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, ClipboardList, CheckCircle, CheckCircle2, Truck, Eye, UserPlus, Play, X, Trash2, Pencil, CheckCheck, Calculator, ClipboardCheck, History, ArrowLeftRight, RotateCcw } from "lucide-react";
+import { Plus, ClipboardList, CheckCircle, CheckCircle2, Truck, Eye, UserPlus, Play, X, Trash2, Pencil, CheckCheck, Calculator, ClipboardCheck, History, ArrowLeftRight, AlertTriangle, RotateCcw } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { SimuladorOperacoes } from "@/components/shared/SimuladorOperacoes";
 import { toast } from "sonner";
@@ -638,7 +638,17 @@ export default function SolicitacoesPage() {
     },
     {
       key: "status", header: "Status",
-      cell: (r) => <StatusBadge status={r.status} label={STATUS_SOLICITACAO_LABELS[r.status]} />,
+      cell: (r) => (
+        <div className="flex flex-col gap-1">
+          <StatusBadge status={r.status} label={STATUS_SOLICITACAO_LABELS[r.status]} />
+          {r.pagamento_divergente && !r.admin_conciliada_at && (
+            <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-amber-500/50 text-amber-500 gap-1 w-fit">
+              <AlertTriangle className="h-3 w-3" />
+              Pgto. divergente
+            </Badge>
+          )}
+        </div>
+      ),
     },
     {
       key: "data_solicitacao", header: "Data", sortable: true,
@@ -820,7 +830,6 @@ export default function SolicitacoesPage() {
             solicitacao={adminConciliacaoTarget}
             onConfirm={() => {
               if (adminConciliacaoTarget) {
-                // Instant local feedback: icon flips now, DB value confirmed on next refetch
                 setSessionConciliadas((prev) => new Set(prev).add(adminConciliacaoTarget.id));
               }
               setAdminConciliacaoTarget(null);

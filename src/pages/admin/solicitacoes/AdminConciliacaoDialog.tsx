@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import type { Rota, PagamentoSolicitacao, Solicitacao } from "@/types/database";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFormasPagamento, useBairros } from "@/hooks/useSettings";
-import { useRotasBySolicitacao, usePagamentosBySolicitacao, useCreatePagamentos, useDeletePagamentosBySolicitacao, useUpdateSolicitacao, useAppendHistorico, useTaxasExtrasByRotaIds } from "@/hooks/useSolicitacoes";
+import { useRotasBySolicitacao, usePagamentosBySolicitacao, useCreatePagamentos, useDeletePagamentosBySolicitacao, useUpdateSolicitacao, useAppendHistorico, useTaxasExtrasByRotaIds, useSolicitacaoById } from "@/hooks/useSolicitacoes";
 import { useClientes } from "@/hooks/useClientes";
 import { useEntregadores } from "@/hooks/useEntregadores";
 import { useConcluirComCaixa } from "@/hooks/useConcluirComCaixa";
@@ -17,7 +17,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CurrencyInput } from "@/components/shared/CurrencyInput";
 import {
   Plus, Trash2, AlertTriangle, CheckCircle, Info,
-  Store, Building2, User, MapPin, Truck, ArrowRight, ChevronDown,
+  Store, Building2, MapPin, Truck, ArrowRight, ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -47,6 +47,10 @@ export function AdminConciliacaoDialog({
   onConfirm,
 }: AdminConciliacaoDialogProps) {
   const { user } = useAuth();
+  // Busca dados frescos para não depender do snapshot em cache da lista
+  const { data: solicitacaoFresh } = useSolicitacaoById(solicitacao.id);
+  const pagamentoDivergente = solicitacaoFresh?.pagamento_divergente ?? solicitacao.pagamento_divergente;
+  const observacaoDivergencia = solicitacaoFresh?.observacao_divergencia ?? solicitacao.observacao_divergencia;
   const { data: rotas = [] } = useRotasBySolicitacao(solicitacao.id);
   const rotaIds = useMemo(() => rotas.map((r) => r.id), [rotas]);
   const { data: taxasExtrasMap = new Map() } = useTaxasExtrasByRotaIds(rotaIds);
@@ -91,9 +95,10 @@ export function AdminConciliacaoDialog({
     return map;
   }, [driverPagamentos, rotas]);
 
-  // Controle de expansão do painel de configuração original por rota
   const [expandedRotas, setExpandedRotas] = useState<Set<string>>(new Set());
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const isConciliada = solicitacao.admin_conciliada_at != null;
 
   // Admin pagamentos state — synced from driver data when queries resolve
   const [pagamentosPorRota, setPagamentosPorRota] = useState<Record<string, PagamentoLinha[]>>({});
@@ -104,7 +109,6 @@ export function AdminConciliacaoDialog({
     hasSyncedRef.current = true;
     const initial: Record<string, PagamentoLinha[]> = {};
     rotas.forEach((r) => {
-      // Routes where the destination already received the money directly — always "loja"
       const isLojaCobrancaRoute =
         r.receber_do_cliente &&
         (r.meio_cobranca_destino === "maquina_loja" ||
@@ -120,7 +124,6 @@ export function AdminConciliacaoDialog({
           }))
         : [];
 
-      // Pre-fill the Operação row based on the route's payment configuration
       if (r.pagamento_operacao === "faturar") {
         linhas.push({
           id: crypto.randomUUID(),
@@ -203,16 +206,12 @@ export function AdminConciliacaoDialog({
   const totalFaturarCents = allPagamentos
     .filter((p) => p.forma_pagamento_id === FATURAR_ID && p.pertence_a === "operacao")
     .reduce((s, p) => s + Math.round(p.valor * 100), 0);
-  // Only faturar routes generate an expected taxa; pago_na_hora is collected in cash at destination
   const totalEsperadoTaxasCents = rotas
     .filter((r) => r.status !== "cancelada" && r.pagamento_operacao === "faturar")
     .reduce((s, r) => s + Math.round((r.taxa_resolvida ?? 0) * 100) + Math.round(getExtrasForRota(r.id) * 100), 0);
-  // For pago_na_hora routes on faturado clients the driver also collects the operation fee
   const totalEsperadoPagoNaHoraCents = rotas
     .filter((r) => r.status !== "cancelada" && r.pagamento_operacao === "pago_na_hora")
     .reduce((s, r) => s + Math.round((r.taxa_resolvida ?? 0) * 100) + Math.round(getExtrasForRota(r.id) * 100), 0);
-  // Só rotas onde o dinheiro realmente passa pela empresa geram valor esperado de loja.
-  // maquina_loja, pix_loja e dinheiro+devolver_loja → lojista já recebeu direto, empresa nunca tocou.
   const lojaRecebeuDireto = (r: Rota) =>
     r.meio_cobranca_destino === "maquina_loja" ||
     r.meio_cobranca_destino === "pix_loja" ||
@@ -225,19 +224,25 @@ export function AdminConciliacaoDialog({
   const diffOperacaoCents = totalOperacaoCents - totalEsperadoTaxasCents;
   const diffLojaCents = totalLojaCents - totalEsperadoReceberCents;
   const diffFaturarCents = totalFaturarCents - totalEsperadoTaxasCents;
-  // Faturado: faturar lines must exactly match expected taxa; pago_na_hora cash must be covered
-  // Pre-pago: all operation fees are always required
+
+  const isFaturadoNormalBalanced = totalFaturarCents === totalEsperadoTaxasCents &&
+    (totalEsperadoPagoNaHoraCents === 0 || (totalOperacaoCents - totalEsperadoPagoNaHoraCents) >= 0);
+
+  // Liberado quando há divergência sinalizada (flag ou observação) e admin corrigiu para dinheiro
+  const isFaturadoCashSubstitute = isFaturado &&
+    (pagamentoDivergente === true || !!observacaoDivergencia) &&
+    totalFaturarCents === 0 &&
+    diffOperacaoCents === 0;
+
   const isBalanced = (
     isPrePago
       ? diffOperacaoCents === 0
       : isFaturado
-        ? totalFaturarCents === totalEsperadoTaxasCents &&
-          (totalEsperadoPagoNaHoraCents === 0 || (totalOperacaoCents - totalEsperadoPagoNaHoraCents) >= 0)
+        ? (isFaturadoNormalBalanced || isFaturadoCashSubstitute)
         : diffOperacaoCents === 0
   ) && diffLojaCents === 0;
 
   const totalOperacao = totalOperacaoCents / 100;
-  const totalLoja = totalLojaCents / 100;
   const totalCreditoLoja = totalCreditoLojaCents / 100;
   const totalDevolvido = totalDevolvidoCents / 100;
   const totalFaturar = totalFaturarCents / 100;
@@ -266,7 +271,6 @@ export function AdminConciliacaoDialog({
     setIsSubmitting(true);
     try {
 
-    // Save admin-validated payments (exclude FATURAR_ID sentinel — handled by the fatura system)
     const persistedPagamentos = allPagamentos
       .filter((pag) => pag.forma_pagamento_id !== FATURAR_ID && pag.forma_pagamento_id !== DEVOLVER_LOJA_ID)
       .map((pag) => ({
@@ -286,14 +290,17 @@ export function AdminConciliacaoDialog({
       await createPagamentosMut.mutateAsync(persistedPagamentos);
     }
 
-    // Generate invoice / conclude delivery
     let faturaNumero: string | undefined;
     let faturaId: string | undefined;
     let autoFechada = false;
 
     if (solicitacao.status === "em_andamento") {
-      // em_andamento: conclude delivery + create fatura atomically via useConcluirComCaixa
-      const result = await concluirComCaixa(solicitacao.id);
+      // Para clientes faturados: skipFatura=true pois a geração da fatura
+      // é feita abaixo com base no que foi conciliado, não na config da rota
+      const result = await concluirComCaixa(
+        solicitacao.id,
+        isFaturado ? { skipFatura: true } : undefined
+      );
       if (!result.success) {
         toast.error(result.error ?? "Erro ao concluir solicitação.");
         return;
@@ -301,26 +308,23 @@ export function AdminConciliacaoDialog({
       if (result.error) {
         toast.warning(result.error);
       }
-    } else if (solicitacao.status === "concluida" && cliente?.modalidade === "faturado") {
-      // Already concluded + faturado client: call fatura RPC directly (avoid double-caixa)
-      // Inclui rotas 'faturar' e rotas 'pago_na_hora' pagas via maquina_loja —
-      // neste caso a loja ficou com a taxa de operação e deve à empresa.
-      // Resolve the UUID of the "Máquina da Loja" form (stored as UUID, not the literal "maquina_loja")
+    }
+
+    // Fatura para clientes faturados: fonte da verdade é o que o admin conciliou (totalFaturarCents),
+    // não a config original da rota. Roda para "em_andamento" recém-concluído e "concluida".
+    if (isFaturado && totalFaturarCents > 0) {
       const maquinaLojaId = formasPagamento.find(
         (f) => f.name.toLowerCase().includes("máquina") || f.name.toLowerCase().includes("maquina")
       )?.id;
-      const isFaturavelRota = (r: (typeof rotas)[0]) =>
-        r.status !== "cancelada" && (
+      const isFaturavelRota = (r: (typeof rotas)[0]) => {
+        if (r.status === "cancelada") return false;
+        return (
           r.pagamento_operacao === "faturar" ||
           (r.pagamento_operacao === "pago_na_hora" &&
             !!maquinaLojaId &&
             r.meios_pagamento_operacao?.includes(maquinaLojaId))
         );
-      const totalTaxas = rotas
-        .filter(isFaturavelRota)
-        .reduce((s, r) => s + (r.taxa_resolvida ?? 0) + getExtrasForRota(r.id), 0);
-      // Apenas rotas onde o dinheiro passou pela empresa geram credito_loja.
-      // maquina_loja, pix_loja e dinheiro+devolver_loja → lojista já recebeu direto.
+      };
       const totalRecebido = rotas
         .filter((r) => {
           if (!r.receber_do_cliente) return false;
@@ -339,7 +343,7 @@ export function AdminConciliacaoDialog({
           p_cliente_id: solicitacao.cliente_id,
           p_cliente_nome: cliente.nome,
           p_tipo_faturamento: (cliente.frequencia_faturamento as string) ?? "manual",
-          p_total_taxas: totalTaxas,
+          p_total_taxas: totalFaturarCents / 100,
           p_total_recebido: totalRecebido,
           p_sol_codigo: solicitacao.codigo,
           p_num_rotas: rotas.filter(isFaturavelRota).length,
@@ -364,9 +368,6 @@ export function AdminConciliacaoDialog({
       }
     }
 
-    // Persist admin_conciliada_at synchronously here — after all fatura mutations and
-    // before onConfirm fires — so cache invalidations from concluirFaturaMut cannot
-    // trigger a refetch that arrives before this write completes (race condition fix).
     try {
       await updateSolMut.mutateAsync({
         id: solicitacao.id,
@@ -374,7 +375,6 @@ export function AdminConciliacaoDialog({
       });
     } catch {
       // Non-fatal: fatura was created successfully.
-      // The solicitacoes cache will self-correct on the next refetch.
     }
     onConfirm();
     onOpenChange(false);
@@ -390,7 +390,7 @@ export function AdminConciliacaoDialog({
         metadata: faturaId ? { fatura_id: faturaId, fatura_numero: faturaNumero } : null,
       },
     });
-      toast.success("Conciliação conferida e fatura gerada! ✅");
+    toast.success("Conciliação conferida e fatura gerada! ✅");
     } finally {
       setIsSubmitting(false);
     }
@@ -400,9 +400,9 @@ export function AdminConciliacaoDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex flex-col p-0 gap-0 sm:max-w-3xl w-full max-h-[95dvh] sm:max-h-[90vh] overflow-hidden">
         <DialogHeader className="shrink-0 px-4 pt-4 pb-3 sm:px-6 sm:pt-6 border-b">
-          <DialogTitle className="flex items-center gap-2">
+          <DialogTitle className="flex items-center gap-2 flex-wrap">
             Conciliação Administrativa
-            <Badge variant="outline" className="text-xs">
+            <Badge variant="outline" className="text-xs font-mono">
               {solicitacao.codigo}
             </Badge>
           </DialogTitle>
@@ -410,6 +410,19 @@ export function AdminConciliacaoDialog({
         </DialogHeader>
 
         <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 sm:px-6 space-y-6">
+          {pagamentoDivergente && (
+            <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 flex gap-3">
+              <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+              <div className="space-y-1 text-sm">
+                <p className="font-medium text-amber-400">Entregador sinalizou pagamento diferente do esperado</p>
+                {observacaoDivergencia && (
+                  <p className="text-amber-300/80">{observacaoDivergencia}</p>
+                )}
+                <p className="text-amber-500/60 text-xs">Verifique os lançamentos abaixo e corrija o meio de pagamento se necessário.</p>
+              </div>
+            </div>
+          )}
+
           {/* Cabeçalho — Solicitação + Cliente + Entregador */}
           <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
@@ -452,7 +465,6 @@ export function AdminConciliacaoDialog({
               </div>
             </div>
 
-            {/* Driver report summary */}
             {driverPagamentos.length > 0 && (
               <Alert className="border-chart-3/30 bg-chart-3/5">
                 <Truck className="h-4 w-4 text-chart-3" />
@@ -474,7 +486,7 @@ export function AdminConciliacaoDialog({
               </Alert>
             )}
 
-            {isFaturado && (
+            {!isFaturado ? null : (
               <Alert className="border-primary/30 bg-primary/5">
                 <Info className="h-4 w-4 text-primary" />
                 <AlertDescription className="text-xs">
@@ -513,7 +525,6 @@ export function AdminConciliacaoDialog({
                 ? "PIX da Empresa"
                 : null;
 
-            // Per-route validation
             const pagRotaOperacaoTotal = (pagamentosPorRota[rota.id] || [])
               .filter((p) => p.pertence_a === "operacao")
               .reduce((s, p) => s + p.valor, 0);
@@ -668,7 +679,6 @@ export function AdminConciliacaoDialog({
                   </div>
                 )}
 
-                {/* What driver reported */}
                 {driverRotaPags.length > 0 && (
                   <div className="rounded-md border border-border/60 bg-muted/20 p-2.5 space-y-1">
                     <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
@@ -727,7 +737,6 @@ export function AdminConciliacaoDialog({
                           </SelectContent>
                         </Select>
                       </div>
-                      {/* Valor + Pertence a + Delete — linha em mobile, colunas em sm+ */}
                       <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-end sm:contents">
                         <div className="space-y-1">
                           <Label className="text-xs">Valor</Label>
@@ -785,7 +794,6 @@ export function AdminConciliacaoDialog({
           <div className="rounded-lg border border-border p-4 space-y-3">
             <h4 className="text-sm font-semibold">Resumo Comparativo</h4>
 
-            {/* Comparação entregador vs admin */}
             {driverPagamentos.length > 0 && (
               <div className="grid grid-cols-3 gap-3 text-sm rounded-md bg-muted/30 p-3">
                 <div className="text-center">
@@ -806,16 +814,13 @@ export function AdminConciliacaoDialog({
               </div>
             )}
 
-            {/* Breakdown */}
             <div className="space-y-1.5 text-sm">
-              {/* Header */}
               <div className="grid grid-cols-[1fr_auto_auto] gap-x-2 sm:gap-x-4 text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
                 <span />
                 <span className="text-right w-20 sm:w-24">Conferido</span>
                 <span className="text-right w-20 sm:w-24">Esperado</span>
               </div>
 
-              {/* Receita Operação */}
               <div className="grid grid-cols-[1fr_auto_auto] gap-x-2 sm:gap-x-4 items-center">
                 <span className="text-muted-foreground flex items-center gap-1.5">
                   <Building2 className="h-3.5 w-3.5 shrink-0" />
@@ -833,7 +838,6 @@ export function AdminConciliacaoDialog({
                 </div>
               )}
 
-              {/* Crédito Loja */}
               <div className="grid grid-cols-[1fr_auto_auto] gap-x-2 sm:gap-x-4 items-center">
                 <span className="text-muted-foreground flex items-center gap-1.5">
                   <Store className="h-3.5 w-3.5 shrink-0" />
@@ -875,13 +879,21 @@ export function AdminConciliacaoDialog({
           </div>
         </div>
 
-        <DialogFooter className="shrink-0 px-4 py-3 sm:px-6 border-t flex flex-col-reverse gap-2 sm:flex-row sm:gap-0">
-          <Button variant="outline" className="w-full sm:w-auto" onClick={() => onOpenChange(false)}>
+        <DialogFooter className="shrink-0 px-4 py-3 sm:px-6 border-t flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
+          <Button variant="outline" className="flex-1 sm:flex-none" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button className="w-full sm:w-auto" onClick={handleConfirm} disabled={!isBalanced || isSubmitting}>
+          <Button
+            className="w-full sm:w-auto"
+            onClick={handleConfirm}
+            disabled={!isBalanced || isSubmitting || isConciliada}
+          >
             <CheckCircle className="h-4 w-4 mr-1.5" />
-            {isSubmitting ? "Processando..." : "Conferir e Gerar Fatura"}
+            {isSubmitting
+              ? "Processando..."
+              : isConciliada
+                ? "Já conciliada"
+                : "Conferir e Gerar Fatura"}
           </Button>
         </DialogFooter>
       </DialogContent>
