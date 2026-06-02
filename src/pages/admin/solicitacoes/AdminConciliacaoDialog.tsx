@@ -1,8 +1,10 @@
 import { useState, useMemo, useEffect, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { Rota, PagamentoSolicitacao, Solicitacao } from "@/types/database";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
 import { useFormasPagamento, useBairros } from "@/hooks/useSettings";
-import { useRotasBySolicitacao, usePagamentosBySolicitacao, useCreatePagamentos, useDeletePagamentosBySolicitacao, useUpdateSolicitacao, useAppendHistorico, useTaxasExtrasByRotaIds, useSolicitacaoById } from "@/hooks/useSolicitacoes";
+import { useRotasBySolicitacao, usePagamentosBySolicitacao, useUpdateSolicitacao, useAppendHistorico, useTaxasExtrasByRotaIds, useSolicitacaoById } from "@/hooks/useSolicitacoes";
 import { useClientes } from "@/hooks/useClientes";
 import { useEntregadores } from "@/hooks/useEntregadores";
 import { useConcluirComCaixa } from "@/hooks/useConcluirComCaixa";
@@ -56,9 +58,8 @@ export function AdminConciliacaoDialog({
   const { data: taxasExtrasMap = new Map() } = useTaxasExtrasByRotaIds(rotaIds);
   const getExtrasForRota = (rotaId: string): number =>
     (taxasExtrasMap.get(rotaId) ?? []).reduce((s: number, e: { valor: number }) => s + e.valor, 0);
+  const queryClient = useQueryClient();
   const { data: driverPagamentos = [], isLoading: isLoadingPagamentos } = usePagamentosBySolicitacao(solicitacao.id);
-  const createPagamentosMut = useCreatePagamentos();
-  const deletePagamentosMut = useDeletePagamentosBySolicitacao();
   const { data: clientes = [] } = useClientes();
   const { data: entregadores = [] } = useEntregadores();
   const concluirComCaixa = useConcluirComCaixa();
@@ -286,8 +287,13 @@ export function AdminConciliacaoDialog({
       created_by: user?.id ?? null,
     }));
     if (persistedPagamentos.length > 0) {
-      await deletePagamentosMut.mutateAsync(solicitacao.id);
-      await createPagamentosMut.mutateAsync(persistedPagamentos);
+      const { error: upsertError } = await supabase.rpc('admin_upsert_pagamentos_solicitacao', {
+        p_sol_id: solicitacao.id,
+        p_pagamentos: JSON.stringify(persistedPagamentos),
+        p_usuario_id: user?.id ?? null,
+      });
+      if (upsertError) throw new Error(upsertError.message);
+      queryClient.invalidateQueries({ queryKey: ['pagamentos', solicitacao.id] });
     }
 
     let faturaNumero: string | undefined;
@@ -295,12 +301,13 @@ export function AdminConciliacaoDialog({
     let autoFechada = false;
 
     if (solicitacao.status === "em_andamento") {
-      // Para clientes faturados: skipFatura=true pois a geração da fatura
-      // é feita abaixo com base no que foi conciliado, não na config da rota
-      const result = await concluirComCaixa(
-        solicitacao.id,
-        isFaturado ? { skipFatura: true } : undefined
-      );
+      // skipFatura=true para clientes faturados: fatura gerada abaixo com base no conciliado.
+      // skipCaixa=true sempre: o trigger fn_sync_pagamento_to_caixa cuida da sincronização
+      // com o caixa via INSERT em pagamentos_solicitacao feito pela RPC acima.
+      const result = await concluirComCaixa(solicitacao.id, {
+        skipFatura: isFaturado,
+        skipCaixa: true,
+      });
       if (!result.success) {
         toast.error(result.error ?? "Erro ao concluir solicitação.");
         return;

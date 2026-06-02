@@ -1,3 +1,5 @@
+
+
 /**
  * services/clientes.ts
  * Funções puras Supabase para a entidade Cliente.

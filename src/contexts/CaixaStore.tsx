@@ -9,7 +9,7 @@ import { rowToRota } from "@/lib/mappers";
 
 interface CaixaStoreContextType {
   caixas: CaixaEntregador[];
-  abrirCaixa: (entregadorId: string, trocoInicial: number) => boolean;
+  abrirCaixa: (entregadorId: string, trocoInicial: number) => Promise<boolean>;
   fecharCaixa: (caixaId: string, valorDevolvido: number, observacoes: string) => Promise<boolean>;
   editarCaixa: (caixaId: string, trocoInicial: number, observacoes: string) => void;
   justificarDivergencia: (caixaId: string, justificativa: string) => void;
@@ -96,7 +96,7 @@ export function CaixaStoreProvider({ children }: { children: ReactNode }) {
       });
   }, [loaded]);
 
-  const abrirCaixa = useCallback((entregadorId: string, trocoInicial: number) => {
+  const abrirCaixa = useCallback(async (entregadorId: string, trocoInicial: number): Promise<boolean> => {
     const entNome = entregadoresCache[entregadorId] ?? entregadorId;
     const hoje = new Date().toISOString().split("T")[0];
 
@@ -104,11 +104,27 @@ export function CaixaStoreProvider({ children }: { children: ReactNode }) {
     const jaAberto = caixas.find(
       (c) => c.entregador_id === entregadorId && c.status === "aberto"
     );
-    if (jaAberto) {
-      return false;
-    }
+    if (jaAberto) return false;
+
+    // Aguarda o INSERT para obter o UUID real antes de atualizar o estado.
+    // Evita que addRecebimentoAutomatico use um ID temporário inválido como UUID.
+    const { data: rows, error } = await supabase.from("caixas_entregadores").insert({
+      entregador_id: entregadorId,
+      data: hoje,
+      troco_inicial: trocoInicial,
+      valor_devolvido: null,
+      diferenca: null,
+      justificativa_divergencia: null,
+      observacoes: null,
+      status: "aberto",
+      aberto_por_id: null,
+      fechado_por_id: null,
+    }).select("id");
+
+    if (error || !rows?.[0]) return false;
+
     const novo: CaixaEntregador = {
-      id: `caixa-${Date.now()}`,
+      id: rows[0].id,
       entregador_id: entregadorId,
       entregador_nome: entNome,
       data: hoje,
@@ -124,23 +140,6 @@ export function CaixaStoreProvider({ children }: { children: ReactNode }) {
       closed_at: null,
     };
     setCaixas((prev) => [novo, ...prev]);
-    supabase.from("caixas_entregadores").insert({
-      entregador_id: novo.entregador_id,
-      data: novo.data,
-      troco_inicial: novo.troco_inicial,
-      valor_devolvido: null,
-      diferenca: null,
-      justificativa_divergencia: null,
-      observacoes: null,
-      status: "aberto",
-      aberto_por_id: null,
-      fechado_por_id: null,
-    }).select("id").then(({ data: rows }) => {
-      const inserted = rows?.[0];
-      if (inserted) {
-        setCaixas((prev) => prev.map((c) => c.id === novo.id ? { ...c, id: inserted.id } : c));
-      }
-    });
     addLog({
       categoria: "financeiro",
       acao: "caixa_aberto",

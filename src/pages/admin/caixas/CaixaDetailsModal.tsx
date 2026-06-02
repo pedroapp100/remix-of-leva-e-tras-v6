@@ -228,14 +228,18 @@ const statusMap: Record<string, { label: string; variant: "default" | "secondary
   divergente: { label: "Divergente", variant: "destructive" },
 };
 
-export function CaixaDetailsModal({ open, onOpenChange, caixa }: CaixaDetailsModalProps) {
-  const { removeRecebimento, recalcularCaixa } = useCaixaStore();
+export function CaixaDetailsModal({ open, onOpenChange, caixa: caixaProp }: CaixaDetailsModalProps) {
+  const { caixas, removeRecebimento, recalcularCaixa } = useCaixaStore();
   const [recalculando, setRecalculando] = useState(false);
   const [rotasView, setRotasView] = useState<{
     solicitacaoId: string;
     solicitacaoCodigo: string;
     clienteNome: string;
   } | null>(null);
+
+  // Deriva o caixa ao vivo do store para refletir deleções e recálculos em tempo real.
+  // O prop caixaProp é apenas o identificador inicial.
+  const caixa = caixaProp ? (caixas.find((c) => c.id === caixaProp.id) ?? caixaProp) : null;
 
   if (!caixa) return null;
 

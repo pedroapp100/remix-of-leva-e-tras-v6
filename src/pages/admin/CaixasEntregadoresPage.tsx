@@ -105,8 +105,8 @@ export default function CaixasEntregadoresPage() {
   }, [filtered, activeTab]);
 
   // --- Handlers ---
-  const handleAbrirCaixa = (entregadorId: string, trocoInicial: number) => {
-    const success = abrirCaixa(entregadorId, trocoInicial);
+  const handleAbrirCaixa = async (entregadorId: string, trocoInicial: number) => {
+    const success = await abrirCaixa(entregadorId, trocoInicial);
     if (success) {
       toast.success("Caixa aberto com sucesso!");
     } else {

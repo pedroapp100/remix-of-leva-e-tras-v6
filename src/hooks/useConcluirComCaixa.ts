@@ -53,7 +53,7 @@ export function useConcluirComCaixa() {
   ), [formasPagamento]);
 
   const concluirComCaixa = useCallback(
-    async (solId: string, options?: { skipFatura?: boolean }): Promise<{ success: boolean; error?: string }> => {
+    async (solId: string, options?: { skipFatura?: boolean; skipCaixa?: boolean }): Promise<{ success: boolean; error?: string }> => {
       const sol = solicitacoes.find((s) => s.id === solId);
       if (!sol) return { success: false, error: "Solicitação não encontrada." };
 
@@ -170,7 +170,9 @@ export function useConcluirComCaixa() {
 
       // ── Auto-add cash to driver's caixa ──
       // Inclui: taxas pago_na_hora pagas em dinheiro + cobranças de loja com repassar_empresa em dinheiro
-      if (sol.entregador_id) {
+      // skipCaixa=true quando chamado por AdminConciliacaoDialog: o trigger fn_sync_pagamento_to_caixa
+      // cuida da sincronização via INSERT em pagamentos_solicitacao, evitando duplo registro.
+      if (sol.entregador_id && !options?.skipCaixa) {
         const totalDinheiro = calcTotalDinheiroNoCaixa(solRotas, dinheiroPagamentoIds);
         if (totalDinheiro > 0) {
           const clienteNome = clientes.find((c) => c.id === sol.cliente_id)?.nome ?? sol.cliente_id;
