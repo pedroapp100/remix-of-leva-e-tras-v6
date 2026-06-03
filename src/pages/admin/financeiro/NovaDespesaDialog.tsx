@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,10 +13,11 @@ import { toast } from "sonner";
 interface NovaDespesaDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSave: (despesa: Despesa) => void;
+  onSave: (despesa: Omit<Despesa, "id" | "created_at" | "updated_at">) => void;
+  despesaEditar?: Despesa | null;
 }
 
-export function NovaDespesaDialog({ open, onOpenChange, onSave }: NovaDespesaDialogProps) {
+export function NovaDespesaDialog({ open, onOpenChange, onSave, despesaEditar }: NovaDespesaDialogProps) {
   const { data: categorias = [] } = useCategorias();
   const categsDespesa = categorias.filter((c) => c.tipo === "despesa" || c.tipo === "ambos");
   const [descricao, setDescricao] = useState("");
@@ -25,6 +26,21 @@ export function NovaDespesaDialog({ open, onOpenChange, onSave }: NovaDespesaDia
   const [vencimento, setVencimento] = useState("");
   const [valor, setValor] = useState(0);
   const [observacao, setObservacao] = useState("");
+
+  const isEditing = !!despesaEditar;
+
+  useEffect(() => {
+    if (despesaEditar) {
+      setDescricao(despesaEditar.descricao);
+      setCategoriaId(despesaEditar.categoria_id ?? "");
+      setFornecedor(despesaEditar.fornecedor);
+      setVencimento(despesaEditar.vencimento);
+      setValor(despesaEditar.valor);
+      setObservacao(despesaEditar.observacao ?? "");
+    } else {
+      resetForm();
+    }
+  }, [despesaEditar, open]);
 
   const resetForm = () => {
     setDescricao("");
@@ -41,24 +57,17 @@ export function NovaDespesaDialog({ open, onOpenChange, onSave }: NovaDespesaDia
       return;
     }
 
-    const now = new Date().toISOString();
-    const newDespesa: Despesa = {
-      id: `desp-${Date.now()}`,
+    onSave({
       descricao: descricao.trim(),
       categoria_id: categoriaId,
       fornecedor: fornecedor.trim(),
       vencimento,
       valor,
-      status: "Pendente",
-      data_pagamento: null,
-      usuario_pagou_id: null,
+      status: despesaEditar?.status ?? "Pendente",
+      data_pagamento: despesaEditar?.data_pagamento ?? null,
+      usuario_pagou_id: despesaEditar?.usuario_pagou_id ?? null,
       observacao: observacao.trim() || null,
-      created_at: now,
-      updated_at: now,
-    };
-
-    onSave(newDespesa);
-    toast.success("Despesa criada com sucesso!");
+    });
     resetForm();
     onOpenChange(false);
   };
@@ -67,8 +76,8 @@ export function NovaDespesaDialog({ open, onOpenChange, onSave }: NovaDespesaDia
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Nova Despesa</DialogTitle>
-        <DialogDescription className="sr-only">.</DialogDescription>
+          <DialogTitle>{isEditing ? "Editar Despesa" : "Nova Despesa"}</DialogTitle>
+          <DialogDescription className="sr-only">.</DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 py-2">
@@ -114,7 +123,7 @@ export function NovaDespesaDialog({ open, onOpenChange, onSave }: NovaDespesaDia
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button onClick={handleSave}>Salvar</Button>
+          <Button onClick={handleSave}>{isEditing ? "Salvar alterações" : "Salvar"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

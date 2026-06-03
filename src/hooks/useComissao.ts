@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useSolicitacoesAll } from "@/hooks/useSolicitacoes";
+import { useSolicitacoesAll, useRotasWindow } from "@/hooks/useSolicitacoes";
 import { useEntregadorById, useEntregadoresAtivos } from "@/hooks/useEntregadores";
 import { useComissaoFaixas, calcularComissaoMetaClient } from "@/hooks/useComissaoFaixas";
 import type { MetaModoCalculo, ComissaoFaixa } from "@/types/database";
@@ -9,6 +9,7 @@ export interface ComissaoCalculada {
   entregador_id: string;
   nome: string;
   entregas: number;
+  solicitacoes_count: number;
   valor_gerado: number;
   tipo_comissao: "percentual" | "fixo" | "meta";
   taxa: number;
@@ -27,6 +28,7 @@ function getMesCorrenteRange(): { inicio: Date; fim: Date } {
 
 /**
  * Calculates driver commission reactively from concluded solicitations.
+ * entregas = rotas concluídas (not solicitações).
  * Filters by current month. Supports percentual, fixo, and meta types.
  */
 export function useComissao(entregadorId: string | null): ComissaoCalculada | null {
@@ -35,6 +37,7 @@ export function useComissao(entregadorId: string | null): ComissaoCalculada | nu
   const { data: faixas = [] } = useComissaoFaixas(
     entregador?.tipo_comissao === "meta" ? entregadorId : null
   );
+  const { data: todasRotas = [] } = useRotasWindow();
 
   return useMemo(() => {
     if (!entregador) return null;
@@ -50,7 +53,13 @@ export function useComissao(entregadorId: string | null): ComissaoCalculada | nu
         new Date(s.data_conclusao) < fim
     );
 
-    const entregas = concluidas.length;
+    const solIds = new Set(concluidas.map((s) => s.id));
+    const rotasConcluidas = todasRotas.filter(
+      (r) => solIds.has(r.solicitacao_id) && r.status === "concluida"
+    );
+
+    const entregas = rotasConcluidas.length;
+    const solicitacoes_count = concluidas.length;
     const valor_gerado = concluidas.reduce(
       (sum, s) => sum + (s.valor_total_taxas ?? 0),
       0
@@ -71,6 +80,7 @@ export function useComissao(entregadorId: string | null): ComissaoCalculada | nu
       entregador_id: entregadorId ?? "",
       nome: entregador.nome,
       entregas,
+      solicitacoes_count,
       valor_gerado,
       tipo_comissao: entregador.tipo_comissao,
       taxa: entregador.valor_comissao,
@@ -78,16 +88,17 @@ export function useComissao(entregadorId: string | null): ComissaoCalculada | nu
       meta_modo_calculo: entregador.meta_modo_calculo ?? null,
       faixas: entregador.tipo_comissao === "meta" ? (faixas as ComissaoFaixa[]) : undefined,
     };
-  }, [solicitacoes, entregadorId, entregador, faixas]);
+  }, [solicitacoes, todasRotas, entregadorId, entregador, faixas]);
 }
 
 /**
  * Calculates commissions for all drivers (current month only).
- * Note: meta type uses client-side faixas lookup — N+1 avoided via bulk fetch.
+ * entregas = rotas concluídas por entregador (not solicitações).
  */
 export function useAllComissoes(): ComissaoCalculada[] {
   const { data: solicitacoes = [] } = useSolicitacoesAll();
   const { data: entregadores = [] } = useEntregadoresAtivos();
+  const { data: todasRotas = [] } = useRotasWindow();
 
   return useMemo(() => {
     const { inicio, fim } = getMesCorrenteRange();
@@ -101,7 +112,14 @@ export function useAllComissoes(): ComissaoCalculada[] {
           new Date(s.data_conclusao) >= inicio &&
           new Date(s.data_conclusao) < fim
       );
-      const entregas = concluidas.length;
+
+      const solIds = new Set(concluidas.map((s) => s.id));
+      const rotasConcluidas = todasRotas.filter(
+        (r) => solIds.has(r.solicitacao_id) && r.status === "concluida"
+      );
+
+      const entregas = rotasConcluidas.length;
+      const solicitacoes_count = concluidas.length;
       const valor_gerado = concluidas.reduce(
         (sum, s) => sum + (s.valor_total_taxas ?? 0),
         0
@@ -120,6 +138,7 @@ export function useAllComissoes(): ComissaoCalculada[] {
         entregador_id: entregador.id,
         nome: entregador.nome,
         entregas,
+        solicitacoes_count,
         valor_gerado,
         tipo_comissao: entregador.tipo_comissao,
         taxa: entregador.valor_comissao,
@@ -127,5 +146,5 @@ export function useAllComissoes(): ComissaoCalculada[] {
         meta_modo_calculo: entregador.meta_modo_calculo ?? null,
       };
     });
-  }, [solicitacoes, entregadores]);
+  }, [solicitacoes, entregadores, todasRotas]);
 }
