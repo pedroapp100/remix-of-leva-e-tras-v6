@@ -172,7 +172,7 @@ export default function EntregadorSolicitacoesPage() {
           <ActionButton tooltip="Iniciar corrida" icon={Play} onClick={() => handleStart(sol)} variant="success" />
         )}
         {sol.status === "em_andamento" && (
-          <ActionButton tooltip="Concluir & Conciliar" icon={CheckCheck} onClick={() => setViewSolicitacao(sol)} variant="success" />
+          <ActionButton tooltip="Concluir Corrida" icon={CheckCheck} onClick={(e) => { e.stopPropagation(); handleConcluir(sol); }} variant="success" />
         )}
       </div>
     </TooltipProvider>
@@ -300,10 +300,6 @@ export default function EntregadorSolicitacoesPage() {
           solicitacao={viewSolicitacao}
           onClose={() => setViewSolicitacao(null)}
           isDriverView
-          onConcluir={viewSolicitacao ? () => {
-            handleConcluir(viewSolicitacao);
-            setViewSolicitacao(null);
-          } : undefined}
         />
       </Suspense>
     </PageContainer>

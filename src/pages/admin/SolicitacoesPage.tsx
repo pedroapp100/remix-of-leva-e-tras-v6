@@ -7,7 +7,7 @@ import type { Column } from "@/components/shared/DataTable";
 import type { Solicitacao, StatusSolicitacao, Rota } from "@/types/database";
 import { STATUS_SOLICITACAO_LABELS } from "@/types/database";
 import { TipoOperacaoBadge } from "@/components/shared/TipoOperacaoBadge";
-import { useSolicitacoes, useSolicitacoesPageable, useUpdateSolicitacao, useCreateSolicitacaoWithRotas, useRotasBySolicitacaoIds, useAppendHistorico, useTaxasExtrasByRotaIds, useCreateRota, useUpdateRota } from "@/hooks/useSolicitacoes";
+import { useSolicitacoes, useSolicitacoesPageable, useUpdateSolicitacao, useCreateSolicitacaoWithRotas, useRotasBySolicitacaoIds, useAppendHistorico, useTaxasExtrasByRotaIds, useCreateRota, useUpdateRota, useReabrirSolicitacao } from "@/hooks/useSolicitacoes";
 import { useClientes } from "@/hooks/useClientes";
 import { useEntregadores } from "@/hooks/useEntregadores";
 import { useConcluirComCaixa } from "@/hooks/useConcluirComCaixa";
@@ -166,8 +166,10 @@ export default function SolicitacoesPage() {
   const [liberarTarget, setLiberarTarget] = useState<Solicitacao | null>(null);
   const [simuladorOpen, setSimuladorOpen] = useState(false);
   const [adminConciliacaoTarget, setAdminConciliacaoTarget] = useState<Solicitacao | null>(null);
+  const [reabrirTarget, setReabrirTarget] = useState<Solicitacao | null>(null);
   // Session-local set for instant icon feedback before server refetch completes
   const [sessionConciliadas, setSessionConciliadas] = useState<Set<string>>(new Set());
+  const reabrirMut = useReabrirSolicitacao();
 
   // useSolicitacoes (90-day windowed cache) is used only for metrics, tab counts, and code generation.
   // The table itself is powered by useSolicitacoesPageable (server-side paginated).
@@ -331,25 +333,23 @@ export default function SolicitacoesPage() {
         },
       });
 
-      if (!isEmAndamento) {
-        for (const rota of data.rotas.filter(r => r.rotaDbId)) {
-          await updateRotaMut.mutateAsync({
-            id: rota.rotaDbId!,
-            patch: {
-              bairro_destino_id: rota.bairro_destino_id,
-              responsavel: rota.responsavel,
-              telefone: rota.telefone,
-              observacoes: rota.observacoes || null,
-              receber_do_cliente: rota.receber_do_cliente,
-              valor_a_receber: rota.valor_a_receber || null,
-              taxa_resolvida: rota.taxa_resolvida,
-              pagamento_operacao: rota.pagamento_operacao,
-              meios_pagamento_operacao: rota.meios_pagamento_operacao,
-              meio_cobranca_destino: rota.meio_cobranca_destino || null,
-              destino_dinheiro: rota.destino_dinheiro || null,
-            },
-          });
-        }
+      for (const rota of data.rotas.filter(r => r.rotaDbId)) {
+        await updateRotaMut.mutateAsync({
+          id: rota.rotaDbId!,
+          patch: {
+            bairro_destino_id: rota.bairro_destino_id,
+            responsavel: rota.responsavel,
+            telefone: rota.telefone,
+            observacoes: rota.observacoes || null,
+            receber_do_cliente: rota.receber_do_cliente,
+            valor_a_receber: rota.valor_a_receber || null,
+            taxa_resolvida: rota.taxa_resolvida,
+            pagamento_operacao: rota.pagamento_operacao,
+            meios_pagamento_operacao: rota.meios_pagamento_operacao,
+            meio_cobranca_destino: rota.meio_cobranca_destino || null,
+            destino_dinheiro: rota.destino_dinheiro || null,
+          },
+        });
       }
 
       for (const rota of data.rotas.filter(r => !r.rotaDbId)) {
@@ -509,6 +509,25 @@ export default function SolicitacoesPage() {
     setTransferMotivo("");
   };
 
+  const handleReabrir = async (motivo: string) => {
+    if (!reabrirTarget) return;
+    const sol = reabrirTarget;
+    try {
+      await reabrirMut.mutateAsync(sol.id);
+      appendHistoricoMut.mutate({
+        solId: sol.id,
+        tipo: "edicao",
+        descricao: `Solicitação reaberta — ${motivo}`,
+        extra: { usuario_id: user?.id ?? null, status_anterior: "concluida", status_novo: "em_andamento" },
+      });
+      toast.success("Solicitação reaberta com sucesso.");
+    } catch {
+      toast.error("Erro ao reabrir a solicitação.");
+    } finally {
+      setReabrirTarget(null);
+    }
+  };
+
   const ActionButton = ({ tooltip, icon: Icon, onClick, variant = "default", disabled = false }: { tooltip: string; icon: React.ElementType; onClick: (e: React.MouseEvent) => void; variant?: "default" | "destructive" | "success" | "info" | "warning"; disabled?: boolean }) => {
     const variantStyles: Record<string, string> = {
       default: "text-foreground hover:bg-accent",
@@ -587,6 +606,7 @@ export default function SolicitacoesPage() {
               );
             })()}
             <ActionButton tooltip="Editar conciliação" icon={Pencil} onClick={() => setConciliacaoTarget(sol)} variant="info" />
+            <ActionButton tooltip="Reabrir entrega" icon={RotateCcw} onClick={() => setReabrirTarget(sol)} variant="warning" />
           </PermissionGuard>
         )}
         {["pendente", "aceita", "em_andamento"].includes(sol.status) && (
@@ -639,14 +659,8 @@ export default function SolicitacoesPage() {
     {
       key: "status", header: "Status",
       cell: (r) => (
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1 items-start">
           <StatusBadge status={r.status} label={STATUS_SOLICITACAO_LABELS[r.status]} />
-          {r.pagamento_divergente && !r.admin_conciliada_at && (
-            <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-amber-500/50 text-amber-500 gap-1 w-fit">
-              <AlertTriangle className="h-3 w-3" />
-              Pgto. divergente
-            </Badge>
-          )}
         </div>
       ),
     },
@@ -820,7 +834,6 @@ export default function SolicitacoesPage() {
             onConcluir={() => { handleConcluir(conciliacaoTarget); setConciliacaoTarget(null); }}
             isEditing={conciliacaoTarget.status === "concluida"}
             isConcluding={conciliacaoTarget.status === "em_andamento"}
-            isDriverView={conciliacaoTarget.status === "em_andamento"}
           />
         )}
         {adminConciliacaoTarget && (
@@ -861,6 +874,13 @@ export default function SolicitacoesPage() {
         title="Liberar para Pendente"
         description="Informe o motivo (ex: pneu furado, problema mecânico). Mínimo 10 caracteres."
         onConfirm={handleLiberarParaPendente}
+      />
+      <JustificationDialog
+        open={!!reabrirTarget}
+        onOpenChange={(open) => { if (!open) setReabrirTarget(null); }}
+        title="Reabrir Entrega"
+        description="Todos os pagamentos registrados serão apagados e a entrega voltará para Em Andamento. Informe o motivo (mínimo 10 caracteres)."
+        onConfirm={handleReabrir}
       />
       <Dialog open={simuladorOpen} onOpenChange={setSimuladorOpen}>
         <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-4xl max-h-[90vh] overflow-y-auto">

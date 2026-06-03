@@ -1,10 +1,10 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import type { Rota, PagamentoSolicitacao, Solicitacao } from "@/types/database";
+import type { Rota, Solicitacao } from "@/types/database";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { useFormasPagamento, useBairros } from "@/hooks/useSettings";
-import { useRotasBySolicitacao, usePagamentosBySolicitacao, useUpdateSolicitacao, useAppendHistorico, useTaxasExtrasByRotaIds, useSolicitacaoById } from "@/hooks/useSolicitacoes";
+import { useRotasBySolicitacao, useUpdateSolicitacao, useAppendHistorico, useTaxasExtrasByRotaIds } from "@/hooks/useSolicitacoes";
 import { useClientes } from "@/hooks/useClientes";
 import { useEntregadores } from "@/hooks/useEntregadores";
 import { useConcluirComCaixa } from "@/hooks/useConcluirComCaixa";
@@ -19,7 +19,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CurrencyInput } from "@/components/shared/CurrencyInput";
 import {
   Plus, Trash2, AlertTriangle, CheckCircle, Info,
-  Store, Building2, MapPin, Truck, ArrowRight, ChevronDown,
+  Store, Building2, MapPin, ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -49,17 +49,12 @@ export function AdminConciliacaoDialog({
   onConfirm,
 }: AdminConciliacaoDialogProps) {
   const { user } = useAuth();
-  // Busca dados frescos para não depender do snapshot em cache da lista
-  const { data: solicitacaoFresh } = useSolicitacaoById(solicitacao.id);
-  const pagamentoDivergente = solicitacaoFresh?.pagamento_divergente ?? solicitacao.pagamento_divergente;
-  const observacaoDivergencia = solicitacaoFresh?.observacao_divergencia ?? solicitacao.observacao_divergencia;
   const { data: rotas = [] } = useRotasBySolicitacao(solicitacao.id);
   const rotaIds = useMemo(() => rotas.map((r) => r.id), [rotas]);
   const { data: taxasExtrasMap = new Map() } = useTaxasExtrasByRotaIds(rotaIds);
   const getExtrasForRota = (rotaId: string): number =>
     (taxasExtrasMap.get(rotaId) ?? []).reduce((s: number, e: { valor: number }) => s + e.valor, 0);
   const queryClient = useQueryClient();
-  const { data: driverPagamentos = [], isLoading: isLoadingPagamentos } = usePagamentosBySolicitacao(solicitacao.id);
   const { data: clientes = [] } = useClientes();
   const { data: entregadores = [] } = useEntregadores();
   const concluirComCaixa = useConcluirComCaixa();
@@ -80,51 +75,20 @@ export function AdminConciliacaoDialog({
   const isFaturado = cliente?.modalidade === "faturado";
   const isPrePago = cliente?.modalidade === "pre_pago";
 
-  // Driver totals
-  const driverTotal = useMemo(
-    () => driverPagamentos.reduce((s, p) => s + p.valor, 0),
-    [driverPagamentos]
-  );
-
-  // Group driver payments by rota
-  const driverByRota = useMemo(() => {
-    const map: Record<string, PagamentoSolicitacao[]> = {};
-    rotas.forEach((r) => { map[r.id] = []; });
-    driverPagamentos.forEach((p) => {
-      if (map[p.rota_id]) map[p.rota_id].push(p);
-    });
-    return map;
-  }, [driverPagamentos, rotas]);
-
   const [expandedRotas, setExpandedRotas] = useState<Set<string>>(new Set());
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const isConciliada = solicitacao.admin_conciliada_at != null;
 
-  // Admin pagamentos state — synced from driver data when queries resolve
   const [pagamentosPorRota, setPagamentosPorRota] = useState<Record<string, PagamentoLinha[]>>({});
   const hasSyncedRef = useRef(false);
 
   useEffect(() => {
-    if (hasSyncedRef.current || rotas.length === 0 || isLoadingPagamentos) return;
+    if (hasSyncedRef.current || rotas.length === 0) return;
     hasSyncedRef.current = true;
     const initial: Record<string, PagamentoLinha[]> = {};
     rotas.forEach((r) => {
-      const isLojaCobrancaRoute =
-        r.receber_do_cliente &&
-        (r.meio_cobranca_destino === "maquina_loja" ||
-          r.meio_cobranca_destino === "pix_loja" ||
-          (r.meio_cobranca_destino === "dinheiro" && r.destino_dinheiro === "devolver_loja"));
-      const driverPags = driverByRota[r.id] || [];
-      const linhas: PagamentoLinha[] = driverPags.length > 0
-        ? driverPags.map((dp) => ({
-            id: `admin-${dp.id}`,
-            forma_pagamento_id: dp.forma_pagamento_id,
-            valor: dp.valor,
-            pertence_a: isLojaCobrancaRoute ? "loja" : (dp.pertence_a ?? "operacao"),
-          }))
-        : [];
-
+      const linhas: PagamentoLinha[] = [];
       if (r.pagamento_operacao === "faturar") {
         linhas.push({
           id: crypto.randomUUID(),
@@ -141,11 +105,10 @@ export function AdminConciliacaoDialog({
           pertence_a: "operacao",
         });
       }
-
       initial[r.id] = linhas;
     });
     setPagamentosPorRota(initial);
-  }, [rotas, driverByRota, isLoadingPagamentos, formasAtivas]);
+  }, [rotas, formasAtivas]);
 
   const addPagamento = (rotaId: string) => {
     setPagamentosPorRota((prev) => ({
@@ -229,17 +192,11 @@ export function AdminConciliacaoDialog({
   const isFaturadoNormalBalanced = totalFaturarCents === totalEsperadoTaxasCents &&
     (totalEsperadoPagoNaHoraCents === 0 || (totalOperacaoCents - totalEsperadoPagoNaHoraCents) >= 0);
 
-  // Liberado quando há divergência sinalizada (flag ou observação) e admin corrigiu para dinheiro
-  const isFaturadoCashSubstitute = isFaturado &&
-    (pagamentoDivergente === true || !!observacaoDivergencia) &&
-    totalFaturarCents === 0 &&
-    diffOperacaoCents === 0;
-
   const isBalanced = (
     isPrePago
       ? diffOperacaoCents === 0
       : isFaturado
-        ? (isFaturadoNormalBalanced || isFaturadoCashSubstitute)
+        ? isFaturadoNormalBalanced
         : diffOperacaoCents === 0
   ) && diffLojaCents === 0;
 
@@ -253,7 +210,6 @@ export function AdminConciliacaoDialog({
   const diffOperacao = diffOperacaoCents / 100;
   const diffLoja = diffLojaCents / 100;
   const diffFaturar = diffFaturarCents / 100;
-  const totalAdmin = (totalOperacaoCents + totalLojaCents) / 100;
 
   const handleConfirm = async () => {
     if (isSubmitting) return;
@@ -417,19 +373,6 @@ export function AdminConciliacaoDialog({
         </DialogHeader>
 
         <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 sm:px-6 space-y-6">
-          {pagamentoDivergente && (
-            <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 flex gap-3">
-              <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
-              <div className="space-y-1 text-sm">
-                <p className="font-medium text-amber-400">Entregador sinalizou pagamento diferente do esperado</p>
-                {observacaoDivergencia && (
-                  <p className="text-amber-300/80">{observacaoDivergencia}</p>
-                )}
-                <p className="text-amber-500/60 text-xs">Verifique os lançamentos abaixo e corrija o meio de pagamento se necessário.</p>
-              </div>
-            </div>
-          )}
-
           {/* Cabeçalho — Solicitação + Cliente + Entregador */}
           <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
@@ -451,8 +394,7 @@ export function AdminConciliacaoDialog({
               </div>
               <div>
                 <span className="text-muted-foreground text-xs">Entregador</span>
-                <p className="font-medium flex items-center gap-1.5">
-                  <Truck className="h-3.5 w-3.5 text-muted-foreground" />
+                <p className="font-medium">
                   {entregadores.find((e) => e.id === solicitacao.entregador_id)?.nome ?? solicitacao.entregador_id}
                 </p>
               </div>
@@ -472,27 +414,6 @@ export function AdminConciliacaoDialog({
               </div>
             </div>
 
-            {driverPagamentos.length > 0 && (
-              <Alert className="border-chart-3/30 bg-chart-3/5">
-                <Truck className="h-4 w-4 text-chart-3" />
-                <AlertDescription className="text-xs">
-                  O entregador registrou <strong>{driverPagamentos.length} recebimento(s)</strong>{" "}
-                  totalizando <strong>{fmt(driverTotal)}</strong>. Confira e classifique abaixo como{" "}
-                  <em>Operação</em> ou <em>Loja</em>.
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {!isLoadingPagamentos && driverPagamentos.length === 0 && (
-              <Alert className="border-amber-500/30 bg-amber-500/5">
-                <AlertTriangle className="h-4 w-4 text-amber-500" />
-                <AlertDescription className="text-xs">
-                  O entregador <strong>ainda não registrou</strong> recebimentos para esta solicitação.
-                  Cadastre manualmente os pagamentos abaixo.
-                </AlertDescription>
-              </Alert>
-            )}
-
             {!isFaturado ? null : (
               <Alert className="border-primary/30 bg-primary/5">
                 <Info className="h-4 w-4 text-primary" />
@@ -506,8 +427,6 @@ export function AdminConciliacaoDialog({
 
           {/* Rotas com pagamentos */}
           {rotas.map((rota, i) => {
-            const driverRotaPags = driverByRota[rota.id] || [];
-            const driverRotaTotal = driverRotaPags.reduce((s, p) => s + p.valor, 0);
             const isExpanded = expandedRotas.has(rota.id);
 
             const taxaLabel =
@@ -686,33 +605,6 @@ export function AdminConciliacaoDialog({
                   </div>
                 )}
 
-                {driverRotaPags.length > 0 && (
-                  <div className="rounded-md border border-border/60 bg-muted/20 p-2.5 space-y-1">
-                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
-                      Registrado pelo entregador
-                    </span>
-                    <div className="flex flex-wrap gap-2">
-                      {driverRotaPags.map((dp) => {
-                        const forma = formasPagamento.find(
-                          (f) => f.id === dp.forma_pagamento_id
-                        );
-                        return (
-                          <Badge
-                            key={dp.id}
-                            variant="secondary"
-                            className="text-xs tabular-nums"
-                          >
-                            {forma?.name ?? dp.forma_pagamento_id}: {fmt(dp.valor)}
-                          </Badge>
-                        );
-                      })}
-                      <Badge variant="outline" className="text-xs tabular-nums font-semibold">
-                        Total: {fmt(driverRotaTotal)}
-                      </Badge>
-                    </div>
-                  </div>
-                )}
-
                 {/* Admin payment rows */}
                 <div className="space-y-3">
                   {(pagamentosPorRota[rota.id] || []).map((pag) => (
@@ -797,29 +689,9 @@ export function AdminConciliacaoDialog({
             );
           })}
 
-          {/* Resumo Comparativo */}
+          {/* Resumo */}
           <div className="rounded-lg border border-border p-4 space-y-3">
-            <h4 className="text-sm font-semibold">Resumo Comparativo</h4>
-
-            {driverPagamentos.length > 0 && (
-              <div className="grid grid-cols-3 gap-3 text-sm rounded-md bg-muted/30 p-3">
-                <div className="text-center">
-                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground block mb-1">
-                    Entregador
-                  </span>
-                  <span className="tabular-nums font-semibold">{fmt(driverTotal)}</span>
-                </div>
-                <div className="flex items-center justify-center">
-                  <ArrowRight className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <div className="text-center">
-                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground block mb-1">
-                    ADM Conferido
-                  </span>
-                  <span className="tabular-nums font-semibold">{fmt(totalAdmin)}</span>
-                </div>
-              </div>
-            )}
+            <h4 className="text-sm font-semibold">Resumo</h4>
 
             <div className="space-y-1.5 text-sm">
               <div className="grid grid-cols-[1fr_auto_auto] gap-x-2 sm:gap-x-4 text-[10px] uppercase tracking-wider text-muted-foreground mb-1">

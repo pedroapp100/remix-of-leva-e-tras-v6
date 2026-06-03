@@ -327,6 +327,24 @@ export async function bulkUpdateRotasStatus(
   if (error) throw new Error(error.message);
 }
 
+export async function bulkReativarRotas(solicitacaoId: string): Promise<void> {
+  const { error } = await supabase
+    .from("rotas")
+    .update({ status: "ativa" })
+    .eq("solicitacao_id", solicitacaoId)
+    .eq("status", "concluida");
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteRecebimentosByRotaIds(rotaIds: string[]): Promise<void> {
+  if (rotaIds.length === 0) return;
+  const { error } = await supabase
+    .from("recebimentos_caixa")
+    .delete()
+    .in("rota_id", rotaIds);
+  if (error) throw new Error(error.message);
+}
+
 // ── Pagamentos ────────────────────────────────────────────────────────────────
 
 export async function fetchAllPagamentos(): Promise<PagamentoRow[]> {
@@ -357,19 +375,19 @@ export async function createPagamentos(
   return data as PagamentoRow[];
 }
 
-export async function deletePagamentosBySolicitacao(solId: string): Promise<void> {
-  const { error } = await supabase
-    .from("pagamentos_solicitacao")
-    .delete()
-    .eq("solicitacao_id", solId);
-  if (error) throw new Error(error.message);
-}
-
 export async function deletePagamentosByRota(rotaId: string): Promise<void> {
   const { error } = await supabase
     .from("pagamentos_solicitacao")
     .delete()
     .eq("rota_id", rotaId);
+  if (error) throw new Error(error.message);
+}
+
+export async function deletePagamentosBySolicitacao(solId: string): Promise<void> {
+  const { error } = await supabase
+    .from("pagamentos_solicitacao")
+    .delete()
+    .eq("solicitacao_id", solId);
   if (error) throw new Error(error.message);
 }
 

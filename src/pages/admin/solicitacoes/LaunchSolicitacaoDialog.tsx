@@ -652,7 +652,6 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit, initialD
 
               {rotas.map((rota, i) => {
                 const clienteSel = clientesAtivos.find((c) => c.id === clienteId);
-                const isRotaReadonly = !!initialData && initialData.sol.status === "em_andamento" && !!rota.rotaDbId;
                 return (
                   <RotaCard
                     key={rota.id}
@@ -660,7 +659,7 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit, initialD
                     index={i}
                     canRemove={rotas.length > 1}
                     clienteModalidade={clienteSel?.modalidade ?? "faturado"}
-                    isReadonly={isRotaReadonly}
+                    isReadonly={false}
                     onUpdate={updateRota}
                     onRemove={removeRota}
                     onAddTaxaExtra={addTaxaExtra}

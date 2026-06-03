@@ -21,6 +21,8 @@ import {
   createRotas,
   updateRota,
   bulkUpdateRotasStatus,
+  bulkReativarRotas,
+  deleteRecebimentosByRotaIds,
   fetchPagamentosBySolicitacao,
   fetchAllPagamentos,
   createPagamentos,
@@ -102,11 +104,11 @@ export function useSolicitacoesByEntregador(entregadorId: string) {
   const qc = useQueryClient();
   const queryKey = ["solicitacoes", "entregador", entregadorId];
 
-  // ── Realtime subscription ─────────────────────────────────────────────────
+  // ── Realtime subscriptions ────────────────────────────────────────────────
   useEffect(() => {
     if (!entregadorId) return;
 
-    const channel = supabase
+    const solicitacoesChannel = supabase
       .channel(`solicitacoes-entregador-${entregadorId}`)
       .on(
         "postgres_changes",
@@ -118,11 +120,30 @@ export function useSolicitacoesByEntregador(entregadorId: string) {
         },
         () => {
           void qc.invalidateQueries({ queryKey });
+          void qc.invalidateQueries({ queryKey: ["rotas"] });
         },
       )
       .subscribe();
 
-    return () => { void supabase.removeChannel(channel); };
+    const rotasChannel = supabase
+      .channel(`rotas-entregador-${entregadorId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "rotas",
+        },
+        () => {
+          void qc.invalidateQueries({ queryKey: ["rotas"] });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(solicitacoesChannel);
+      void supabase.removeChannel(rotasChannel);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entregadorId]);
 
@@ -307,6 +328,36 @@ export function useUpdateRotasBulk() {
   });
 }
 
+export function useReabrirSolicitacao() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (solicitacaoId: string) => {
+      const rotas = await fetchRotasBySolicitacao(solicitacaoId);
+      const rotaIds = rotas.map((r) => r.id);
+
+      await Promise.all([
+        deleteRecebimentosByRotaIds(rotaIds),
+        deletePagamentosBySolicitacao(solicitacaoId),
+      ]);
+
+      await bulkReativarRotas(solicitacaoId);
+
+      await updateSolicitacao(solicitacaoId, {
+        status: "em_andamento",
+        data_conclusao: null,
+        admin_conciliada_at: null,
+      });
+    },
+    onSuccess: (_, solicitacaoId) => {
+      qc.invalidateQueries({ queryKey: ["solicitacoes"] });
+      qc.invalidateQueries({ queryKey: ["rotas", solicitacaoId] });
+      qc.invalidateQueries({ queryKey: ["rotas", "by-ids"] });
+      qc.invalidateQueries({ queryKey: ["rotas", "windowed"] });
+      qc.invalidateQueries({ queryKey: ["pagamentos", solicitacaoId] });
+    },
+  });
+}
+
 // ── Pagamentos ────────────────────────────────────────────────────────────────
 
 export function useAllPagamentos() {
@@ -332,19 +383,9 @@ export function useCreatePagamentos() {
     mutationFn: (pagamentos: PagamentoInsert[]) => createPagamentos(pagamentos),
     onSuccess: (data) => {
       if (data.length > 0) {
-        qc.invalidateQueries({
-          queryKey: ["pagamentos", data[0].solicitacao_id],
-        });
+        qc.invalidateQueries({ queryKey: ["pagamentos", data[0].solicitacao_id] });
       }
     },
-  });
-}
-
-export function useDeletePagamentosBySolicitacao() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (solId: string) => deletePagamentosBySolicitacao(solId),
-    onSuccess: (_, solId) => qc.invalidateQueries({ queryKey: ["pagamentos", solId] }),
   });
 }
 
@@ -355,6 +396,14 @@ export function useDeletePagamentosByRota() {
       deletePagamentosByRota(rotaId),
     onSuccess: (_data, { solicitacaoId }) =>
       qc.invalidateQueries({ queryKey: ["pagamentos", solicitacaoId] }),
+  });
+}
+
+export function useDeletePagamentosBySolicitacao() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (solId: string) => deletePagamentosBySolicitacao(solId),
+    onSuccess: (_, solId) => qc.invalidateQueries({ queryKey: ["pagamentos", solId] }),
   });
 }
 

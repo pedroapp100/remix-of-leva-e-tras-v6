@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, lazy, Suspense } from "react";
+import { useMemo, useState, useCallback } from "react";
 import type { Solicitacao, Rota, PagamentoSolicitacao } from "@/types/database";
 import { STATUS_SOLICITACAO_LABELS } from "@/types/database";
 import { TipoOperacaoBadge } from "@/components/shared/TipoOperacaoBadge";
@@ -12,13 +12,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { MapPin, Phone, User, Clock, DollarSign, MessageCircle, Store, Building2, Plus, Truck, CheckCircle, Receipt, X, XCircle, ArrowRight, Coins, CheckCircle2, CheckCheck, ChevronDown } from "lucide-react";
+import { MapPin, Phone, User, Clock, DollarSign, MessageCircle, Store, Building2, Plus, Truck, CheckCircle, Receipt, X, XCircle, ArrowRight, CheckCircle2, ChevronDown } from "lucide-react";
 
 const FATURAR_ID = "__faturar__";
-
-const ConciliacaoDialogLazy = lazy(() =>
-  import("@/pages/admin/solicitacoes/ConciliacaoDialog").then((m) => ({ default: m.ConciliacaoDialog }))
-);
 
 const HISTORICO_TIPO_CONFIG: Record<string, { icon: React.ElementType; color: string }> = {
   criacao:          { icon: Plus,         color: "text-emerald-500" },
@@ -44,7 +40,6 @@ interface ViewSolicitacaoDialogProps {
   solicitacao: Solicitacao | null;
   onClose: () => void;
   isDriverView?: boolean;
-  onConcluir?: () => void;
 }
 
 const fmt = (v: number | null | undefined) => v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
@@ -264,7 +259,7 @@ function RotaConciliationCard({ rota, taxasExtras, pagamentos, isFaturado, getBa
 
 /* ── Main Dialog ── */
 
-export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = false, onConcluir }: ViewSolicitacaoDialogProps) {
+export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = false }: ViewSolicitacaoDialogProps) {
   const { data: rotas = [] } = useRotasBySolicitacao(solicitacao?.id ?? "");
   const { data: allPagamentos = [] } = usePagamentosBySolicitacao(solicitacao?.id ?? "");
   const { data: historicoRows = [] } = useHistoricoBySolicitacao(solicitacao?.id ?? "");
@@ -324,17 +319,6 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
     return { totalTaxas, totalLoja, totalColetadoParaRepassar, totalEntregadorRecebe };
   }, [rotas, isFaturado, isPrePago, taxasExtrasMap]);
 
-  // Per-rota registration state (driver view) — merged: BD real data + local session
-  const rotasComPagamentoBD = useMemo(
-    () => new Set(allPagamentos.map((p) => p.rota_id).filter((id): id is string => !!id)),
-    [allPagamentos]
-  );
-  const [rotasRegistradasLocal, setRotasRegistradasLocal] = useState<Set<string>>(new Set());
-  const rotasRegistradas = useMemo(
-    () => new Set([...rotasComPagamentoBD, ...rotasRegistradasLocal]),
-    [rotasComPagamentoBD, rotasRegistradasLocal]
-  );
-  const [rotaSelecionada, setRotaSelecionada] = useState<Rota | null>(null);
   const [expandedRotas, setExpandedRotas] = useState<Set<string>>(new Set());
   const [adminExpandedRotas, setAdminExpandedRotas] = useState<Set<string>>(new Set());
   const [rotasFaturadaVisitadas, setRotasFaturadaVisitadas] = useState<Set<string>>(new Set());
@@ -359,19 +343,8 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
       return next;
     });
   }, []);
-  const marcarRotaRegistrada = useCallback((rotaId: string) => {
-    setRotasRegistradasLocal((prev) => new Set([...prev, rotaId]));
-    setExpandedRotas((prev) => { const next = new Set(prev); next.delete(rotaId); return next; });
-  }, []);
 
   if (!solicitacao) return null;
-
-  const rotasObrigatorias = rotas.filter(
-    (r) => r.pagamento_operacao === "pago_na_hora" || r.receber_do_cliente
-  );
-  const qtdRegistradas = rotasObrigatorias.filter((r) => rotasRegistradas.has(r.id)).length;
-  const todasRegistradas = rotasObrigatorias.length === 0 || qtdRegistradas === rotasObrigatorias.length;
-  const rotasFaltando = rotasObrigatorias.filter((r) => !rotasRegistradas.has(r.id));
 
   return (
     <>
@@ -483,9 +456,8 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
               {rotas.map((rota, i) => {
                 const temCobranca = rota.pagamento_operacao !== "faturar" || rota.receber_do_cliente;
                 const isFaturadaSemCobrar = isDriverView && !temCobranca;
-                const isRegistrada = isDriverView && temCobranca && rotasRegistradas.has(rota.id);
                 const isMarcadaConcluida = isFaturadaSemCobrar && rotasFaturadaVisitadas.has(rota.id);
-                const isVerde = isRegistrada || isMarcadaConcluida;
+                const isVerde = isMarcadaConcluida;
                 const isExpandable = temCobranca || isMarcadaConcluida;
                 const isExpanded = isDriverView
                   ? (!isVerde || expandedRotas.has(rota.id))
@@ -516,11 +488,6 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                           <CheckCircle2 className="h-3 w-3" /> Concluída
                         </span>
                       )}
-                      {isRegistrada && (
-                        <span className="inline-flex items-center gap-1 shrink-0 text-[10px] font-semibold text-emerald-500 bg-emerald-500/10 border border-emerald-500/25 rounded-full px-2 py-0.5">
-                          <CheckCircle2 className="h-3 w-3" /> Recebido
-                        </span>
-                      )}
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       {/* Botão marcar faturada como entregue */}
@@ -542,27 +509,6 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                           </TooltipTrigger>
                           <TooltipContent side="top">
                             {isMarcadaConcluida ? "Entregue" : "Marcar como entregue"}
-                          </TooltipContent>
-                        </Tooltip>
-                      )}
-                      {/* Ícone de conciliação */}
-                      {isDriverView && isEmAndamento && temCobranca && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); setRotaSelecionada(rota); }}
-                              className={`inline-flex items-center justify-center rounded-full h-6 w-6 transition-colors ${
-                                isRegistrada
-                                  ? "text-emerald-500 hover:bg-emerald-500/10"
-                                  : "text-amber-500 hover:bg-amber-500/10 animate-pulse"
-                              }`}
-                            >
-                              <Coins className="h-3.5 w-3.5" />
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent side="top">
-                            {isRegistrada ? "Visualizar / Corrigir recebimento" : "Registrar recebimento"}
                           </TooltipContent>
                         </Tooltip>
                       )}
@@ -696,47 +642,6 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                       getFormaPagamentoName={getFormaPagamentoName}
                     />
                   )}
-                  {isConcluida && isDriverView && (rota.receber_do_cliente || rota.pagamento_operacao === "pago_na_hora") && (
-                    <div className="rounded-md border border-border bg-muted/30 p-3 space-y-1.5">
-                      <span className="flex items-center gap-1.5 font-medium text-xs uppercase tracking-wide">
-                        <Store className="h-3.5 w-3.5 text-status-pending" />
-                        {rota.pagamento_operacao === "pago_na_hora" ? "Cobrado no Destino" : "Cobrado do Cliente"}
-                      </span>
-                      <div className="flex items-center justify-between text-sm font-semibold">
-                        <span className="text-muted-foreground">
-                          {rota.pagamento_operacao === "pago_na_hora" ? "Total cobrado" : "Valor cobrado"}
-                        </span>
-                        <span className="tabular-nums">
-                          {fmt(
-                            rota.pagamento_operacao === "pago_na_hora"
-                              ? (rota.taxa_resolvida ?? 0) + (rota.receber_do_cliente ? (rota.valor_a_receber ?? 0) : 0)
-                              : (rota.valor_a_receber ?? 0)
-                          )}
-                        </span>
-                      </div>
-                      {/* Pagamentos registrados */}
-                      {(pagamentosPorRota[rota.id] || []).length > 0 && (
-                        <div className="flex flex-wrap gap-1 pt-0.5">
-                          {(pagamentosPorRota[rota.id] || []).map((p) => (
-                            <Badge key={p.id} variant="secondary" className="text-[10px] px-1.5 py-0">
-                              {getFormaPagamentoName(p.forma_pagamento_id)}: {fmt(p.valor)}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-                      {/* Botão editar/visualizar conciliação */}
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="w-full mt-1 border-amber-500/50 text-amber-600 hover:bg-amber-500/10"
-                        onClick={() => setRotaSelecionada(rota)}
-                      >
-                        <Coins className="h-3.5 w-3.5 mr-1.5" />
-                        {(pagamentosPorRota[rota.id] || []).length > 0 ? "Visualizar / Corrigir conciliação" : "Registrar recebimento"}
-                      </Button>
-                    </div>
-                  )}
-
                   {rota.observacoes && <p className="text-xs text-muted-foreground italic">{rota.observacoes}</p>}
                   </>
                   )}
@@ -745,35 +650,6 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
               })}
             </div>
           </div>
-
-          {/* Progresso + botão concluir — visão entregador, não concluída */}
-          {isEmAndamento && isDriverView && onConcluir && (
-            <>
-              <Separator />
-              {rotasObrigatorias.length > 0 && (
-                <div className={`flex items-center gap-1.5 text-xs ${todasRegistradas ? "text-emerald-500" : "text-amber-500"}`}>
-                  {todasRegistradas ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Coins className="h-3.5 w-3.5" />}
-                  <span className="tabular-nums">
-                    {qtdRegistradas}/{rotasObrigatorias.length} rota{rotasObrigatorias.length !== 1 ? "s" : ""} com recebimento registrado
-                  </span>
-                </div>
-              )}
-              <div className="flex justify-end">
-                <Button
-                  onClick={onConcluir}
-                  disabled={!todasRegistradas}
-                  className="bg-status-completed hover:bg-status-completed/90 text-white w-full disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <CheckCheck className="h-4 w-4 mr-1.5" /> Concluir Entrega
-                  {!todasRegistradas && rotasFaltando.length > 0 && (
-                    <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 h-4">
-                      {rotasFaltando.length} pendente{rotasFaltando.length !== 1 ? "s" : ""}
-                    </Badge>
-                  )}
-                </Button>
-              </div>
-            </>
-          )}
 
           {/* Resumo — visível para admin em qualquer status */}
           {conciliacao && !isDriverView && (
@@ -1078,25 +954,6 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
         </div>
       </DialogContent>
     </Dialog>
-
-    {/* Single-rota mini-dialog */}
-    {rotaSelecionada && (
-      <Suspense fallback={null}>
-        <ConciliacaoDialogLazy
-          open={!!rotaSelecionada}
-          onOpenChange={(open) => !open && setRotaSelecionada(null)}
-          rotas={[rotaSelecionada]}
-          solicitacaoId={solicitacao?.id}
-          clienteId={solicitacao?.cliente_id}
-          isConcluding={false}
-          isDriverView
-          isEditing={rotasComPagamentoBD.has(rotaSelecionada.id)}
-          existingPagamentos={allPagamentos.filter((p) => p.rota_id === rotaSelecionada.id)}
-          onConcluir={() => { marcarRotaRegistrada(rotaSelecionada.id); setRotaSelecionada(null); }}
-        />
-      </Suspense>
-    )}
-
 
     </>
   );

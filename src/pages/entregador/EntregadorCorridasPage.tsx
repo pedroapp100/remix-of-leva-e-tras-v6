@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { PageContainer } from "@/components/shared/PageContainer";
 import { MetricCard } from "@/components/shared/MetricCard";
@@ -39,6 +39,33 @@ export default function EntregadorCorridasPage() {
   const getBairroNome = (id: string) => bairros.find((b) => b.id === id)?.nome ?? id;
   const [activeTab, setActiveTab] = useState<"ativas" | "todas">("ativas");
   const [viewSol, setViewSol] = useState<Solicitacao | null>(null);
+
+  const prevRotasRef = useRef<typeof allRotas>([]);
+  useEffect(() => {
+    const prev = prevRotasRef.current;
+    if (prev.length === 0) {
+      prevRotasRef.current = allRotas;
+      return;
+    }
+    const changed = allRotas.filter((rota) => {
+      const old = prev.find((r) => r.id === rota.id);
+      if (!old) return false;
+      return (
+        old.receber_do_cliente !== rota.receber_do_cliente ||
+        old.valor_a_receber !== rota.valor_a_receber ||
+        old.pagamento_operacao !== rota.pagamento_operacao ||
+        old.meio_cobranca_destino !== rota.meio_cobranca_destino ||
+        old.destino_dinheiro !== rota.destino_dinheiro ||
+        old.taxa_resolvida !== rota.taxa_resolvida ||
+        old.bairro_destino_id !== rota.bairro_destino_id
+      );
+    });
+    if (changed.length > 0) {
+      const nomes = changed.map((r) => getBairroNome(r.bairro_destino_id)).join(", ");
+      toast.info(`Rota ${nomes} foi atualizada pelo administrador.`);
+    }
+    prevRotasRef.current = allRotas;
+  }, [allRotas]);
 
   const filtered = useMemo(() => {
     if (activeTab === "ativas") {
@@ -223,10 +250,10 @@ export default function EntregadorCorridasPage() {
                       {sol.status === "em_andamento" && (
                         <Button
                           size="sm"
-                          onClick={() => setViewSol(sol)}
+                          onClick={() => handleConcluir(sol)}
                           className="bg-status-completed hover:bg-status-completed/90 text-white"
                         >
-                          <CheckCheck className="h-4 w-4 mr-1.5" /> Concluir & Conciliar
+                          <CheckCheck className="h-4 w-4 mr-1.5" /> Concluir Corrida
                         </Button>
                       )}
                     </div>
@@ -243,7 +270,6 @@ export default function EntregadorCorridasPage() {
         solicitacao={viewSol}
         onClose={() => setViewSol(null)}
         isDriverView
-        onConcluir={viewSol?.status === "em_andamento" ? () => { handleConcluir(viewSol!); setViewSol(null); } : undefined}
       />
 
 
