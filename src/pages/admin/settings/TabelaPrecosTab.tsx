@@ -61,6 +61,8 @@ export function TabelaPrecosTab({ initialClienteId }: TabelaPrecosTabProps) {
   const [ativo, setAtivo] = useState(true);
   const [observacao, setObservacao] = useState("");
   const [bairrosRegiaoExpanded, setBairrosRegiaoExpanded] = useState(false);
+  const [bairroPopoverOpen, setBairroPopoverOpen] = useState(false);
+  const [regiaoPopoverOpen, setRegiaoPopoverOpen] = useState(false);
 
   const clientePrecos = precos;
 
@@ -80,14 +82,14 @@ export function TabelaPrecosTab({ initialClienteId }: TabelaPrecosTabProps) {
   const openCreate = () => {
     setEditing(null); setBairroId(""); setRegiaoId(""); setTipoOp(tiposOperacao[0]?.id ?? "");
     setTaxaBase(0); setTaxaRetorno(0); setTaxaEspera(0); setTaxaUrgencia(0);
-    setAtivo(true); setObservacao(""); setBairrosRegiaoExpanded(false); setDialogOpen(true);
+    setAtivo(true); setObservacao(""); setBairrosRegiaoExpanded(false); setBairroPopoverOpen(false); setRegiaoPopoverOpen(false); setDialogOpen(true);
   };
 
   const openEdit = (p: TabelaPrecoCliente) => {
     setEditing(p); setBairroId(p.bairro_destino_id ?? ""); setRegiaoId(p.regiao_id ?? "");
     setTipoOp(p.tipo_operacao); setTaxaBase(p.taxa_base); setTaxaRetorno(p.taxa_retorno);
     setTaxaEspera(p.taxa_espera); setTaxaUrgencia(p.taxa_urgencia); setAtivo(p.ativo);
-    setObservacao(p.observacao ?? ""); setBairrosRegiaoExpanded(false); setDialogOpen(true);
+    setObservacao(p.observacao ?? ""); setBairrosRegiaoExpanded(false); setBairroPopoverOpen(false); setRegiaoPopoverOpen(false); setDialogOpen(true);
   };
 
   const upsertPreco = useUpsertTabelaPreco();
@@ -289,33 +291,69 @@ export function TabelaPrecosTab({ initialClienteId }: TabelaPrecosTabProps) {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Bairro Destino</Label>
-                <Select value={bairroId} onValueChange={(value) => {
-                  setBairroId(value);
-                  if (value && value !== "all" && value !== "none") {
-                    setRegiaoId("none");
-                  }
-                }}>
-                  <SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    {bairros.map((b) => (<SelectItem key={b.id} value={b.id}>{b.nome}</SelectItem>))}
-                  </SelectContent>
-                </Select>
+                <Popover open={bairroPopoverOpen} onOpenChange={setBairroPopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
+                      {bairroId && bairroId !== "all" && bairroId !== "none"
+                        ? bairros.find((b) => b.id === bairroId)?.nome
+                        : "Todos"}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Buscar bairro..." />
+                      <CommandList>
+                        <CommandEmpty>Nenhum bairro encontrado.</CommandEmpty>
+                        <CommandGroup>
+                          <CommandItem value="all" onSelect={() => { setBairroId("all"); setBairroPopoverOpen(false); }}>
+                            <Check className={cn("mr-2 h-4 w-4", (!bairroId || bairroId === "all") ? "opacity-100" : "opacity-0")} />
+                            Todos
+                          </CommandItem>
+                          {bairros.map((b) => (
+                            <CommandItem key={b.id} value={b.nome} onSelect={() => { setBairroId(b.id); setRegiaoId("none"); setBairroPopoverOpen(false); }}>
+                              <Check className={cn("mr-2 h-4 w-4", bairroId === b.id ? "opacity-100" : "opacity-0")} />
+                              {b.nome}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
               <div className="space-y-2">
                 <Label>Região</Label>
-                <Select value={regiaoId} onValueChange={(value) => {
-                  setRegiaoId(value);
-                  if (value && value !== "none" && value !== "all") {
-                    setBairroId("all");
-                  }
-                }}>
-                  <SelectTrigger><SelectValue placeholder="Nenhuma" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Nenhuma</SelectItem>
-                    {regioes.map((r) => (<SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>))}
-                  </SelectContent>
-                </Select>
+                <Popover open={regiaoPopoverOpen} onOpenChange={setRegiaoPopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
+                      {regiaoId && regiaoId !== "none" && regiaoId !== "all"
+                        ? regioes.find((r) => r.id === regiaoId)?.name
+                        : "Nenhuma"}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Buscar região..." />
+                      <CommandList>
+                        <CommandEmpty>Nenhuma região encontrada.</CommandEmpty>
+                        <CommandGroup>
+                          <CommandItem value="none" onSelect={() => { setRegiaoId("none"); setRegiaoPopoverOpen(false); }}>
+                            <Check className={cn("mr-2 h-4 w-4", (!regiaoId || regiaoId === "none") ? "opacity-100" : "opacity-0")} />
+                            Nenhuma
+                          </CommandItem>
+                          {regioes.map((r) => (
+                            <CommandItem key={r.id} value={r.name} onSelect={() => { setRegiaoId(r.id); setBairroId("all"); setRegiaoPopoverOpen(false); }}>
+                              <Check className={cn("mr-2 h-4 w-4", regiaoId === r.id ? "opacity-100" : "opacity-0")} />
+                              {r.name}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
             </div>
             {/* Bairros da região selecionada */}

@@ -213,7 +213,7 @@ export function AdminConciliacaoDialog({
     .filter((r) => r.status !== "cancelada" && r.receber_do_cliente && !lojaRecebeuDireto(r))
     .reduce((s, r) => s + Math.round((r.valor_a_receber ?? 0) * 100), 0);
 
-  const diffOperacaoCents = totalOperacaoCents - totalEsperadoTaxasCents;
+  const diffOperacaoCents = totalOperacaoCents - totalEsperadoTaxasCents - totalEsperadoPagoNaHoraCents;
   const diffLojaCents = totalLojaCents - totalEsperadoReceberCents;
   const diffFaturarCents = totalFaturarCents - totalEsperadoTaxasCents;
 

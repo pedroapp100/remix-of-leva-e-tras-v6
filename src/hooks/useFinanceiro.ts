@@ -13,6 +13,10 @@ import {
   updateReceita,
   deleteReceita,
   fetchCategorias,
+  fetchTodasCategorias,
+  createCategoria,
+  updateCategoria,
+  deleteCategoria,
   fetchRecargasByCliente,
   createRecarga,
   createLancamentoPrePago,
@@ -27,6 +31,8 @@ import {
   type ReceitaInsert,
   type ReceitaUpdate,
   type CategoriaRow,
+  type CategoriaInsert,
+  type CategoriaUpdate,
   type RecargaRow,
   type RecargaInsert,
   type DespesaRecorrenteRow,
@@ -109,6 +115,47 @@ export function useCategorias() {
     queryKey: ["categorias"],
     queryFn: fetchCategorias,
     staleTime: 10 * 60 * 1000,
+  });
+}
+
+export function useTodasCategorias() {
+  return useQuery<CategoriaRow[]>({
+    queryKey: ["categorias_todas"],
+    queryFn: fetchTodasCategorias,
+  });
+}
+
+export function useCreateCategoria() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CategoriaInsert) => createCategoria(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["categorias"] });
+      qc.invalidateQueries({ queryKey: ["categorias_todas"] });
+    },
+  });
+}
+
+export function useUpdateCategoria() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: CategoriaUpdate }) =>
+      updateCategoria(id, patch),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["categorias"] });
+      qc.invalidateQueries({ queryKey: ["categorias_todas"] });
+    },
+  });
+}
+
+export function useDeleteCategoria() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteCategoria(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["categorias"] });
+      qc.invalidateQueries({ queryKey: ["categorias_todas"] });
+    },
   });
 }
 

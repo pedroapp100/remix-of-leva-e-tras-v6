@@ -106,16 +106,16 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
       rotas.forEach((r) => {
         if ((prev[r.id] ?? []).length > 0) return; // already has lines — skip
         const lines: PagamentoLinha[] = [];
-        // Operation fee paid in cash at origin
+        // Operation fee paid in cash — only for pago_na_hora routes (faturar goes to invoice)
         if (r.pagamento_operacao === "pago_na_hora" && (r.taxa_resolvida ?? 0) > 0) {
           lines.push({
             id: crypto.randomUUID(),
             forma_pagamento_id: r.meios_pagamento_operacao?.[0] ?? findFormaByKeyword("dinheiro"),
-            valor: r.taxa_resolvida ?? 0,
+            valor: (r.taxa_resolvida ?? 0) + getExtrasForRota(r.id),
             pertence_a: "operacao",
           });
         }
-        // Destination collection
+        // Destination collection — money collected on behalf of the store belongs to "loja"
         if (r.receber_do_cliente && (r.valor_a_receber ?? 0) > 0) {
           const dest = r.meio_cobranca_destino;
           if (dest === "maquina_loja") {
@@ -133,11 +133,12 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
               pertence_a: "loja",
             });
           } else if (dest === "pix_empresa") {
+            // Company received via PIX on behalf of the store → loja credit
             lines.push({
               id: crypto.randomUUID(),
               forma_pagamento_id: findFormaByKeyword("pix"),
               valor: r.valor_a_receber ?? 0,
-              pertence_a: "operacao",
+              pertence_a: "loja",
             });
           } else if (dest === "dinheiro" && r.destino_dinheiro === "devolver_loja") {
             lines.push({
@@ -147,11 +148,12 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
               pertence_a: "loja",
             });
           } else if (dest === "dinheiro" && r.destino_dinheiro === "repassar_empresa") {
+            // Driver collected cash, repassed to company on behalf of store → loja credit
             lines.push({
               id: crypto.randomUUID(),
               forma_pagamento_id: findFormaByKeyword("dinheiro"),
               valor: r.valor_a_receber ?? 0,
-              pertence_a: "operacao",
+              pertence_a: "loja",
             });
           }
         }
@@ -159,7 +161,7 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
       });
       return updated;
     });
-  }, [open, formasAtivas, rotas]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, formasAtivas, rotas, taxasExtrasMap]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addPagamento = (rotaId: string) => {
     setPagamentosPorRota((prev) => ({
@@ -191,7 +193,6 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
 
   // Resumo — use integer cents to avoid floating-point issues
   const allPagamentos = Object.values(pagamentosPorRota).flat();
-  const totalFaturarCents = allPagamentos.filter((p) => p.forma_pagamento_id === FATURAR_ID && p.pertence_a === "operacao").reduce((s, p) => s + Math.round(p.valor * 100), 0);
   const totalOperacaoCents = allPagamentos.filter((p) => p.pertence_a === "operacao").reduce((s, p) => s + Math.round(p.valor * 100), 0);
   const totalDevolvidoCents = allPagamentos.filter((p) => p.forma_pagamento_id === DEVOLVER_LOJA_ID).reduce((s, p) => s + Math.round(p.valor * 100), 0);
   const totalCreditoLojaCents = allPagamentos.filter((p) => p.pertence_a === "loja" && p.forma_pagamento_id !== DEVOLVER_LOJA_ID).reduce((s, p) => s + Math.round(p.valor * 100), 0);
@@ -212,7 +213,7 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
       0
     );
   
-  const diffOperacaoCents = totalOperacaoCents - totalEsperadoTaxasCents;
+  const diffOperacaoCents = totalOperacaoCents - totalEsperadoTaxasCents - totalEsperadoPagoNaHoraCents;
   const diffLojaCents = totalLojaCents - totalEsperadoReceberCents;
   // Faturado: skip faturar taxa balance (not cash), but require pago_na_hora taxa balance
   // Pre-pago: all operation fees are always required
@@ -223,11 +224,10 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
   ) && diffLojaCents === 0;
 
   const totalOperacao = totalOperacaoCents / 100;
-  const totalLoja = totalLojaCents / 100;
   const totalCreditoLoja = totalCreditoLojaCents / 100;
   const totalDevolvido = totalDevolvidoCents / 100;
-  const totalFaturar = totalFaturarCents / 100;
   const totalEsperadoTaxas = totalEsperadoTaxasCents / 100;
+  const totalEsperadoPagoNaHora = totalEsperadoPagoNaHoraCents / 100;
   const totalEsperadoReceber = totalEsperadoReceberCents / 100;
   const diffOperacao = diffOperacaoCents / 100;
   const diffLoja = diffLojaCents / 100;
@@ -363,7 +363,10 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
             const pagRotaLojaTotal = (pagamentosPorRota[rota.id] || [])
               .filter((p) => p.pertence_a === "loja" && p.forma_pagamento_id !== DEVOLVER_LOJA_ID)
               .reduce((s, p) => s + p.valor, 0);
-            const expectedOperacao = rota.taxa_resolvida != null ? rota.taxa_resolvida : null;
+            // Only validate cash operação for pago_na_hora routes; faturar routes go to invoice
+            const expectedOperacao = rota.pagamento_operacao === "pago_na_hora" && rota.taxa_resolvida != null
+              ? rota.taxa_resolvida + getExtrasForRota(rota.id)
+              : null;
             const expectedLoja = rota.receber_do_cliente ? (rota.valor_a_receber ?? 0) : null;
             const operacaoErro = expectedOperacao !== null &&
               Math.round(pagRotaOperacaoTotal * 100) !== Math.round(expectedOperacao * 100);
@@ -381,8 +384,15 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
                   )}
                   Rota {i + 1} — {getBairroName(rota.bairro_destino_id)}
                 </h4>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span>Taxa: {fmt(rota.taxa_resolvida ?? 0)}</span>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                  <span>
+                    Taxa: {fmt(rota.taxa_resolvida ?? 0)}
+                    {getExtrasForRota(rota.id) > 0 && (
+                      <span className="text-amber-500 ml-1">
+                        + {fmt(getExtrasForRota(rota.id))} extra = {fmt((rota.taxa_resolvida ?? 0) + getExtrasForRota(rota.id))}
+                      </span>
+                    )}
+                  </span>
                   {rota.receber_do_cliente && <span>| Receber: {fmt(rota.valor_a_receber ?? 0)}</span>}
                 </div>
               </div>
@@ -462,12 +472,28 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
           <div className="rounded-lg border border-border p-4 space-y-2">
             <h4 className="text-sm font-semibold">Resumo</h4>
             <div className="grid grid-cols-2 gap-2 text-sm">
-              <span className="text-muted-foreground">Receita Operação</span>
-              <span className="tabular-nums text-right">{fmt(totalOperacao)} <span className="text-xs text-muted-foreground">/ {fmt(totalEsperadoTaxas)}</span></span>
-              {isFaturado && totalFaturar > 0 && (
+              {isFaturado ? (
                 <>
-                  <span className="text-muted-foreground">A Faturar</span>
-                  <span className="tabular-nums text-right">{fmt(totalFaturar)}</span>
+                  {totalEsperadoTaxasCents > 0 && (
+                    <>
+                      <span className="text-muted-foreground flex items-center gap-1">
+                        A Faturar
+                        <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded">taxa + extra</span>
+                      </span>
+                      <span className="tabular-nums text-right text-primary font-medium">{fmt(totalEsperadoTaxas)}</span>
+                    </>
+                  )}
+                  {totalEsperadoPagoNaHoraCents > 0 && (
+                    <>
+                      <span className="text-muted-foreground">Receita Operação (cash)</span>
+                      <span className="tabular-nums text-right">{fmt(totalOperacao)} <span className="text-xs text-muted-foreground">/ {fmt(totalEsperadoPagoNaHora)}</span></span>
+                    </>
+                  )}
+                </>
+              ) : (
+                <>
+                  <span className="text-muted-foreground">Receita Operação</span>
+                  <span className="tabular-nums text-right">{fmt(totalOperacao)} <span className="text-xs text-muted-foreground">/ {fmt(totalEsperadoTaxas + totalEsperadoPagoNaHora)}</span></span>
                 </>
               )}
               <span className="text-muted-foreground">Crédito Loja</span>

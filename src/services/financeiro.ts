@@ -12,6 +12,8 @@ export type ReceitaRow = TableRow<"receitas">;
 export type ReceitaInsert = TableInsert<"receitas">;
 export type ReceitaUpdate = TableUpdate<"receitas">;
 export type CategoriaRow = TableRow<"categorias_financeiras">;
+export type CategoriaInsert = TableInsert<"categorias_financeiras">;
+export type CategoriaUpdate = TableUpdate<"categorias_financeiras">;
 export type RecargaRow = TableRow<"recargas_pre_pago">;
 export type RecargaInsert = TableInsert<"recargas_pre_pago">;
 export type DespesaRecorrenteRow = TableRow<"despesas_recorrentes">;
@@ -114,6 +116,44 @@ export async function fetchCategorias(): Promise<CategoriaRow[]> {
     .order("nome");
   if (error) throw new Error(error.message);
   return data as CategoriaRow[];
+}
+
+export async function fetchTodasCategorias(): Promise<CategoriaRow[]> {
+  const { data, error } = await supabase
+    .from("categorias_financeiras")
+    .select("*")
+    .order("nome");
+  if (error) throw new Error(error.message);
+  return data as CategoriaRow[];
+}
+
+export async function createCategoria(input: CategoriaInsert): Promise<CategoriaRow> {
+  const { data, error } = await supabase
+    .from("categorias_financeiras")
+    .insert(input)
+    .select();
+  if (error) throw new Error(error.message);
+  if (!data || data.length === 0) throw new Error("Falha ao criar categoria.");
+  return data[0] as CategoriaRow;
+}
+
+export async function updateCategoria(id: string, patch: CategoriaUpdate): Promise<CategoriaRow> {
+  const { data, error } = await supabase
+    .from("categorias_financeiras")
+    .update(patch)
+    .eq("id", id)
+    .select();
+  if (error) throw new Error(error.message);
+  if (!data || data.length === 0) throw new Error("Categoria não encontrada.");
+  return data[0] as CategoriaRow;
+}
+
+export async function deleteCategoria(id: string): Promise<void> {
+  const { error } = await supabase.from("categorias_financeiras").delete().eq("id", id);
+  if (error) {
+    if (error.code === "23503") throw new Error("Categoria em uso por despesas ou receitas. Desative-a em vez de excluir.");
+    throw new Error(error.message);
+  }
 }
 
 // ── Recargas pré-pago ─────────────────────────────────────────────────────────

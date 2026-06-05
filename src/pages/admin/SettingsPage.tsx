@@ -1,7 +1,7 @@
 import { PageContainer } from "@/components/shared";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
-import { MapPin, Globe, CreditCard, Shield, DollarSign, Receipt, Calculator, Clock, Users, Webhook, Plug, Bell, BellRing, Settings, MessageSquare } from "lucide-react";
+import { MapPin, Globe, CreditCard, Shield, DollarSign, Receipt, Calculator, Clock, Users, Webhook, Plug, Bell, BellRing, Settings, MessageSquare, Tag } from "lucide-react";
 import { GeralTab } from "./settings/GeralTab";
 import { BairrosTab } from "./settings/BairrosTab";
 import { RegioesTab } from "./settings/RegioesTab";
@@ -13,6 +13,7 @@ import { TiposOperacaoTab } from "./settings/TiposOperacaoTab";
 import { UsuariosTab } from "./settings/UsuariosTab";
 import { WebhooksTab } from "./settings/WebhooksTab";
 import { IntegracoesTab } from "./settings/IntegracoesTab";
+import { CategoriasFinanceirasTab } from "./settings/CategoriasFinanceirasTab";
 import { NotificacoesTab } from "./settings/NotificacoesTab";
 import { NotificacoesInternasTab } from "./settings/NotificacoesInternasTab";
 import { SimuladorOperacoes } from "@/components/shared/SimuladorOperacoes";
@@ -23,6 +24,7 @@ const tabs = [
   { value: "bairros", label: "Bairros", icon: MapPin },
   { value: "regioes", label: "Regiões", icon: Globe },
   { value: "pagamento", label: "Pagamentos", icon: CreditCard },
+  { value: "categorias", label: "Categorias", icon: Tag },
   { value: "cargos", label: "Cargos", icon: Shield },
   { value: "usuarios", label: "Usuários", icon: Users },
   { value: "tipos_operacao", label: "Tipos de Operação", icon: Clock },
@@ -67,6 +69,7 @@ export default function SettingsPage() {
             <TabsContent value="bairros" className="mt-4"><BairrosTab /></TabsContent>
             <TabsContent value="regioes" className="mt-4"><RegioesTab /></TabsContent>
             <TabsContent value="pagamento" className="mt-4"><FormasPagamentoTab /></TabsContent>
+            <TabsContent value="categorias" className="mt-4"><CategoriasFinanceirasTab /></TabsContent>
             <TabsContent value="cargos" className="mt-4"><CargosTab /></TabsContent>
             <TabsContent value="usuarios" className="mt-4"><UsuariosTab /></TabsContent>
             <TabsContent value="tipos_operacao" className="mt-4"><TiposOperacaoTab /></TabsContent>
