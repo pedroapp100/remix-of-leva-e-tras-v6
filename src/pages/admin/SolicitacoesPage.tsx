@@ -25,6 +25,7 @@ import { SimuladorOperacoes } from "@/components/shared/SimuladorOperacoes";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { sendNotificationToUser, sendNotificationToRole } from "@/services/notifications";
+import { syncRotaTaxasExtras } from "@/services/solicitacoes";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { lazy, Suspense } from "react";
 const LaunchSolicitacaoDialog = lazy(() => import("./solicitacoes/LaunchSolicitacaoDialog").then(m => ({ default: m.LaunchSolicitacaoDialog })));
@@ -350,10 +351,11 @@ export default function SolicitacoesPage() {
             destino_dinheiro: rota.destino_dinheiro || null,
           },
         });
+        await syncRotaTaxasExtras(rota.rotaDbId!, rota.taxas_extras);
       }
 
       for (const rota of data.rotas.filter(r => !r.rotaDbId)) {
-        await createRotaMut.mutateAsync({
+        const novaRota = await createRotaMut.mutateAsync({
           solicitacao_id: data.solicitacaoId,
           bairro_destino_id: rota.bairro_destino_id,
           responsavel: rota.responsavel,
@@ -369,7 +371,12 @@ export default function SolicitacoesPage() {
           destino_dinheiro: rota.destino_dinheiro || null,
           status: "ativa" as const,
         });
+        if (rota.taxas_extras.length > 0) {
+          await syncRotaTaxasExtras(novaRota.id, rota.taxas_extras);
+        }
       }
+
+      queryClient.invalidateQueries({ queryKey: ["taxas_extras_rotas"] });
 
       const newRotasCount = data.rotas.filter(r => !r.rotaDbId).length;
       const removedCount = editInitialData ? editInitialData.rotas.filter(r => !new Set(data.rotas.map(f => f.rotaDbId).filter(Boolean)).has(r.id)).length : 0;

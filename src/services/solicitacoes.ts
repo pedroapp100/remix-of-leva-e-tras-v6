@@ -260,6 +260,26 @@ export async function createRotaTaxasExtras(
 }
 
 /**
+ * Sincroniza taxas extras de uma rota (DELETE + INSERT atômico).
+ * Usado na edição de solicitações para garantir que adições e remoções sejam persistidas.
+ */
+export async function syncRotaTaxasExtras(
+  rotaId: string,
+  taxas: { id: string; valor: number }[]
+): Promise<void> {
+  const { error: delError } = await supabase
+    .from("rota_taxa_extra")
+    .delete()
+    .eq("rota_id", rotaId);
+  if (delError) throw new Error(delError.message);
+  if (taxas.length === 0) return;
+  const { error: insError } = await supabase.from("rota_taxa_extra").insert(
+    taxas.map((t) => ({ rota_id: rotaId, taxa_extra_id: t.id, valor: t.valor }))
+  );
+  if (insError) throw new Error(insError.message);
+}
+
+/**
  * Fetches rotas created after a given date (time-window).
  * Used by SolicitacoesPage to avoid loading ALL rotas forever.
  */

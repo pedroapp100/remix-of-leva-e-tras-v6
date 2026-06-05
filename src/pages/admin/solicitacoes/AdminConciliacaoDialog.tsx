@@ -84,11 +84,20 @@ export function AdminConciliacaoDialog({
   const hasSyncedRef = useRef(false);
 
   useEffect(() => {
+    if (!open) {
+      hasSyncedRef.current = false;
+      setPagamentosPorRota({});
+    }
+  }, [open]);
+
+  useEffect(() => {
     if (hasSyncedRef.current || rotas.length === 0) return;
     hasSyncedRef.current = true;
     const initial: Record<string, PagamentoLinha[]> = {};
     rotas.forEach((r) => {
       const linhas: PagamentoLinha[] = [];
+
+      // Linha de operação (taxa)
       if (r.pagamento_operacao === "faturar") {
         linhas.push({
           id: crypto.randomUUID(),
@@ -105,6 +114,25 @@ export function AdminConciliacaoDialog({
           pertence_a: "operacao",
         });
       }
+
+      // Linha de loja: só quando a empresa recebe do entregador (não loja recebe direto)
+      const lojaRecebeuDiretoNaRota =
+        r.meio_cobranca_destino === "maquina_loja" ||
+        r.meio_cobranca_destino === "pix_loja" ||
+        (r.meio_cobranca_destino === "dinheiro" && r.destino_dinheiro === "devolver_loja");
+
+      if (r.receber_do_cliente && !lojaRecebeuDiretoNaRota && (r.valor_a_receber ?? 0) > 0) {
+        const meioLojaId =
+          formasAtivas.find((f) => f.name.toLowerCase().includes("dinheiro"))?.id ??
+          formasAtivas[0]?.id ?? "";
+        linhas.push({
+          id: crypto.randomUUID(),
+          forma_pagamento_id: meioLojaId,
+          valor: r.valor_a_receber ?? 0,
+          pertence_a: "loja",
+        });
+      }
+
       initial[r.id] = linhas;
     });
     setPagamentosPorRota(initial);
@@ -245,7 +273,7 @@ export function AdminConciliacaoDialog({
     if (persistedPagamentos.length > 0) {
       const { error: upsertError } = await supabase.rpc('admin_upsert_pagamentos_solicitacao', {
         p_sol_id: solicitacao.id,
-        p_pagamentos: JSON.stringify(persistedPagamentos),
+        p_pagamentos: persistedPagamentos,
         p_usuario_id: user?.id ?? null,
       });
       if (upsertError) throw new Error(upsertError.message);
@@ -354,6 +382,12 @@ export function AdminConciliacaoDialog({
       },
     });
     toast.success("Conciliação conferida e fatura gerada! ✅");
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? `Erro ao conciliar: ${err.message}`
+          : "Erro inesperado ao conciliar. Tente novamente."
+      );
     } finally {
       setIsSubmitting(false);
     }

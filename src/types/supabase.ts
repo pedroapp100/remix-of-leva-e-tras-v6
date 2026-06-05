@@ -1857,6 +1857,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_upsert_pagamentos_solicitacao: {
+        Args: {
+          p_sol_id: string
+          p_pagamentos: Json
+          p_usuario_id?: string | null
+        }
+        Returns: undefined
+      }
       auth_role: { Args: never; Returns: string }
       calcular_comissao_meta: {
         Args: {
