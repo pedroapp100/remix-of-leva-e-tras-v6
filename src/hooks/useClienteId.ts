@@ -8,19 +8,20 @@ import type { ClienteRow } from "@/services/clientes";
  * via the `profile_id` foreign key on the `clientes` table.
  */
 export function useClienteId() {
-  const { user } = useAuth();
+  const { user, impersonation } = useAuth();
+  const effectiveProfileId = impersonation?.role === "cliente" ? impersonation.profileId : user?.id;
 
   const { data: cliente = null } = useQuery<ClienteRow | null>({
-    queryKey: ["cliente_by_profile", user?.id],
+    queryKey: ["cliente_by_profile", effectiveProfileId],
     queryFn: async () => {
       const { data } = await supabase
         .from("clientes")
         .select("*")
-        .eq("profile_id", user!.id)
+        .eq("profile_id", effectiveProfileId!)
         .maybeSingle();
       return (data as ClienteRow) ?? null;
     },
-    enabled: Boolean(user),
+    enabled: Boolean(effectiveProfileId),
     staleTime: 5 * 60_000,
   });
 

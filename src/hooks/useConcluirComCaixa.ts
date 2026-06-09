@@ -40,12 +40,6 @@ export function useConcluirComCaixa() {
 
   const { addRecebimentoAutomatico } = useCaixaStore();
 
-  const maquinaLojaIdSet = useMemo(() => new Set(
-    formasPagamento
-      .filter((f) => f.name.toLowerCase().includes("máquina") || f.name.toLowerCase().includes("maquina"))
-      .map((f) => f.id)
-  ), [formasPagamento]);
-
   const dinheiroPagamentoIds = useMemo(() => new Set(
     formasPagamento
       .filter((f) => f.name.toLowerCase().includes("dinheiro"))
@@ -81,14 +75,10 @@ export function useConcluirComCaixa() {
       const getRotaTotal = (r: (typeof solRotas)[0]) =>
         (r.taxa_resolvida ?? 0) + (taxasExtrasMap.get(r.id) ?? []).reduce((a, t) => a + t.valor, 0);
 
-      // For invoiced clients: routes marked 'faturar' go to fatura.
-      // Also includes pago_na_hora routes paid via maquina_loja — the loja kept the
-      // operation fee and must be billed (money never reached the empresa).
-      // meios_pagamento_operacao stores UUIDs, so we match by name from the settings snapshot.
+      // Apenas rotas marcadas como 'faturar' geram débito na fatura.
+      // pago_na_hora = já foi pago no ato da entrega (dinheiro, máquina ou pix) → não fatura.
       const isFaturavelRoute = (r: (typeof solRotas)[0]) =>
-        r.pagamento_operacao === "faturar" ||
-        (r.pagamento_operacao === "pago_na_hora" &&
-          r.meios_pagamento_operacao?.some((id) => maquinaLojaIdSet.has(id)));
+        r.pagamento_operacao === "faturar";
       const totalTaxasFaturar = solRotas
         .filter(isFaturavelRoute)
         .reduce((s, r) => s + getRotaTotal(r), 0);
@@ -101,7 +91,7 @@ export function useConcluirComCaixa() {
       // ── Pre-paid balance validation ──
       if (cliente?.modalidade === "pre_pago") {
         const saldo = getClienteSaldo(sol.cliente_id);
-        if (saldo < totalTaxasPrePago) {
+        if (saldo < totalTaxasPrePago && !cliente.permite_saldo_negativo) {
           const faltante = (totalTaxasPrePago - saldo).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
           const saldoFmt = saldo.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
           return {
@@ -110,7 +100,7 @@ export function useConcluirComCaixa() {
           };
         }
 
-        // Low balance warning
+        // Low balance warning (only when not going negative)
         const saldoApos = saldo - totalTaxasPrePago;
         const LIMITE_MINIMO = useSettingsStore.getState().limite_saldo_pre_pago;
         if (saldoApos < LIMITE_MINIMO && saldoApos >= 0) {
@@ -184,19 +174,25 @@ export function useConcluirComCaixa() {
       // skipFatura=true when called by the driver — invoicing is the admin's responsibility
       if (options?.skipFatura) return { success: true };
 
-      // ── Pre-paid: gera fatura por entrega (status Paga) + lançamento via RPC ──
+      // ── Pre-paid: gera fatura por entrega + lançamento via RPC ──
+      // Quando o cliente tem permite_saldo_negativo e o saldo vai negativo,
+      // a fatura fica Pendente (cobrança futura). Caso contrário, fica Paga.
       if (cliente?.modalidade === "pre_pago") {
+        const saldoAtual = getClienteSaldo(sol.cliente_id);
+        const saldoAposEntrega = saldoAtual - totalTaxasPrePago;
+        const ficaNegativo = saldoAposEntrega < 0;
+
         const numRotasPrePago = solRotas.filter((r) => r.pagamento_operacao === "descontar_saldo").length;
         if (totalTaxasPrePago > 0) {
           try {
             const result = await concluirFaturaMut.mutateAsync({
-              p_fatura_id: null,         // sempre nova fatura por entrega
+              p_fatura_id: null,
               p_sol_id: solId,
               p_cliente_id: sol.cliente_id,
               p_cliente_nome: cliente.nome,
               p_tipo_faturamento: "por_entrega",
               p_total_taxas: totalTaxasPrePago,
-              p_total_recebido: 0,       // sem repasse em dinheiro — saldo pré-pago
+              p_total_recebido: 0,
               p_sol_codigo: sol.codigo,
               p_num_rotas: numRotasPrePago,
             });
@@ -205,51 +201,68 @@ export function useConcluirComCaixa() {
               return { success: true, error: result.error ?? "Erro ao gerar fatura pré-paga." };
             }
 
-            // Marca a fatura como Paga imediatamente (saldo já foi debitado no ato)
             if (result.fatura_id) {
-              await updateFaturaMut.mutateAsync({
-                id: result.fatura_id,
-                patch: { status_geral: "Paga", status_taxas: "Paga" },
-              });
-              // Lança receita automática para clientes pré-pagos
-              const receitaPrePago = buildReceitaFromFatura({
-                faturaId: result.fatura_id,
-                faturaNumero: result.fatura_numero ?? "",
-                clienteId: sol.cliente_id,
-                valor: totalTaxasPrePago,
-                tipo: "pagamento",
-              });
-              if (receitaPrePago) {
-                createReceita.mutate(receitaPrePago, {
-                  onSuccess: () => {
-                    createHistoricoFatura.mutate({
-                      fatura_id: result.fatura_id!,
-                      tipo: "receita_lancada",
-                      descricao: `Receita de ${totalTaxasPrePago.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} lançada automaticamente (pré-pago)`,
-                      usuario_id: null,
-                      valor_anterior: null,
-                      valor_novo: totalTaxasPrePago,
-                      metadata: null,
-                    });
-                  },
+              if (ficaNegativo) {
+                // Saldo vai negativo: fatura Pendente — cliente deve pagar à empresa
+                await updateFaturaMut.mutateAsync({
+                  id: result.fatura_id,
+                  patch: { status_geral: "Pendente", status_taxas: "Pendente" },
                 });
+                createHistoricoFatura.mutate({
+                  fatura_id: result.fatura_id,
+                  tipo: "status_alterado",
+                  descricao: `Entrega concluída com saldo negativo (${saldoAposEntrega.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}). Fatura aguarda pagamento.`,
+                  usuario_id: null,
+                  valor_anterior: null,
+                  valor_novo: totalTaxasPrePago,
+                  metadata: null,
+                });
+              } else {
+                // Saldo suficiente: fatura Paga + receita automática
+                await updateFaturaMut.mutateAsync({
+                  id: result.fatura_id,
+                  patch: { status_geral: "Paga", status_taxas: "Paga" },
+                });
+                const receitaPrePago = buildReceitaFromFatura({
+                  faturaId: result.fatura_id,
+                  faturaNumero: result.fatura_numero ?? "",
+                  clienteId: sol.cliente_id,
+                  valor: totalTaxasPrePago,
+                  tipo: "pagamento",
+                });
+                if (receitaPrePago) {
+                  createReceita.mutate(receitaPrePago, {
+                    onSuccess: () => {
+                      createHistoricoFatura.mutate({
+                        fatura_id: result.fatura_id!,
+                        tipo: "receita_lancada",
+                        descricao: `Receita de ${totalTaxasPrePago.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} lançada automaticamente (pré-pago)`,
+                        usuario_id: null,
+                        valor_anterior: null,
+                        valor_novo: totalTaxasPrePago,
+                        metadata: null,
+                      });
+                    },
+                  });
+                }
               }
             }
 
-            // Notifica nova fatura pré-paga
+            // Notifica nova fatura
             if (result.fatura_numero) {
               setTimeout(() => {
                 window.dispatchEvent(new CustomEvent("nova-fatura-gerada", {
                   detail: {
                     faturaNumero: result.fatura_numero,
                     clienteNome: cliente.nome,
-                    message: `Fatura ${result.fatura_numero} gerada para ${cliente.nome} (Pré-pago — saldo debitado).`,
+                    message: ficaNegativo
+                      ? `⚠️ Fatura ${result.fatura_numero} gerada para ${cliente.nome} — saldo negativo, aguarda pagamento.`
+                      : `Fatura ${result.fatura_numero} gerada para ${cliente.nome} (Pré-pago — saldo debitado).`,
                   },
                 }));
               }, 0);
 
-              // WhatsApp: nova fatura pré-paga
-              if (cliente.telefone) {
+              if (cliente.telefone && !ficaNegativo) {
                 const valorFmt = totalTaxasPrePago.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
                 notificarFaturaGerada(cliente.telefone, {
                   cliente_nome: cliente.nome,
@@ -355,7 +368,7 @@ export function useConcluirComCaixa() {
 
       return { success: true };
     },
-    [solicitacoes, clientes, entregadores, faturas, getClienteSaldo, maquinaLojaIdSet, dinheiroPagamentoIds, updateSolMut, updateRotasBulkMut, concluirFaturaMut, updateFaturaMut, createReceita, createHistoricoFatura, addRecebimentoAutomatico]
+    [solicitacoes, clientes, entregadores, faturas, getClienteSaldo, dinheiroPagamentoIds, updateSolMut, updateRotasBulkMut, concluirFaturaMut, updateFaturaMut, createReceita, createHistoricoFatura, addRecebimentoAutomatico]
   );
 
   return concluirComCaixa;

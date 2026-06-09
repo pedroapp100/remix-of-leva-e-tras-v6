@@ -8,19 +8,20 @@ import type { EntregadorRow } from "@/services/entregadores";
  * via the `profile_id` foreign key on the `entregadores` table.
  */
 export function useEntregadorId() {
-  const { user } = useAuth();
+  const { user, impersonation } = useAuth();
+  const effectiveProfileId = impersonation?.role === "entregador" ? impersonation.profileId : user?.id;
 
   const { data: entregador = null } = useQuery<EntregadorRow | null>({
-    queryKey: ["entregador_by_profile", user?.id],
+    queryKey: ["entregador_by_profile", effectiveProfileId],
     queryFn: async () => {
       const { data } = await supabase
         .from("entregadores")
         .select("*")
-        .eq("profile_id", user!.id)
+        .eq("profile_id", effectiveProfileId!)
         .maybeSingle();
       return (data as EntregadorRow) ?? null;
     },
-    enabled: Boolean(user),
+    enabled: Boolean(effectiveProfileId),
     staleTime: 5 * 60_000,
   });
 

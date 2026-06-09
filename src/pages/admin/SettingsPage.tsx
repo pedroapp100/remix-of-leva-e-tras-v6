@@ -1,7 +1,7 @@
 import { PageContainer } from "@/components/shared";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
-import { MapPin, Globe, CreditCard, Shield, DollarSign, Receipt, Calculator, Clock, Users, Webhook, Plug, Bell, BellRing, Settings, MessageSquare, Tag } from "lucide-react";
+import { MapPin, Globe, CreditCard, Shield, DollarSign, Receipt, Calculator, Clock, Users, Webhook, Plug, Bell, BellRing, Settings, MessageSquare, Tag, Smartphone } from "lucide-react";
 import { GeralTab } from "./settings/GeralTab";
 import { BairrosTab } from "./settings/BairrosTab";
 import { RegioesTab } from "./settings/RegioesTab";
@@ -16,6 +16,7 @@ import { IntegracoesTab } from "./settings/IntegracoesTab";
 import { CategoriasFinanceirasTab } from "./settings/CategoriasFinanceirasTab";
 import { NotificacoesTab } from "./settings/NotificacoesTab";
 import { NotificacoesInternasTab } from "./settings/NotificacoesInternasTab";
+import { PortalClienteTab } from "./settings/PortalClienteTab";
 import { SimuladorOperacoes } from "@/components/shared/SimuladorOperacoes";
 import { useSearchParams } from "react-router-dom";
 
@@ -33,6 +34,7 @@ const tabs = [
   { value: "simulador", label: "Simulador", icon: Calculator },
   { value: "notif_internas", label: "Notif. Internas", icon: BellRing },
   { value: "notificacoes", label: "WhatsApp", icon: MessageSquare },
+  { value: "portal_cliente", label: "Portal Cliente", icon: Smartphone },
   { value: "webhooks", label: "Webhooks", icon: Webhook },
   { value: "integracoes", label: "Integrações", icon: Plug },
 ];
@@ -78,6 +80,7 @@ export default function SettingsPage() {
             <TabsContent value="simulador" className="mt-4"><SimuladorOperacoes showClienteSelector /></TabsContent>
             <TabsContent value="notif_internas" className="mt-4"><NotificacoesInternasTab /></TabsContent>
             <TabsContent value="notificacoes" className="mt-4"><NotificacoesTab /></TabsContent>
+            <TabsContent value="portal_cliente" className="mt-4"><PortalClienteTab /></TabsContent>
             <TabsContent value="webhooks" className="mt-4"><WebhooksTab /></TabsContent>
             <TabsContent value="integracoes" className="mt-4"><IntegracoesTab /></TabsContent>
           </Tabs>

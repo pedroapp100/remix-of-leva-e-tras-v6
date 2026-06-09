@@ -62,6 +62,20 @@ export function useSaveComissaoFaixas() {
   });
 }
 
+export function useAllComissaoFaixas() {
+  return useQuery<ComissaoFaixa[]>({
+    queryKey: ["comissao_faixas_all"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("comissao_faixas")
+        .select("*")
+        .order("de", { ascending: true });
+      if (error) throw new Error(error.message);
+      return (data ?? []) as ComissaoFaixa[];
+    },
+  });
+}
+
 // ── Ciclos mensais fechados ───────────────────────────────────────────────────
 
 export function useCiclosComissaoMeta(entregadorId: string | null) {

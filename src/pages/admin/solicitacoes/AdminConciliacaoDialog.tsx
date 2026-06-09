@@ -8,6 +8,7 @@ import { useRotasBySolicitacao, useUpdateSolicitacao, useAppendHistorico, useTax
 import { useClientes } from "@/hooks/useClientes";
 import { useEntregadores } from "@/hooks/useEntregadores";
 import { useConcluirComCaixa } from "@/hooks/useConcluirComCaixa";
+import { useCaixaStore } from "@/contexts/CaixaStore";
 import { useFaturas, useConcluirFaturaEntrega } from "@/hooks/useFaturas";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -58,6 +59,7 @@ export function AdminConciliacaoDialog({
   const { data: clientes = [] } = useClientes();
   const { data: entregadores = [] } = useEntregadores();
   const concluirComCaixa = useConcluirComCaixa();
+  const { getCaixaAberto, recalcularCaixa } = useCaixaStore();
   const { data: faturas = [] } = useFaturas();
   const concluirFaturaMut = useConcluirFaturaEntrega();
   const updateSolMut = useUpdateSolicitacao();
@@ -278,6 +280,15 @@ export function AdminConciliacaoDialog({
       });
       if (upsertError) throw new Error(upsertError.message);
       queryClient.invalidateQueries({ queryKey: ['pagamentos', solicitacao.id] });
+
+      // Corrige o valor inserido pelo trigger fn_sync_pagamento_to_caixa,
+      // que não filtra apenas pagamentos em dinheiro físico.
+      if (solicitacao.entregador_id) {
+        const caixaAberto = getCaixaAberto(solicitacao.entregador_id);
+        if (caixaAberto) {
+          recalcularCaixa(caixaAberto.id).catch(() => {});
+        }
+      }
     }
 
     let faturaNumero: string | undefined;

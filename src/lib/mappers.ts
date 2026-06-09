@@ -21,7 +21,7 @@ export function rowToSolicitacao(row: SolicitacaoRow): Solicitacao {
     data_inicio: row.data_inicio,
     data_conclusao: row.data_conclusao,
     admin_conciliada_at: row.admin_conciliada_at,
-    valor_total_taxas: null,
+    valor_total_taxas: row.valor_total_taxas ?? null,
     valor_total_repasse: null,
     justificativa: row.justificativa,
     retroativo: row.retroativo,

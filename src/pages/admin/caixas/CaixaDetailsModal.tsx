@@ -1,8 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatCurrency } from "@/lib/formatters";
 import { Trash2, RefreshCw, Eye, Loader2, CheckCircle2, MinusCircle } from "lucide-react";
 import type { CaixaEntregador, Rota } from "@/types/database";
@@ -236,10 +235,27 @@ export function CaixaDetailsModal({ open, onOpenChange, caixa: caixaProp }: Caix
     solicitacaoCodigo: string;
     clienteNome: string;
   } | null>(null);
+  const autoRecalcRef = useRef<string | null>(null);
 
   // Deriva o caixa ao vivo do store para refletir deleções e recálculos em tempo real.
   // O prop caixaProp é apenas o identificador inicial.
   const caixa = caixaProp ? (caixas.find((c) => c.id === caixaProp.id) ?? caixaProp) : null;
+
+  // Auto-corrige entradas criadas pelo trigger fn_sync_pagamento_to_caixa quando o
+  // modal abre: o trigger insere sem filtrar por forma de pagamento em dinheiro,
+  // causando valores errados. recalcularCaixa usa calcTotalDinheiroNoCaixa que
+  // filtra corretamente e também retorna os nomes reais via JOIN.
+  useEffect(() => {
+    if (!open || !caixa || caixa.status !== "aberto") return;
+    if (autoRecalcRef.current === caixa.id) return;
+    const hasSyncAuto = caixa.recebimentos.some((r) =>
+      r.observacao?.startsWith("Sincronizado automaticamente")
+    );
+    if (!hasSyncAuto) return;
+    autoRecalcRef.current = caixa.id;
+    setRecalculando(true);
+    recalcularCaixa(caixa.id).finally(() => setRecalculando(false));
+  }, [open, caixa?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!caixa) return null;
 
@@ -255,42 +271,47 @@ export function CaixaDetailsModal({ open, onOpenChange, caixa: caixaProp }: Caix
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+        {/* Mobile: tela cheia sem borda arredondada. Desktop: dialog flutuante padrão. */}
+        <DialogContent className="flex flex-col gap-0 p-0 h-[100dvh] rounded-none sm:rounded-lg sm:h-auto sm:max-h-[90vh] sm:max-w-lg">
+
+          {/* Cabeçalho fixo */}
+          <DialogHeader className="px-4 pt-5 pb-3 border-b border-border shrink-0">
+            <DialogTitle className="flex items-center gap-2 text-base">
               Caixa — {caixa.entregador_nome}
               <Badge variant={st.variant}>{st.label}</Badge>
             </DialogTitle>
             <DialogDescription className="sr-only">.</DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
-            {/* Summary */}
-            <div className="grid grid-cols-2 gap-3 text-sm">
+          {/* Corpo: rola apenas no desktop se necessário */}
+          <div className="flex-1 flex flex-col overflow-hidden sm:overflow-y-auto px-4 pt-4 pb-4 gap-4">
+
+            {/* Summary — 2 colunas compactas */}
+            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm shrink-0">
               <div>
-                <span className="text-muted-foreground">Data</span>
+                <p className="text-xs text-muted-foreground">Data</p>
                 <p className="font-medium">{new Date(caixa.data).toLocaleDateString("pt-BR")}</p>
               </div>
               <div>
-                <span className="text-muted-foreground">Troco Inicial</span>
+                <p className="text-xs text-muted-foreground">Troco Inicial</p>
                 <p className="font-medium">{formatCurrency(caixa.troco_inicial)}</p>
               </div>
               <div>
-                <span className="text-muted-foreground">Total Recebido</span>
+                <p className="text-xs text-muted-foreground">Total Recebido</p>
                 <p className="font-medium">{formatCurrency(caixa.total_recebido)}</p>
               </div>
               <div>
-                <span className="text-muted-foreground">Total Esperado</span>
+                <p className="text-xs text-muted-foreground">Total Esperado</p>
                 <p className="font-bold text-primary">{formatCurrency(caixa.total_esperado)}</p>
               </div>
               {caixa.valor_devolvido !== null && (
                 <>
                   <div>
-                    <span className="text-muted-foreground">Valor Devolvido</span>
+                    <p className="text-xs text-muted-foreground">Valor Devolvido</p>
                     <p className="font-medium">{formatCurrency(caixa.valor_devolvido)}</p>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Diferença</span>
+                    <p className="text-xs text-muted-foreground">Diferença</p>
                     <p className={`font-bold ${caixa.diferenca === 0 ? "text-status-completed" : "text-destructive"}`}>
                       {formatCurrency(caixa.diferenca ?? 0)}
                     </p>
@@ -300,15 +321,17 @@ export function CaixaDetailsModal({ open, onOpenChange, caixa: caixaProp }: Caix
             </div>
 
             {caixa.observacoes && (
-              <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
+              <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm shrink-0">
                 <span className="font-medium">Obs:</span> {caixa.observacoes}
               </div>
             )}
 
             {/* Recebimentos */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="text-sm font-semibold">Recebimentos em Dinheiro ({caixa.recebimentos.length})</h4>
+            <div className="flex flex-col flex-1 min-h-0">
+              <div className="flex items-center justify-between mb-2 shrink-0">
+                <h4 className="text-sm font-semibold">
+                  Recebimentos em Dinheiro ({caixa.recebimentos.length})
+                </h4>
                 {podeEditar && (
                   <Button
                     variant="outline"
@@ -322,78 +345,75 @@ export function CaixaDetailsModal({ open, onOpenChange, caixa: caixaProp }: Caix
                   </Button>
                 )}
               </div>
+
               {caixa.recebimentos.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Nenhum recebimento registrado.</p>
               ) : (
-                <div className="overflow-x-auto rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Hora</TableHead>
-                        <TableHead>Solicitação</TableHead>
-                        <TableHead>Cliente</TableHead>
-                        <TableHead className="text-right">Valor</TableHead>
-                        <TableHead className="w-16" />
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {caixa.recebimentos.map((r) => (
-                        <TableRow key={r.id}>
-                          <TableCell className="tabular-nums">{r.hora}</TableCell>
-                          <TableCell className="font-mono text-xs">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              {r.solicitacao_codigo || "—"}
-                              {r.observacao?.startsWith("Sincronizado automaticamente") && (
-                                <Badge
-                                  variant="outline"
-                                  className="text-[9px] px-1 py-0 border-emerald-500/50 text-emerald-600 bg-emerald-500/5"
-                                  title="Registrado automaticamente via pagamento da solicitação"
-                                >
-                                  auto-sync
-                                </Badge>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell>{r.cliente_nome}</TableCell>
-                          <TableCell className="text-right font-medium tabular-nums">
-                            {formatCurrency(r.valor_recebido)}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center justify-end gap-1">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                                title="Ver rotas desta solicitação"
-                                disabled={!r.solicitacao_id}
-                                onClick={() => {
-                                  if (r.solicitacao_id) {
-                                    setRotasView({
-                                      solicitacaoId: r.solicitacao_id,
-                                      solicitacaoCodigo: r.solicitacao_codigo,
-                                      clienteNome: r.cliente_nome,
-                                    });
-                                  }
-                                }}
-                              >
-                                <Eye className="h-3.5 w-3.5" />
-                              </Button>
-                              {podeEditar && (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7 text-destructive hover:text-destructive"
-                                  onClick={() => removeRecebimento(caixa.id, r.id)}
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
-                              )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                <div className="divide-y rounded-md border">
+                  {caixa.recebimentos.map((r) => (
+                    // Linha única fixa h-11 — elimina scroll para listas típicas (1–6 itens)
+                    <div key={r.id} className="flex items-center gap-2 px-3 h-11">
+
+                      {/* Hora */}
+                      <span className="text-xs text-muted-foreground tabular-nums w-9 shrink-0">
+                        {r.hora}
+                      </span>
+
+                      {/* Código + badge + cliente (flex-1 truncado) */}
+                      <div className="flex-1 min-w-0 flex items-center gap-1.5 overflow-hidden">
+                        <span className="font-mono text-xs font-medium shrink-0">
+                          {r.solicitacao_codigo || "—"}
+                        </span>
+                        {r.observacao?.startsWith("Sincronizado automaticamente") && (
+                          <Badge
+                            variant="outline"
+                            className="text-[9px] px-1 py-0 border-emerald-500/50 text-emerald-600 bg-emerald-500/5 shrink-0"
+                            title="Registrado pelo admin via conciliação"
+                          >
+                            admin
+                          </Badge>
+                        )}
+                        <span className="text-xs text-muted-foreground truncate">
+                          {r.cliente_nome || "—"}
+                        </span>
+                      </div>
+
+                      {/* Valor + ações */}
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        <span className="text-xs font-bold tabular-nums mr-1">
+                          {formatCurrency(r.valor_recebido)}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                          title="Ver rotas desta solicitação"
+                          disabled={!r.solicitacao_id}
+                          onClick={() => {
+                            if (r.solicitacao_id) {
+                              setRotasView({
+                                solicitacaoId: r.solicitacao_id,
+                                solicitacaoCodigo: r.solicitacao_codigo,
+                                clienteNome: r.cliente_nome,
+                              });
+                            }
+                          }}
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                        </Button>
+                        {podeEditar && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive hover:text-destructive"
+                            onClick={() => removeRecebimento(caixa.id, r.id)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

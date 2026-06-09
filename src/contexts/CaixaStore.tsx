@@ -40,7 +40,13 @@ export function CaixaStoreProvider({ children }: { children: ReactNode }) {
       .select(`
         *,
         entregadores (nome),
-        recebimentos_caixa (id, solicitacao_id, valor, observacao, created_at)
+        recebimentos_caixa (
+          id, solicitacao_id, valor, observacao, created_at,
+          solicitacoes!recebimentos_caixa_solicitacao_id_fkey (
+            codigo,
+            clientes!solicitacoes_cliente_id_fkey (nome)
+          )
+        )
       `)
       .order("data", { ascending: false })
       .then(({ data }) => {
@@ -50,13 +56,14 @@ export function CaixaStoreProvider({ children }: { children: ReactNode }) {
           const dbRecebimentos = (row.recebimentos_caixa as Array<Record<string, unknown>>) ?? [];
           const recebimentos: RecebimentoDinheiro[] = dbRecebimentos.map((r) => {
             const obs = (r.observacao as string) ?? "";
-            const isSyncAuto = obs.startsWith("Sincronizado automaticamente");
-            const [codigo, ...rest] = isSyncAuto ? ["", obs] : obs.split(" - ");
+            const sol = r.solicitacoes as { codigo: string; clientes: { nome: string } | null } | null;
+            const solCodigo = sol?.codigo ?? "";
+            const clienteNome = sol?.clientes?.nome ?? "";
             return {
               id: r.id as string,
               solicitacao_id: r.solicitacao_id as string | null,
-              solicitacao_codigo: codigo || "",
-              cliente_nome: rest.join(" - ") || "",
+              solicitacao_codigo: solCodigo,
+              cliente_nome: clienteNome,
               valor_recebido: Number(r.valor),
               hora: new Date(r.created_at as string).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
               observacao: obs || null,
@@ -387,19 +394,26 @@ export function CaixaStoreProvider({ children }: { children: ReactNode }) {
     // Reload recebimentos from DB and update state
     const { data: reloaded } = await supabase
       .from("recebimentos_caixa")
-      .select("id, solicitacao_id, valor, observacao, created_at")
+      .select(`
+        id, solicitacao_id, valor, observacao, created_at,
+        solicitacoes!recebimentos_caixa_solicitacao_id_fkey (
+          codigo,
+          clientes!solicitacoes_cliente_id_fkey (nome)
+        )
+      `)
       .eq("caixa_id", caixaId);
 
     const recebimentos: RecebimentoDinheiro[] = (reloaded ?? []).map((r) => {
       const obs = (r.observacao as string) ?? "";
-      const [codigo, ...rest] = obs.split(" - ");
+      const sol = (r as Record<string, unknown>).solicitacoes as { codigo: string; clientes: { nome: string } | null } | null;
       return {
         id: r.id as string,
         solicitacao_id: r.solicitacao_id as string | null,
-        solicitacao_codigo: codigo || "",
-        cliente_nome: rest.join(" - ") || "",
+        solicitacao_codigo: sol?.codigo ?? "",
+        cliente_nome: sol?.clientes?.nome ?? "",
         valor_recebido: Number(r.valor),
         hora: new Date(r.created_at as string).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+        observacao: obs || null,
       };
     });
     const novoTotal = recebimentos.reduce((s, r) => s + r.valor_recebido, 0);

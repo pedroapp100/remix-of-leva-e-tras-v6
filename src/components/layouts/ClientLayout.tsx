@@ -7,6 +7,8 @@ import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
 import { LayoutDashboard, ClipboardList, DollarSign, User, LogOut, ChevronRight, Calculator } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { ImpersonationBanner } from "@/components/shared/ImpersonationBanner";
+import { useSettingsStore } from "@/contexts/SettingsStore";
 import {
   Sidebar,
   SidebarContent,
@@ -19,11 +21,11 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-const clientItems = [
-  { title: "Dashboard", url: "/cliente", icon: LayoutDashboard },
-  { title: "Minhas Solicitações", url: "/cliente/solicitacoes", icon: ClipboardList },
-  { title: "Meu Financeiro", url: "/cliente/financeiro", icon: DollarSign },
-  { title: "Simulador", url: "/cliente/simulador", icon: Calculator },
+const CLIENT_ITEMS = [
+  { title: "Dashboard",           url: "/cliente",              icon: LayoutDashboard, pageKey: "dashboard"    },
+  { title: "Minhas Solicitações", url: "/cliente/solicitacoes", icon: ClipboardList,   pageKey: "solicitacoes" },
+  { title: "Meu Financeiro",      url: "/cliente/financeiro",   icon: DollarSign,      pageKey: "financeiro"   },
+  { title: "Simulador",           url: "/cliente/simulador",    icon: Calculator,      pageKey: "simulador"    },
 ];
 
 function ClientSidebar() {
@@ -31,6 +33,8 @@ function ClientSidebar() {
   const collapsed = state === "collapsed";
   const location = useLocation();
   const { logout } = useAuth();
+  const { cliente_pages_enabled } = useSettingsStore();
+  const clientItems = CLIENT_ITEMS.filter((item) => cliente_pages_enabled.includes(item.pageKey));
 
   // Fecha sidebar mobile automaticamente ao mudar de rota
   React.useEffect(() => {
@@ -136,6 +140,7 @@ export function ClientLayout() {
         <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:p-4 focus:bg-background focus:text-foreground">Pular para o conteúdo</a>
         <div className="min-h-screen flex flex-col w-full">
           <AppHeader />
+          <ImpersonationBanner />
           <div className="flex flex-1 w-full">
             <ClientSidebar />
             <main id="main-content" className="flex-1 overflow-auto p-3 sm:p-4 md:p-6">

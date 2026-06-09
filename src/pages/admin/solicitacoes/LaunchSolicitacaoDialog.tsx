@@ -329,7 +329,7 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit, initialD
     if (initialData && onEdit) {
       const success = await onEdit({
         solicitacaoId: initialData.sol.id,
-        entregadorId: entregadorId || undefined,
+        entregadorId: entregadorId && entregadorId !== "none" ? entregadorId : undefined,
         tipoOperacao,
         pontoColeta,
         tipoColeta: tipoColeta as TipoColeta,
@@ -347,7 +347,7 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit, initialD
     }
     const success = await onSubmit({
       clienteId, tipoOperacao, tipoColeta: tipoColeta as TipoColeta, pontoColeta,
-      entregadorId: entregadorId || undefined,
+      entregadorId: entregadorId && entregadorId !== "none" ? entregadorId : undefined,
       dataRetroativa: retroativoEnabled && dataRetroativa ? dataRetroativa.toISOString() : undefined,
       retroativoConcluida: retroativoEnabled && retroativoConcluida ? true : undefined,
       rotas,

@@ -17,7 +17,8 @@ interface ProtectedRouteProps {
  * Se sem permissão → redirect para rota padrão do role
  */
 export function ProtectedRoute({ children, allowedRoles, requiredPermission }: ProtectedRouteProps) {
-  const { user, role, isReady } = useAuth();
+  const { user, role, isReady, impersonation } = useAuth();
+  const effectiveRole = impersonation?.role ?? role;
   const { hasPermission } = usePermissions();
   const [redirectGraceElapsed, setRedirectGraceElapsed] = useState(false);
   const hadAuthenticatedUserRef = useRef(false);
@@ -65,13 +66,13 @@ export function ProtectedRoute({ children, allowedRoles, requiredPermission }: P
     return <Navigate to="/login" replace />;
   }
 
-  if (allowedRoles && role && !allowedRoles.includes(role)) {
+  if (allowedRoles && effectiveRole && !allowedRoles.includes(effectiveRole)) {
     const defaultRoutes: Record<Role, string> = {
       admin: "/",
       cliente: "/cliente",
       entregador: "/entregador",
     };
-    return <Navigate to={defaultRoutes[role]} replace />;
+    return <Navigate to={defaultRoutes[effectiveRole]} replace />;
   }
 
   // Check specific permission

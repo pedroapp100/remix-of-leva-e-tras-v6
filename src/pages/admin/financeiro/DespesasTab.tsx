@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import { DataTable, SearchInput } from "@/components/shared";
 import { useLogStore } from "@/contexts/LogStore";
 import type { Column } from "@/components/shared/DataTable";
@@ -21,6 +22,7 @@ interface DespesasTabProps {
 }
 
 export function DespesasTab({ despesas }: DespesasTabProps) {
+  const { user } = useAuth();
   const { addLog } = useLogStore();
   const createDespesa = useCreateDespesa();
   const updateDespesa = useUpdateDespesa();
@@ -94,7 +96,7 @@ export function DespesasTab({ despesas }: DespesasTabProps) {
 
   const handleConfirmPagamento = (desp: Despesa, dados: { formaPagamento: string; dataPagamento: string; observacao: string }) => {
     updateDespesa.mutate(
-      { id: desp.id, patch: { status: "Pago", data_pagamento: dados.dataPagamento, usuario_pagou_id: "user-admin" } },
+      { id: desp.id, patch: { status: "Pago", data_pagamento: dados.dataPagamento, usuario_pagou_id: user?.id ?? null } },
       {
         onSuccess: () => {
           addLog({ categoria: "financeiro", acao: "despesa_paga", entidade_id: desp.id, descricao: `Pagamento da despesa "${desp.descricao}" registrado — ${formatCurrency(desp.valor)}`, detalhes: { forma_pagamento: dados.formaPagamento, data_pagamento: dados.dataPagamento } });

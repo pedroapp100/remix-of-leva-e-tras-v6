@@ -125,6 +125,7 @@ export interface Cliente {
   prazo_vencimento_dias?: number;
   logo_url?: string | null;
   exibir_logo_landing?: boolean;
+  permite_saldo_negativo: boolean;
   created_at: string;
   updated_at: string;
 }

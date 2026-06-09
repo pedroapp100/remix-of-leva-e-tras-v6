@@ -105,6 +105,13 @@ async function profileToAuthUserDirect(userId: string, email: string, accessToke
 
 
 
+// ── Impersonation ──
+export interface ImpersonationState {
+  profileId: string;
+  role: Role;
+  nome: string;
+}
+
 // ── Context type ──
 interface AuthContextType {
   user: AuthUser | null;
@@ -113,6 +120,9 @@ interface AuthContextType {
   loading: boolean;
   isBlocked: boolean;
   remainingAttempts: number;
+  impersonation: ImpersonationState | null;
+  startImpersonation: (profileId: string, role: Role, nome: string) => void;
+  stopImpersonation: () => void;
   login: (email: string, password: string, rememberMe?: boolean) => Promise<{ success: boolean; user?: AuthUser; error?: string }>;
   logout: () => void;
   changeCargo: (cargoId: string) => void;
@@ -134,6 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [loginAttempts, setLoginAttempts] = useState<LoginAttempt>({ count: 0, firstAttemptAt: 0 });
+  const [impersonation, setImpersonation] = useState<ImpersonationState | null>(null);
   const transitionTimeoutRef = useRef<number | null>(null);
   // Rastreia se o AuthProvider ainda está montado — usado em callbacks assíncronos
   const mountedRef = useRef(true);
@@ -412,8 +423,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [clearTransitionTimeout, isBlocked]);
 
+  const startImpersonation = useCallback((profileId: string, role: Role, nome: string) => {
+    setImpersonation({ profileId, role, nome });
+  }, []);
+
+  const stopImpersonation = useCallback(() => {
+    setImpersonation(null);
+  }, []);
+
   const logout = useCallback(() => {
     clearTransitionTimeout();
+    setImpersonation(null);
     setLoading(false);
     // Chama signOut — o onAuthStateChange vai setar user=null
     supabase.auth.signOut();
@@ -487,6 +507,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         loading,
         isBlocked,
         remainingAttempts,
+        impersonation,
+        startImpersonation,
+        stopImpersonation,
         login,
         logout,
         changeCargo,

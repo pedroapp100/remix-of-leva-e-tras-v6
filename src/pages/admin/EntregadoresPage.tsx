@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { PageContainer, MetricCard, DataTable, SearchInput, ConfirmDialog, AvatarWithFallback, StatusBadge, PermissionGuard } from "@/components/shared";
 import type { Column } from "@/components/shared/DataTable";
 import type { Entregador } from "@/types/database";
@@ -11,16 +11,19 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Plus, Users, UserCheck, Package, Clock, Pencil, Trash2, X, Eye } from "lucide-react";
+import { Plus, Users, UserCheck, Package, Clock, Pencil, Trash2, X, Eye, LogIn } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useSolicitacoes } from "@/hooks/useSolicitacoes";
 import { useSaveComissaoFaixas } from "@/hooks/useComissaoFaixas";
 import { EntregadorFormDialog } from "./entregadores/EntregadorFormDialog";
 import { EntregadorProfileModal } from "./entregadores/EntregadorProfileModal";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function EntregadoresPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const { startImpersonation } = useAuth();
   const { data: entregadores = [] } = useEntregadores();
   const createEntregador = useCreateEntregador();
   const updateEntregadorMutation = useUpdateEntregador();
@@ -192,15 +195,36 @@ export default function EntregadoresPage() {
       cell: (r) => <StatusBadge status={r.status} />,
     },
     {
-      key: "actions", header: "Ações", className: "w-28 text-right",
+      key: "actions", header: "Ações", className: "w-40 text-center",
       cell: (r) => (
         <TooltipProvider delayDuration={200}>
-          <div className="flex items-center justify-end gap-1">
+          <div className="flex items-center justify-center gap-1">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-muted-foreground hover:bg-accent transition-colors" onClick={(e) => { e.stopPropagation(); setViewingEntregador(r); }}><Eye className="h-4 w-4" /></Button>
               </TooltipTrigger>
               <TooltipContent>Ver detalhes</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 rounded-full text-emerald-500 hover:bg-emerald-500/10 transition-colors disabled:opacity-30"
+                  disabled={!r.profile_id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!r.profile_id) return;
+                    startImpersonation(r.profile_id, "entregador", r.nome);
+                    navigate("/entregador");
+                  }}
+                >
+                  <LogIn className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {r.profile_id ? "Entrar como este entregador" : "Entregador sem conta de acesso"}
+              </TooltipContent>
             </Tooltip>
             <PermissionGuard permission="entregadores.edit">
             <Tooltip>

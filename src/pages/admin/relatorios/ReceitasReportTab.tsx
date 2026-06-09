@@ -4,7 +4,7 @@ import type { Column } from "@/components/shared/DataTable";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useReceitas } from "@/hooks/useFinanceiro";
-import { useSolicitacoesAll } from "@/hooks/useSolicitacoes";
+import { useSolicitacoesAll, useRotasBySolicitacaoIds } from "@/hooks/useSolicitacoes";
 import { useClientes } from "@/hooks/useClientes";
 import { formatCurrency } from "@/lib/formatters";
 import { DollarSign, Target, TrendingUp, Zap } from "lucide-react";
@@ -30,12 +30,20 @@ export function ReceitasReportTab({ dateRange }: ReceitasReportTabProps) {
   const { data: solicitacoes = [] } = useSolicitacoesAll();
   const { data: clientes = [] } = useClientes();
 
+  const solicitacoesConcluidasIds = useMemo(
+    () => solicitacoes.filter((s) => s.status === "concluida").map((s) => s.id),
+    [solicitacoes]
+  );
+  const { data: rotasConcluidas = [] } = useRotasBySolicitacaoIds(solicitacoesConcluidasIds);
+
   const metrics = useMemo(() => {
     const totalRealizado = receitas.reduce((s, r) => s + r.valor, 0);
-    const concluidas = solicitacoes.filter((s) => s.status === "concluida").length;
-    const ticketMedio = concluidas > 0 ? totalRealizado / concluidas : 0;
+    const rotasEfetivas = rotasConcluidas.filter((r) => r.status === "concluida");
+    const totalRotasConcluidas = rotasEfetivas.length;
+    const totalTaxasRotas = rotasEfetivas.reduce((s, r) => s + (r.taxa_resolvida ?? 0), 0);
+    const ticketMedio = totalRotasConcluidas > 0 ? totalTaxasRotas / totalRotasConcluidas : 0;
     return { totalRealizado, ticketMedio, metaAtual: 0, percentualMeta: 0, totalPrevistoProximoMes: 0 };
-  }, [receitas, solicitacoes]);
+  }, [receitas, rotasConcluidas]);
 
   const receitasMensais = useMemo(() => {
     const months: Record<string, { mes: string; realizado: number }> = {};
@@ -95,7 +103,7 @@ export function ReceitasReportTab({ dateRange }: ReceitasReportTabProps) {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <MetricCard title="Receita Realizada" value={formatCurrency(metrics.totalRealizado)} icon={DollarSign} />
         <MetricCard title="Meta do Mês" value={formatCurrency(metrics.metaAtual)} icon={Target} subtitle={`${metrics.percentualMeta.toFixed(0)}% atingido`} />
-        <MetricCard title="Ticket Médio/Entrega" value={formatCurrency(metrics.ticketMedio)} icon={TrendingUp} />
+        <MetricCard title="Ticket Médio/Rota" value={formatCurrency(metrics.ticketMedio)} icon={TrendingUp} />
         <MetricCard title="Previsão Próx. Mês" value={formatCurrency(metrics.totalPrevistoProximoMes)} icon={Zap} />
       </div>
 

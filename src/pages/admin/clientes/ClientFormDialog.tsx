@@ -43,6 +43,7 @@ export function ClientFormDialog({ open, onOpenChange, editing, onSave }: Client
   const [diaSemana, setDiaSemana] = useState<DiaSemana | "">("");
   const [diaMes, setDiaMes] = useState<number | "">("");
   const [prazoVencimento, setPrazoVencimento] = useState<number | "">(7);
+  const [permiteSaldoNegativo, setPermiteSaldoNegativo] = useState(false);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [exibirLogoLanding, setExibirLogoLanding] = useState(false);
@@ -71,6 +72,7 @@ export function ClientFormDialog({ open, onOpenChange, editing, onSave }: Client
       setPrazoVencimento(editing.prazo_vencimento_dias ?? 7);
       setLogoPreview(editing.logo_url ?? null);
       setExibirLogoLanding(editing.exibir_logo_landing ?? false);
+      setPermiteSaldoNegativo(editing.permite_saldo_negativo ?? false);
       setLogoFile(null);
     } else {
       setNome(""); setTipo("pessoa_fisica"); setEmail(""); setTelefone("");
@@ -79,6 +81,7 @@ export function ClientFormDialog({ open, onOpenChange, editing, onSave }: Client
       setFaturamentoAuto(false); setFrequencia(""); setNumEntregas(""); setDiaSemana(""); setDiaMes("");
       setPrazoVencimento(7);
       setLogoFile(null); setLogoPreview(null); setExibirLogoLanding(false);
+      setPermiteSaldoNegativo(false);
       setSenha("");
     }
   }, [editing, open]);
@@ -163,6 +166,7 @@ export function ClientFormDialog({ open, onOpenChange, editing, onSave }: Client
       prazo_vencimento_dias: Number(prazoVencimento) || 1,
       logo_url: resolvedLogoUrl,
       exibir_logo_landing: exibirLogoLanding,
+      permite_saldo_negativo: modalidade === "pre_pago" ? permiteSaldoNegativo : false,
       created_at: editing?.created_at ?? now,
       updated_at: now,
     }, !editing ? senha.trim() : undefined);
@@ -257,6 +261,24 @@ export function ClientFormDialog({ open, onOpenChange, editing, onSave }: Client
                 </SelectContent>
               </Select>
             </div>
+
+            {modalidade === "pre_pago" && (
+              <div className="flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
+                <Checkbox
+                  id="permite-saldo-negativo"
+                  checked={permiteSaldoNegativo}
+                  onCheckedChange={(v) => setPermiteSaldoNegativo(v === true)}
+                />
+                <div>
+                  <Label htmlFor="permite-saldo-negativo" className="cursor-pointer text-sm font-medium">
+                    Permitir trabalho com saldo negativo
+                  </Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Quando ativo, entregas são concluídas mesmo sem saldo. O saldo negativo gera fatura em aberto para cobrança.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {modalidade === "faturado" && (
               <>

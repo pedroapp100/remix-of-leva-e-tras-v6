@@ -465,7 +465,7 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, viewOnly = fals
   const handleGerarPDF = async () => {
     const entregasMap: Record<string, typeof entregas> = entregas.length > 0 ? { [fatura.id]: entregas } : {};
     try {
-      await generateFaturaPDF(fatura, entregasMap, lancamentos, ajustes);
+      await generateFaturaPDF(fatura, entregasMap, ajustes);
       toast.success(`PDF da fatura ${fatura.numero} gerado com sucesso`);
     } catch {
       toast.error("Erro ao gerar PDF");

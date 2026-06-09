@@ -369,6 +369,7 @@ export type Database = {
           modalidade: Database["public"]["Enums"]["modalidade"]
           nome: string
           numero_de_entregas_para_faturamento: number | null
+          permite_saldo_negativo: boolean
           prazo_vencimento_dias: number
           profile_id: string | null
           status: string
@@ -399,6 +400,7 @@ export type Database = {
           modalidade?: Database["public"]["Enums"]["modalidade"]
           nome: string
           numero_de_entregas_para_faturamento?: number | null
+          permite_saldo_negativo?: boolean
           prazo_vencimento_dias?: number
           profile_id?: string | null
           status?: string
@@ -429,6 +431,7 @@ export type Database = {
           modalidade?: Database["public"]["Enums"]["modalidade"]
           nome?: string
           numero_de_entregas_para_faturamento?: number | null
+          permite_saldo_negativo?: boolean
           prazo_vencimento_dias?: number
           profile_id?: string | null
           status?: string

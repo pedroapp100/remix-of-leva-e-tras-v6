@@ -7,6 +7,7 @@ import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
 import { LayoutDashboard, ClipboardList, DollarSign, User, LogOut, ChevronRight, Truck, Wallet } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { ImpersonationBanner } from "@/components/shared/ImpersonationBanner";
 import {
   Sidebar,
   SidebarContent,
@@ -137,6 +138,7 @@ export function DriverLayout() {
         <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:p-4 focus:bg-background focus:text-foreground">Pular para o conteúdo</a>
         <div className="min-h-screen flex flex-col w-full">
           <AppHeader />
+          <ImpersonationBanner />
           <div className="flex flex-1 w-full">
             <DriverSidebar />
             <main id="main-content" className="flex-1 overflow-auto p-3 sm:p-4 md:p-6">

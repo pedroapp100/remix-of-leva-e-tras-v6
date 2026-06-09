@@ -1,13 +1,14 @@
 import { useState, useEffect, useMemo } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { PageContainer, MetricCard, DataTable, SearchInput, ConfirmDialog, AvatarWithFallback, StatusBadge, PermissionGuard } from "@/components/shared";
 import type { Column } from "@/components/shared/DataTable";
 import type { Cliente } from "@/types/database";
 import type { ClienteInsert } from "@/services/clientes";
 import { useClientes, useCreateCliente, useUpdateCliente, useDeleteCliente, useClienteSaldoMap } from "@/hooks/useClientes";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Users, UserCheck, CreditCard, Wallet, Pencil, Trash2, Eye, X, AlertTriangle } from "lucide-react";
+import { Plus, Users, UserCheck, CreditCard, Wallet, Pencil, Trash2, Eye, X, AlertTriangle, LogIn } from "lucide-react";
 import { useSettingsStore } from "@/contexts/SettingsStore";
 import { formatCurrency } from "@/lib/formatters";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -25,6 +26,8 @@ const MODALIDADE_LABELS: Record<string, string> = {
 
 export default function ClientesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const { startImpersonation } = useAuth();
   const { data: clientes = [] } = useClientes();
   const createCliente = useCreateCliente();
   const updateClienteMutation = useUpdateCliente();
@@ -176,15 +179,36 @@ export default function ClientesPage() {
       cell: (r) => <StatusBadge status={r.status} />,
     },
     {
-      key: "actions", header: "Ações", className: "w-36 text-right",
+      key: "actions", header: "Ações", className: "w-44 text-center",
       cell: (r) => (
         <TooltipProvider delayDuration={200}>
-          <div className="flex items-center justify-end gap-1">
+          <div className="flex items-center justify-center gap-1">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-primary hover:bg-primary/10 transition-colors" onClick={(e) => { e.stopPropagation(); setProfileClient(r); }}><Eye className="h-4 w-4" /></Button>
               </TooltipTrigger>
               <TooltipContent>Visualizar cliente</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 rounded-full text-emerald-500 hover:bg-emerald-500/10 transition-colors disabled:opacity-30"
+                  disabled={!r.profile_id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!r.profile_id) return;
+                    startImpersonation(r.profile_id, "cliente", r.nome);
+                    navigate("/cliente");
+                  }}
+                >
+                  <LogIn className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {r.profile_id ? "Entrar como este cliente" : "Cliente sem conta de acesso"}
+              </TooltipContent>
             </Tooltip>
             <PermissionGuard permission="clientes.edit">
             <Tooltip>

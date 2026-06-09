@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useSolicitacoesAll, useRotasWindow } from "@/hooks/useSolicitacoes";
 import { useEntregadorById, useEntregadoresAtivos } from "@/hooks/useEntregadores";
-import { useComissaoFaixas, calcularComissaoMetaClient } from "@/hooks/useComissaoFaixas";
+import { useComissaoFaixas, useAllComissaoFaixas, calcularComissaoMetaClient } from "@/hooks/useComissaoFaixas";
 import type { MetaModoCalculo, ComissaoFaixa } from "@/types/database";
 
 export interface ComissaoCalculada {
@@ -99,6 +99,7 @@ export function useAllComissoes(): ComissaoCalculada[] {
   const { data: solicitacoes = [] } = useSolicitacoesAll();
   const { data: entregadores = [] } = useEntregadoresAtivos();
   const { data: todasRotas = [] } = useRotasWindow();
+  const { data: todasFaixas = [] } = useAllComissaoFaixas();
 
   return useMemo(() => {
     const { inicio, fim } = getMesCorrenteRange();
@@ -130,9 +131,13 @@ export function useAllComissoes(): ComissaoCalculada[] {
         comissao = (valor_gerado * entregador.valor_comissao) / 100;
       } else if (entregador.tipo_comissao === "fixo") {
         comissao = entregas * entregador.valor_comissao;
+      } else if (entregador.tipo_comissao === "meta") {
+        const modo = (entregador.meta_modo_calculo ?? "escalonado") as MetaModoCalculo;
+        const faixasDoEntregador = todasFaixas.filter(
+          (f) => f.entregador_id === entregador.id
+        ) as ComissaoFaixa[];
+        comissao = calcularComissaoMetaClient(entregas, faixasDoEntregador, modo);
       }
-      // meta: faixas não estão disponíveis aqui sem N+1 — comissao fica 0 até
-      // o componente individual (useComissao) fazer o cálculo com as faixas.
 
       return {
         entregador_id: entregador.id,
@@ -146,5 +151,5 @@ export function useAllComissoes(): ComissaoCalculada[] {
         meta_modo_calculo: entregador.meta_modo_calculo ?? null,
       };
     });
-  }, [solicitacoes, entregadores, todasRotas]);
+  }, [solicitacoes, entregadores, todasRotas, todasFaixas]);
 }
