@@ -21,7 +21,7 @@ import { exportCSV, exportPDF } from "@/lib/exportTable";
 import { lazy, Suspense } from "react";
 const FaturaDetailsModal = lazy(() => import("./faturas/FaturaDetailsModal").then(m => ({ default: m.FaturaDetailsModal })));
 
-type TabFilter = "ativas" | "em_aberto" | "vencidas" | "fechadas" | "finalizadas" | "lancadas";
+type TabFilter = "todas" | "ativas" | "em_aberto" | "vencidas" | "fechadas" | "finalizadas" | "lancadas";
 
 /** Retorna 'Vencida' quando o banco ainda não foi atualizado pelo cron mas o prazo já passou. */
 function getEffectiveStatus(f: Fatura, todayIso: string): StatusGeral {
@@ -78,7 +78,7 @@ export default function FaturasPage() {
       saldoTotal += f.saldo_liquido ?? 0;
     }
 
-    return { abertas, vencidas, valorVencido, fechadas, finalizadas, lancadas, saldoTotal, ativas: abertas + vencidas };
+    return { abertas, vencidas, valorVencido, fechadas, finalizadas, lancadas, saldoTotal, ativas: abertas + vencidas, total: faturas.length };
   }, [faturas, todayIso, faturasComReceita]);
 
   // ── Filtered data ──
@@ -86,6 +86,7 @@ export default function FaturasPage() {
     return faturas.filter((f) => {
       const effStatus = getEffectiveStatus(f, todayIso);
       const matchTab =
+        activeTab === "todas"     ? true :
         activeTab === "ativas"    ? (effStatus === "Aberta" || effStatus === "Vencida") :
         activeTab === "em_aberto" ? effStatus === "Aberta" :
         activeTab === "vencidas"  ? effStatus === "Vencida" :
@@ -310,6 +311,12 @@ export default function FaturasPage() {
           {/* Tabs */}
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabFilter)}>
             <TabsList className="flex-wrap h-auto">
+              <TabsTrigger value="todas" className="gap-1.5">
+                <FileText className="h-4 w-4" /> Todas
+                <Badge variant="secondary" className="ml-1 text-xs h-5 px-1.5">
+                  {metrics.total}
+                </Badge>
+              </TabsTrigger>
               <TabsTrigger value="ativas" className="gap-1.5">
                 <FileText className="h-4 w-4" /> Ativas
                 <Badge variant="secondary" className="ml-1 text-xs h-5 px-1.5">
@@ -374,7 +381,7 @@ export default function FaturasPage() {
               </SelectContent>
             </Select>
             <DatePickerWithRange value={dateRange} onChange={setDateRange} />
-            {(search || activeTab !== "ativas" || dateRange?.from || tipoFilter !== "todos") && (
+            {(search || (activeTab !== "ativas" && activeTab !== "todas") || dateRange?.from || tipoFilter !== "todos") && (
               <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground w-full sm:w-auto" onClick={() => { setSearchInput(""); setActiveTab("ativas"); setDateRange(undefined); setTipoFilter("todos"); }}>
                 <X className="h-3.5 w-3.5" /> Limpar filtros
               </Button>
