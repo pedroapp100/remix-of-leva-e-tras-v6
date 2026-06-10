@@ -704,7 +704,7 @@ export function AdminConciliacaoDialog({
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="operacao">Operação</SelectItem>
+                              <SelectItem value="operacao">Leva e Traz</SelectItem>
                               <SelectItem value="loja">Loja</SelectItem>
                             </SelectContent>
                           </Select>

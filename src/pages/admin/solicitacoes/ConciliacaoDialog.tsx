@@ -449,7 +449,7 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
                       <Select value={pag.pertence_a} onValueChange={(v) => updatePagamento(rota.id, pag.id, "pertence_a", v)} disabled={pag.forma_pagamento_id === DEVOLVER_LOJA_ID}>
                         <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="operacao">Operação</SelectItem>
+                          <SelectItem value="operacao">Leva e Traz</SelectItem>
                           <SelectItem value="loja">Loja</SelectItem>
                         </SelectContent>
                       </Select>

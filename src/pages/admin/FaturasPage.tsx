@@ -4,7 +4,7 @@ import { PageContainer, MetricCard, DataTable, SearchInput, StatusBadge } from "
 import type { Column } from "@/components/shared/DataTable";
 import type { Fatura, StatusGeral } from "@/types/database";
 import { STATUS_GERAL_LABELS } from "@/types/database";
-import { STATUS_GERAL_VARIANT, TIPO_FATURAMENTO_LABELS, formatCurrency, formatDateBR } from "@/lib/formatters";
+import { TIPO_FATURAMENTO_LABELS, formatCurrency, formatDateBR } from "@/lib/formatters";
 import { useFaturas, useFaturaIdsComReceita } from "@/hooks/useFaturas";
 import { DatePickerWithRange } from "@/components/shared/DatePickerWithRange";
 import type { DateRange } from "react-day-picker";
@@ -13,8 +13,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
-import { FileText, AlertTriangle, CheckCircle, Clock, Eye, Pencil, DollarSign, X, ListFilter } from "lucide-react";
+import { FileText, AlertTriangle, CheckCircle, Clock, Eye, Pencil, DollarSign, X, ListFilter, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExportDropdown } from "@/components/shared/ExportDropdown";
 import { exportCSV, exportPDF } from "@/lib/exportTable";
@@ -22,6 +23,16 @@ import { lazy, Suspense } from "react";
 const FaturaDetailsModal = lazy(() => import("./faturas/FaturaDetailsModal").then(m => ({ default: m.FaturaDetailsModal })));
 
 type TabFilter = "todas" | "ativas" | "em_aberto" | "vencidas" | "fechadas" | "finalizadas" | "lancadas";
+type StatusFilterOption = StatusGeral | "Lancada";
+
+const STATUS_FILTER_OPTIONS: { value: StatusFilterOption; label: string }[] = [
+  { value: "Aberta",     label: "Aberta" },
+  { value: "Vencida",    label: "Vencida" },
+  { value: "Fechada",    label: "Fechada" },
+  { value: "Paga",       label: "Paga" },
+  { value: "Finalizada", label: "Finalizada" },
+  { value: "Lancada",    label: "Lançada" },
+];
 
 /** Retorna 'Vencida' quando o banco ainda não foi atualizado pelo cron mas o prazo já passou. */
 function getEffectiveStatus(f: Fatura, todayIso: string): StatusGeral {
@@ -45,7 +56,14 @@ export default function FaturasPage() {
   const [activeTab, setActiveTab] = useState<TabFilter>((searchParams.get("tab") as TabFilter) ?? "ativas");
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [tipoFilter, setTipoFilter] = useState<string>("todos");
+  const [statusFilter, setStatusFilter] = useState<StatusFilterOption[]>([]);
   const [selectedFatura, setSelectedFatura] = useState<Fatura | null>(null);
+
+  function toggleStatusFilter(value: StatusFilterOption) {
+    setStatusFilter((prev) =>
+      prev.includes(value) ? prev.filter((s) => s !== value) : [...prev, value]
+    );
+  }
 
   // Data de hoje em formato ISO local (YYYY-MM-DD) — usa hora local, não UTC,
   // para evitar que às 22h BRT o sistema trate o dia seguinte como "hoje".
@@ -97,14 +115,21 @@ export default function FaturasPage() {
         f.numero.toLowerCase().includes(search.toLowerCase()) ||
         f.cliente_nome.toLowerCase().includes(search.toLowerCase());
       const matchTipo = tipoFilter === "todos" || f.tipo_faturamento === tipoFilter;
+      const matchStatus =
+        activeTab !== "todas" || statusFilter.length === 0 ||
+        statusFilter.some((s) => {
+          if (s === "Lancada")    return effStatus === "Finalizada" && faturasComReceita.has(f.id);
+          if (s === "Finalizada") return effStatus === "Finalizada" && !faturasComReceita.has(f.id);
+          return effStatus === s;
+        });
       let matchDate = true;
       if (dateRange?.from) {
         const emissao = new Date(f.data_emissao);
         matchDate = emissao >= dateRange.from && (!dateRange.to || emissao <= dateRange.to);
       }
-      return matchTab && matchSearch && matchTipo && matchDate;
+      return matchTab && matchSearch && matchTipo && matchDate && matchStatus;
     });
-  }, [faturas, activeTab, search, tipoFilter, dateRange, todayIso, faturasComReceita]);
+  }, [faturas, activeTab, search, tipoFilter, statusFilter, dateRange, todayIso, faturasComReceita]);
 
   // ── Columns ──
   const columns: Column<Fatura>[] = [
@@ -364,6 +389,36 @@ export default function FaturasPage() {
               placeholder="Buscar por número ou cliente..."
               className="flex-1 min-w-0 w-full sm:w-auto"
             />
+            {activeTab === "todas" && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="w-full sm:w-auto gap-1.5 justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <ListFilter className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      {statusFilter.length === 0
+                        ? "Todos os status"
+                        : statusFilter.length === 1
+                        ? STATUS_FILTER_OPTIONS.find((o) => o.value === statusFilter[0])?.label
+                        : `${statusFilter.length} status`}
+                    </div>
+                    <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-48">
+                  <DropdownMenuLabel>Filtrar por status</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {STATUS_FILTER_OPTIONS.map((opt) => (
+                    <DropdownMenuCheckboxItem
+                      key={opt.value}
+                      checked={statusFilter.includes(opt.value)}
+                      onCheckedChange={() => toggleStatusFilter(opt.value)}
+                    >
+                      {opt.label}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             <Select value={tipoFilter} onValueChange={setTipoFilter}>
               <SelectTrigger className="w-full sm:w-[180px]">
                 <div className="flex items-center gap-1.5">
@@ -381,8 +436,8 @@ export default function FaturasPage() {
               </SelectContent>
             </Select>
             <DatePickerWithRange value={dateRange} onChange={setDateRange} />
-            {(search || (activeTab !== "ativas" && activeTab !== "todas") || dateRange?.from || tipoFilter !== "todos") && (
-              <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground w-full sm:w-auto" onClick={() => { setSearchInput(""); setActiveTab("ativas"); setDateRange(undefined); setTipoFilter("todos"); }}>
+            {(search || (activeTab !== "ativas" && activeTab !== "todas") || dateRange?.from || tipoFilter !== "todos" || statusFilter.length > 0) && (
+              <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground w-full sm:w-auto" onClick={() => { setSearchInput(""); setActiveTab("ativas"); setDateRange(undefined); setTipoFilter("todos"); setStatusFilter([]); }}>
                 <X className="h-3.5 w-3.5" /> Limpar filtros
               </Button>
             )}

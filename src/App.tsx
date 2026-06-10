@@ -10,6 +10,7 @@ import { BrandedLoader } from "@/components/shared/BrandedLoader";
 import { toast } from "sonner";
 import { PWAInstallBanner } from "@/components/PWAInstallBanner";
 import { OfflineBanner } from "@/components/OfflineBanner";
+import { UpdateBanner } from "@/components/UpdateBanner";
 import Index from "./pages/Index";
 
 // Retries the dynamic import once before giving up; on the second failure it
@@ -166,6 +167,7 @@ const App = () => (
     <ThemeProvider>
       <TooltipProvider>
         <Sonner />
+        <UpdateBanner />
         <OfflineBanner />
         <PWAInstallBanner />
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
