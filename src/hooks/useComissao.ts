@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import type { DateRange } from "react-day-picker";
 import { useSolicitacoesAll, useRotasWindow } from "@/hooks/useSolicitacoes";
 import { useEntregadorById, useEntregadoresAtivos } from "@/hooks/useEntregadores";
 import { useComissaoFaixas, useAllComissaoFaixas, calcularComissaoMetaClient } from "@/hooks/useComissaoFaixas";
@@ -92,17 +93,27 @@ export function useComissao(entregadorId: string | null): ComissaoCalculada | nu
 }
 
 /**
- * Calculates commissions for all drivers (current month only).
+ * Calculates commissions for all drivers.
+ * When dateRange is provided, filters by that period; otherwise defaults to current month.
  * entregas = rotas concluídas por entregador (not solicitações).
  */
-export function useAllComissoes(): ComissaoCalculada[] {
+export function useAllComissoes(dateRange?: DateRange): ComissaoCalculada[] {
+  const sinceOverride = dateRange?.from
+    ? dateRange.from.toISOString().slice(0, 10)
+    : undefined;
+
   const { data: solicitacoes = [] } = useSolicitacoesAll();
   const { data: entregadores = [] } = useEntregadoresAtivos();
-  const { data: todasRotas = [] } = useRotasWindow();
+  const { data: todasRotas = [] } = useRotasWindow(sinceOverride);
   const { data: todasFaixas = [] } = useAllComissaoFaixas();
 
   return useMemo(() => {
-    const { inicio, fim } = getMesCorrenteRange();
+    const { inicio: mesInicio, fim: mesFim } = getMesCorrenteRange();
+    const inicio = dateRange?.from ?? mesInicio;
+    // Set fim to start of the day after 'to' so the full 'to' day is included
+    const fim = dateRange?.to
+      ? new Date(dateRange.to.getFullYear(), dateRange.to.getMonth(), dateRange.to.getDate() + 1)
+      : mesFim;
 
     return entregadores.map((entregador) => {
       const concluidas = solicitacoes.filter(
@@ -151,5 +162,5 @@ export function useAllComissoes(): ComissaoCalculada[] {
         meta_modo_calculo: entregador.meta_modo_calculo ?? null,
       };
     });
-  }, [solicitacoes, entregadores, todasRotas, todasFaixas]);
+  }, [solicitacoes, entregadores, todasRotas, todasFaixas, dateRange]);
 }

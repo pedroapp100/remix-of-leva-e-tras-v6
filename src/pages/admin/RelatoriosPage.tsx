@@ -215,7 +215,7 @@ export default function RelatoriosPage() {
               <DespesasPrevistasTab dateRange={dateRange} />
             </TabsContent>
             <TabsContent value="comissoes" className="mt-4">
-              <ComissoesTab />
+              <ComissoesTab dateRange={dateRange} />
             </TabsContent>
             <TabsContent value="entregas" className="mt-4">
               <EntregasTab />

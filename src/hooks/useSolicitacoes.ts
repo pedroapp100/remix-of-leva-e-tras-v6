@@ -264,9 +264,11 @@ export function useRotasBySolicitacaoIds(solicitacaoIds: string[]) {
 /**
  * Rotas within a time window (default 90 days). Uses idx_rotas_created.
  * Replaces useAllRotas for pages that only need recent rotas.
+ * Pass sinceOverride (ISO date string) to extend the window beyond 90 days.
  */
-export function useRotasWindow() {
-  const since = sinceNDays(90);
+export function useRotasWindow(sinceOverride?: string) {
+  const defaultSince = sinceNDays(90);
+  const since = sinceOverride ?? defaultSince;
   return useQuery({
     queryKey: ["rotas", "windowed", since],
     queryFn: () => fetchRotasWindow(since),

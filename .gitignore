@@ -26,3 +26,7 @@ dist-ssr
 *.sln
 *.sw?
 .vercel
+
+# MCP config — contains secret tokens
+.mcp.json
+.claude/settings.json
