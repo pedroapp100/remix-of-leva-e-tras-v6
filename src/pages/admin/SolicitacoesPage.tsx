@@ -7,7 +7,7 @@ import type { Column } from "@/components/shared/DataTable";
 import type { Solicitacao, StatusSolicitacao, Rota } from "@/types/database";
 import { STATUS_SOLICITACAO_LABELS } from "@/types/database";
 import { TipoOperacaoBadge } from "@/components/shared/TipoOperacaoBadge";
-import { useSolicitacoes, useSolicitacoesPageable, useUpdateSolicitacao, useCreateSolicitacaoWithRotas, useRotasBySolicitacaoIds, useAppendHistorico, useTaxasExtrasByRotaIds, useCreateRota, useUpdateRota, useReabrirSolicitacao } from "@/hooks/useSolicitacoes";
+import { useSolicitacoes, useSolicitacoesPageable, useUpdateSolicitacao, useCreateSolicitacaoWithRotas, useRotasBySolicitacaoIds, useAppendHistorico, useTaxasExtrasByRotaIds, useCreateRota, useUpdateRota, useReabrirSolicitacao, useDeleteSolicitacao } from "@/hooks/useSolicitacoes";
 import { useClientes } from "@/hooks/useClientes";
 import { useEntregadores } from "@/hooks/useEntregadores";
 import { useConcluirComCaixa } from "@/hooks/useConcluirComCaixa";
@@ -21,6 +21,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, ClipboardList, CheckCircle, CheckCircle2, Truck, Eye, UserPlus, Play, X, Trash2, Pencil, CheckCheck, Calculator, ClipboardCheck, History, ArrowLeftRight, AlertTriangle, RotateCcw } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { SimuladorOperacoes } from "@/components/shared/SimuladorOperacoes";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
@@ -171,6 +172,8 @@ export default function SolicitacoesPage() {
   // Session-local set for instant icon feedback before server refetch completes
   const [sessionConciliadas, setSessionConciliadas] = useState<Set<string>>(new Set());
   const reabrirMut = useReabrirSolicitacao();
+  const deleteSolMut = useDeleteSolicitacao();
+  const [deleteTarget, setDeleteTarget] = useState<Solicitacao | null>(null);
 
   // useSolicitacoes (90-day windowed cache) is used only for metrics, tab counts, and code generation.
   // The table itself is powered by useSolicitacoesPageable (server-side paginated).
@@ -535,6 +538,19 @@ export default function SolicitacoesPage() {
     }
   };
 
+  const handleDeleteSolicitacao = async () => {
+    if (!deleteTarget) return;
+    const sol = deleteTarget;
+    try {
+      await deleteSolMut.mutateAsync(sol.id);
+      toast.success(`Solicitação ${sol.codigo} excluída com sucesso.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao excluir a solicitação.");
+    } finally {
+      setDeleteTarget(null);
+    }
+  };
+
   const ActionButton = ({ tooltip, icon: Icon, onClick, variant = "default", disabled = false }: { tooltip: string; icon: React.ElementType; onClick: (e: React.MouseEvent) => void; variant?: "default" | "destructive" | "success" | "info" | "warning"; disabled?: boolean }) => {
     const variantStyles: Record<string, string> = {
       default: "text-foreground hover:bg-accent",
@@ -619,6 +635,11 @@ export default function SolicitacoesPage() {
         {["pendente", "aceita", "em_andamento"].includes(sol.status) && (
           <PermissionGuard permission="solicitacoes.delete">
             <ActionButton tooltip="Cancelar" icon={Trash2} onClick={() => setJustifyTarget({ sol, action: "cancelar" })} variant="destructive" />
+          </PermissionGuard>
+        )}
+        {(sol.status === "cancelada" || sol.status === "rejeitada") && (
+          <PermissionGuard permission="solicitacoes.delete">
+            <ActionButton tooltip="Excluir permanentemente" icon={Trash2} onClick={() => setDeleteTarget(sol)} variant="destructive" />
           </PermissionGuard>
         )}
       </div>
@@ -889,6 +910,26 @@ export default function SolicitacoesPage() {
         description="Todos os pagamentos registrados serão apagados e a entrega voltará para Em Andamento. Informe o motivo (mínimo 10 caracteres)."
         onConfirm={handleReabrir}
       />
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir solicitação permanentemente?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A solicitação <span className="font-mono font-semibold">{deleteTarget?.codigo}</span> e todos os seus dados (rotas, histórico, pagamentos) serão removidos do banco de dados. Esta ação é <strong>irreversível</strong>.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={handleDeleteSolicitacao}
+            >
+              Excluir permanentemente
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Dialog open={simuladorOpen} onOpenChange={setSimuladorOpen}>
         <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>

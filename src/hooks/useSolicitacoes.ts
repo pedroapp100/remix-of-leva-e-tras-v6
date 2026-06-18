@@ -32,6 +32,7 @@ import {
   appendHistorico,
   fetchTaxasExtrasByRotaIds,
   createRotaTaxasExtras,
+  deleteSolicitacao,
   type SolicitacaoRow,
   type SolicitacaoInsert,
   type SolicitacaoUpdate,
@@ -326,6 +327,18 @@ export function useUpdateRotasBulk() {
       qc.invalidateQueries({ queryKey: ["rotas", solicitacaoId] });
       qc.invalidateQueries({ queryKey: ["rotas", "windowed"] });
       qc.invalidateQueries({ queryKey: ["rotas", "by-ids"] });
+    },
+  });
+}
+
+export function useDeleteSolicitacao() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (solicitacaoId: string) => deleteSolicitacao(solicitacaoId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["solicitacoes"] });
+      qc.invalidateQueries({ queryKey: ["rotas"] });
+      qc.invalidateQueries({ queryKey: ["pagamentos"] });
     },
   });
 }

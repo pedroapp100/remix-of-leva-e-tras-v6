@@ -660,6 +660,7 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit, initialD
                     canRemove={rotas.length > 1}
                     clienteModalidade={clienteSel?.modalidade ?? "faturado"}
                     isReadonly={false}
+                    isEditMode={!!initialData}
                     onUpdate={updateRota}
                     onRemove={removeRota}
                     onAddTaxaExtra={addTaxaExtra}

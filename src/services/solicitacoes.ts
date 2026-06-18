@@ -365,6 +365,74 @@ export async function deleteRecebimentosByRotaIds(rotaIds: string[]): Promise<vo
   if (error) throw new Error(error.message);
 }
 
+export async function deleteSolicitacao(solicitacaoId: string): Promise<void> {
+  // 1. Buscar IDs das rotas para limpar dependentes
+  const { data: rotasData, error: rotasErr } = await supabase
+    .from("rotas")
+    .select("id")
+    .eq("solicitacao_id", solicitacaoId);
+  if (rotasErr) throw new Error(rotasErr.message);
+  const rotaIds = (rotasData ?? []).map((r) => r.id);
+
+  // 2. Bloquear se houver lançamentos financeiros (registros contábeis não deletáveis)
+  const { count, error: lancErr } = await supabase
+    .from("lancamentos_financeiros")
+    .select("id", { count: "exact", head: true })
+    .eq("solicitacao_id", solicitacaoId);
+  if (lancErr) throw new Error(lancErr.message);
+  if ((count ?? 0) > 0) {
+    throw new Error("Esta solicitação possui lançamentos financeiros vinculados e não pode ser excluída.");
+  }
+
+  // 3. rota_taxa_extra (depende de rotas)
+  if (rotaIds.length > 0) {
+    const { error } = await supabase.from("rota_taxa_extra").delete().in("rota_id", rotaIds);
+    if (error) throw new Error(error.message);
+  }
+
+  // 4. recebimentos_caixa (depende de solicitacao e rotas)
+  const { error: recErr } = await supabase
+    .from("recebimentos_caixa")
+    .delete()
+    .eq("solicitacao_id", solicitacaoId);
+  if (recErr) throw new Error(recErr.message);
+
+  // 5. pagamentos_solicitacao
+  const { error: pagErr } = await supabase
+    .from("pagamentos_solicitacao")
+    .delete()
+    .eq("solicitacao_id", solicitacaoId);
+  if (pagErr) throw new Error(pagErr.message);
+
+  // 6. ajustes_financeiros
+  const { error: ajErr } = await supabase
+    .from("ajustes_financeiros")
+    .delete()
+    .eq("solicitacao_id", solicitacaoId);
+  if (ajErr) throw new Error(ajErr.message);
+
+  // 7. historico_solicitacoes
+  const { error: histErr } = await supabase
+    .from("historico_solicitacoes")
+    .delete()
+    .eq("solicitacao_id", solicitacaoId);
+  if (histErr) throw new Error(histErr.message);
+
+  // 8. rotas
+  const { error: rotErr } = await supabase
+    .from("rotas")
+    .delete()
+    .eq("solicitacao_id", solicitacaoId);
+  if (rotErr) throw new Error(rotErr.message);
+
+  // 9. solicitacao
+  const { error: solErr } = await supabase
+    .from("solicitacoes")
+    .delete()
+    .eq("id", solicitacaoId);
+  if (solErr) throw new Error(solErr.message);
+}
+
 // ── Pagamentos ────────────────────────────────────────────────────────────────
 
 export async function fetchAllPagamentos(): Promise<PagamentoRow[]> {

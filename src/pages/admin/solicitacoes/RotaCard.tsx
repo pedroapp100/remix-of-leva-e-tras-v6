@@ -12,6 +12,7 @@ import { PhoneInput } from "@/components/shared/PhoneInput";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Trash2, AlertTriangle, Briefcase, Store, Receipt, Wallet, CreditCard, Banknote, Smartphone, Building2, ArrowLeftRight, Check, ChevronsUpDown, ChevronDown } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { Modalidade } from "@/types/database";
 
@@ -60,6 +61,7 @@ interface RotaCardProps {
   onToggleMeioPagamento: (rotaId: string, meioPagamentoId: string) => void;
   onToggleMeioPagamentoOperacao: (rotaId: string, meioPagamentoId: string) => void;
   isReadonly?: boolean;
+  isEditMode?: boolean;
 }
 
 export function getRotaSubtotalOperacao(r: RotaForm) {
@@ -73,7 +75,7 @@ export function getRotaTotalEntregador(r: RotaForm) {
 }
 
 export function RotaCard({
-  rota, index, canRemove, clienteModalidade, isReadonly = false,
+  rota, index, canRemove, clienteModalidade, isReadonly = false, isEditMode = false,
   onUpdate, onRemove, onAddTaxaExtra, onRemoveTaxaExtra, onUpdateTaxaExtra, onToggleMeioPagamento, onToggleMeioPagamentoOperacao,
 }: RotaCardProps) {
   const { data: bairros = [] } = useBairros();
@@ -107,10 +109,25 @@ export function RotaCard({
           )}
         </div>
         <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
-          {canRemove && (
-            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => onRemove(rota.id)}>
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
+          {(canRemove || isEditMode) && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={cn("h-7 w-7", canRemove ? "text-destructive hover:bg-destructive/10" : "text-muted-foreground/40 cursor-not-allowed")}
+                    disabled={!canRemove}
+                    onClick={() => canRemove && onRemove(rota.id)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                {canRemove ? "Remover rota" : "A solicitação precisa de pelo menos 1 rota"}
+              </TooltipContent>
+            </Tooltip>
           )}
           <Button
             variant="ghost"
