@@ -21,55 +21,9 @@ import { toast } from "sonner";
 import { RotaCard, getRotaSubtotalOperacao, getRotaTotalEntregador } from "./RotaCard";
 import type { RotaForm, MeioCobrancaDestino, DestinoDinheiro } from "./RotaCard";
 import type { Rota, Solicitacao } from "@/types/database";
+import { resolverTarifaCliente } from "@/lib/resolverTarifa";
 
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-
-/**
- * Resolve a taxa para uma rota seguindo hierarquia de 3 níveis:
- * 1. Regra específica por bairro + tipo de operação
- * 2. Regra por região do bairro + tipo de operação
- * 3. Regra geral (sem bairro e sem região) + tipo de operação
- * 4. Fallback: taxa_entrega padrão do bairro
- */
-function resolverTarifa(
-  bairros: { id: string; taxa_entrega: number; nome: string; region_id: string }[],
-  tabelaPrecos: { cliente_id: string; ativo: boolean; prioridade: number; bairro_destino_id?: string | null; regiao_id?: string | null; tipo_operacao?: string | null; taxa_base: number }[],
-  bairroId: string,
-  clienteId?: string,
-  tipoOp?: string
-): { taxa: number; fallback: boolean; nivel: "bairro" | "regiao" | "geral" | "fallback" } {
-  const bairro = bairros.find((b) => b.id === bairroId);
-  if (!bairro) return { taxa: 0, fallback: false, nivel: "fallback" };
-
-  if (clienteId) {
-    const regrasFiltradas = tabelaPrecos
-      .filter((p) => p.cliente_id === clienteId && p.ativo)
-      .sort((a, b) => a.prioridade - b.prioridade);
-
-    const matchTipo = (p: (typeof regrasFiltradas)[0]) =>
-      !tipoOp || p.tipo_operacao === "todos" || p.tipo_operacao === tipoOp;
-
-    // Nível 1: bairro específico + tipo
-    const porBairro = regrasFiltradas.find(
-      (p) => p.bairro_destino_id === bairroId && matchTipo(p)
-    );
-    if (porBairro) return { taxa: porBairro.taxa_base, fallback: false, nivel: "bairro" };
-
-    // Nível 2: região do bairro + tipo
-    const porRegiao = regrasFiltradas.find(
-      (p) => !p.bairro_destino_id && p.regiao_id === bairro.region_id && matchTipo(p)
-    );
-    if (porRegiao) return { taxa: porRegiao.taxa_base, fallback: false, nivel: "regiao" };
-
-    // Nível 3: regra geral (sem bairro e sem região) + tipo
-    const geral = regrasFiltradas.find(
-      (p) => !p.bairro_destino_id && !p.regiao_id && matchTipo(p)
-    );
-    if (geral) return { taxa: geral.taxa_base, fallback: false, nivel: "geral" };
-  }
-
-  return { taxa: bairro.taxa_entrega, fallback: true, nivel: "fallback" };
-}
 
 interface RotaWithExtras extends Rota {
   taxas_extras_data: { id: string; nome: string; valor: number }[];
@@ -182,7 +136,7 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit, initialD
       setRotas((prev) => prev.map((r) => ({ ...r, pagamento_operacao: defaultOp })));
     }
   };
-  const [tipoOperacao, setTipoOperacao] = useState(tiposAtivos[0]?.id ?? "");
+  const [tipoOperacao, setTipoOperacao] = useState("");
   const [pontoColeta, setPontoColeta] = useState("");
   const [entregadorId, setEntregadorId] = useState("");
   const [observacoes, setObservacoes] = useState("");
@@ -193,7 +147,7 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit, initialD
   const [rotas, setRotas] = useState<RotaForm[]>([emptyRota()]);
 
   const resetForm = () => {
-    setStep(0); setTipoColeta(""); setClienteId(""); setTipoOperacao(tiposAtivos[0]?.id ?? ""); setPontoColeta(""); setEntregadorId(""); setObservacoes("");
+    setStep(0); setTipoColeta(""); setClienteId(""); setTipoOperacao(""); setPontoColeta(""); setEntregadorId(""); setObservacoes("");
     setRetroativoEnabled(false); setDataRetroativa(undefined); setRetroativoConcluida(false);
     setRotas([emptyRota()]);
   };
@@ -216,6 +170,14 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit, initialD
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  // tiposAtivos chega depois do primeiro render (query assíncrona) — sem isso,
+  // tipoOperacao fica travado em "" em criações novas e a tarifa nunca é encontrada.
+  useEffect(() => {
+    if (!initialData && !tipoOperacao && tiposAtivos.length > 0) {
+      setTipoOperacao(tiposAtivos[0].id);
+    }
+  }, [tiposAtivos, tipoOperacao, initialData]);
+
   const addRota = () => {
     const cliente = clientesAtivos.find((c) => c.id === clienteId);
     const defaultOp = cliente?.modalidade === "pre_pago" ? "descontar_saldo" : "faturar";
@@ -232,8 +194,8 @@ export function LaunchSolicitacaoDialog({ open, onOpenChange, onSubmit, initialD
       if (r.id !== id) return r;
       const updated = { ...r, [field]: value };
       if (field === "bairro_destino_id" && typeof value === "string") {
-        const tarifa = resolverTarifa(bairros, tabelaPrecos, value, clienteId || undefined, tipoOperacao || undefined);
-        updated.taxa_resolvida = tarifa.taxa;
+        const tarifa = resolverTarifaCliente(bairros, tabelaPrecos, value, clienteId || undefined, tipoOperacao || undefined);
+        updated.taxa_resolvida = tarifa.taxaBase;
         updated.is_fallback = tarifa.fallback;
         updated.nivel_tarifa = tarifa.nivel;
       }

@@ -1,15 +1,17 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Calculator, MapPin, Zap, RotateCcw, Clock, AlertTriangle, CheckCircle2, Info, Plus, Trash2 } from "lucide-react";
+import { Calculator, MapPin, Zap, RotateCcw, Clock, AlertTriangle, CheckCircle2, Info, Plus, Trash2, Check, ChevronsUpDown } from "lucide-react";
 import { useBairros, useRegioes, useTiposOperacao, useTaxasExtras } from "@/hooks/useSettings";
 import { useClientes, useTabelaPrecos } from "@/hooks/useClientes";
-import type { TabelaPrecoCliente } from "@/types/database";
+import { resolverTarifaCliente } from "@/lib/resolverTarifa";
+import { cn } from "@/lib/utils";
 
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -23,9 +25,10 @@ interface RotaSimulada {
 interface SimuladorOperacoesProps {
   clienteId?: string;
   showClienteSelector?: boolean;
+  showRegiaoNoSelect?: boolean;
 }
 
-export function SimuladorOperacoes({ clienteId: fixedClienteId, showClienteSelector = false }: SimuladorOperacoesProps) {
+export function SimuladorOperacoes({ clienteId: fixedClienteId, showClienteSelector = false, showRegiaoNoSelect = true }: SimuladorOperacoesProps) {
   const { data: clientes = [] } = useClientes();
   const { data: bairros = [] } = useBairros();
   const { data: regioes = [] } = useRegioes();
@@ -35,15 +38,28 @@ export function SimuladorOperacoes({ clienteId: fixedClienteId, showClienteSelec
   const TIPOS_ATIVOS = useMemo(() => tiposOperacao.filter((t) => t.ativo), [tiposOperacao]);
 
   const [selectedCliente, setSelectedCliente] = useState(fixedClienteId || "");
-  const clienteId = fixedClienteId || selectedCliente || clientes[0]?.id || "";
+  // Sem fallback pro "primeiro cliente da lista" — no Admin, enquanto nenhum
+  // cliente for escolhido explicitamente, clienteId fica vazio de propósito.
+  const clienteId = fixedClienteId || selectedCliente || "";
+  const precisaEscolherCliente = showClienteSelector && !clienteId;
 
   const { data: tabelaPrecos = [] } = useTabelaPrecos(clienteId);
 
-  const [tipoOperacao, setTipoOperacao] = useState(TIPOS_ATIVOS[0]?.id ?? "");
+  const [tipoOperacao, setTipoOperacao] = useState("");
   const [incluirUrgencia, setIncluirUrgencia] = useState(false);
+
+  // TIPOS_ATIVOS chega depois do primeiro render (query assíncrona) — sem isso,
+  // tipoOperacao fica travado em "" pra sempre e nenhuma regra de preço dá match.
+  useEffect(() => {
+    if (!tipoOperacao && TIPOS_ATIVOS.length > 0) {
+      setTipoOperacao(TIPOS_ATIVOS[0].id);
+    }
+  }, [TIPOS_ATIVOS, tipoOperacao]);
   const [rotas, setRotas] = useState<RotaSimulada[]>([
     { id: "1", bairroId: "", incluirEspera: false, incluirRetorno: false },
   ]);
+  const [bairroPopoverOpenId, setBairroPopoverOpenId] = useState<string | null>(null);
+  const [clientePopoverOpen, setClientePopoverOpen] = useState(false);
 
   const addRota = () => {
     setRotas((prev) => [
@@ -61,48 +77,15 @@ export function SimuladorOperacoes({ clienteId: fixedClienteId, showClienteSelec
     setRotas((prev) => prev.map((r) => (r.id === id ? { ...r, ...updates } : r)));
   };
 
-  // Hierarchical price lookup
-  const findPrecoRegra = (bairroId: string): TabelaPrecoCliente | null => {
-    const clientePrecos = tabelaPrecos.filter((p) => p.ativo);
-
-    // 1. Bairro + tipo específico
-    let match = clientePrecos.find(
-      (p) => p.bairro_destino_id === bairroId && (p.tipo_operacao === tipoOperacao || p.tipo_operacao === "todos")
-    );
-    if (match) return match;
-
-    // 2. Região + tipo
-    const bairro = bairros.find((b) => b.id === bairroId);
-    if (bairro) {
-      match = clientePrecos.find(
-        (p) =>
-          !p.bairro_destino_id &&
-          p.regiao_id === bairro.region_id &&
-          (p.tipo_operacao === tipoOperacao || p.tipo_operacao === "todos")
-      );
-      if (match) return match;
-    }
-
-    // 3. Regra geral (sem bairro, sem região)
-    match = clientePrecos.find(
-      (p) =>
-        !p.bairro_destino_id &&
-        !p.regiao_id &&
-        (p.tipo_operacao === tipoOperacao || p.tipo_operacao === "todos")
-    );
-    return match || null;
-  };
-
   const resultado = useMemo(() => {
     const rotasCalc = rotas
       .filter((r) => r.bairroId)
       .map((rota) => {
-        const regra = findPrecoRegra(rota.bairroId);
         const bairro = bairros.find((b) => b.id === rota.bairroId);
         const bairroNome = bairro?.nome || "—";
         const regiao = bairro ? regioes.find((r) => r.id === bairro.region_id) : null;
 
-        if (!regra) {
+        if (!clienteId) {
           return {
             bairroNome,
             regiao: regiao?.name || "—",
@@ -111,19 +94,24 @@ export function SimuladorOperacoes({ clienteId: fixedClienteId, showClienteSelec
             taxaRetorno: 0,
             subtotal: 0,
             regraNome: null as string | null,
+            fallback: false,
             encontrada: false,
           };
         }
 
-        const taxaBase = regra.taxa_base;
-        const taxaEspera = rota.incluirEspera ? regra.taxa_espera : 0;
-        const taxaRetorno = rota.incluirRetorno ? regra.taxa_retorno : 0;
+        const tarifa = resolverTarifaCliente(bairros, tabelaPrecos, rota.bairroId, clienteId, tipoOperacao);
+        const taxaBase = tarifa.taxaBase;
+        const taxaEspera = rota.incluirEspera ? tarifa.taxaEspera : 0;
+        const taxaRetorno = rota.incluirRetorno ? tarifa.taxaRetorno : 0;
 
-        const regraNome = regra.bairro_destino_id
-          ? `Bairro específico`
-          : regra.regiao_id
-          ? `Região (${regiao?.name || "—"})`
-          : "Regra geral";
+        const regraNome =
+          tarifa.nivel === "bairro"
+            ? "Bairro específico"
+            : tarifa.nivel === "regiao"
+            ? `Região (${regiao?.name || "—"})`
+            : tarifa.nivel === "geral"
+            ? "Regra geral"
+            : "Taxa padrão do bairro";
 
         return {
           bairroNome,
@@ -133,6 +121,7 @@ export function SimuladorOperacoes({ clienteId: fixedClienteId, showClienteSelec
           taxaRetorno,
           subtotal: taxaBase + taxaEspera + taxaRetorno,
           regraNome,
+          fallback: tarifa.fallback,
           encontrada: true,
         };
       });
@@ -142,10 +131,10 @@ export function SimuladorOperacoes({ clienteId: fixedClienteId, showClienteSelec
     // Urgência: usa a primeira regra encontrada ou taxa extra config
     let taxaUrgencia = 0;
     if (incluirUrgencia) {
-      const primeiraRegra = rotas.find((r) => r.bairroId);
-      if (primeiraRegra) {
-        const regra = findPrecoRegra(primeiraRegra.bairroId);
-        taxaUrgencia = regra?.taxa_urgencia || 0;
+      const primeiraRota = rotas.find((r) => r.bairroId);
+      if (primeiraRota && clienteId) {
+        const tarifa = resolverTarifaCliente(bairros, tabelaPrecos, primeiraRota.bairroId, clienteId, tipoOperacao);
+        taxaUrgencia = tarifa.taxaUrgencia;
       }
       if (!taxaUrgencia) {
         const taxaUrgConfig = taxasExtras.find((t) => t.nome.toLowerCase().includes("urgência") && t.ativo);
@@ -186,16 +175,44 @@ export function SimuladorOperacoes({ clienteId: fixedClienteId, showClienteSelec
           {showClienteSelector && (
             <div className="space-y-2">
               <Label className="text-sm font-medium">Cliente</Label>
-              <Select value={selectedCliente} onValueChange={setSelectedCliente}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o cliente" />
-                </SelectTrigger>
-                <SelectContent>
-                  {clientes.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover open={clientePopoverOpen} onOpenChange={setClientePopoverOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={clientePopoverOpen}
+                    className={cn("w-full justify-between font-normal", !selectedCliente && "text-muted-foreground")}
+                  >
+                    <span className="truncate">
+                      {selectedCliente ? clientes.find((c) => c.id === selectedCliente)?.nome : "Selecione o cliente"}
+                    </span>
+                    <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Buscar cliente..." />
+                    <CommandList>
+                      <CommandEmpty>Nenhum cliente encontrado.</CommandEmpty>
+                      <CommandGroup>
+                        {clientes.map((c) => (
+                          <CommandItem
+                            key={c.id}
+                            value={c.nome}
+                            onSelect={() => {
+                              setSelectedCliente(c.id);
+                              setClientePopoverOpen(false);
+                            }}
+                          >
+                            <Check className={cn("mr-2 h-3.5 w-3.5 shrink-0", selectedCliente === c.id ? "opacity-100" : "opacity-0")} />
+                            {c.nome}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
           )}
 
@@ -263,21 +280,51 @@ export function SimuladorOperacoes({ clienteId: fixedClienteId, showClienteSelec
                       </Button>
                     )}
                   </div>
-                  <Select value={rota.bairroId} onValueChange={(v) => updateRota(rota.id, { bairroId: v })}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione o bairro de destino" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {bairros.map((b) => {
-                        const reg = regioes.find((r) => r.id === b.region_id);
-                        return (
-                          <SelectItem key={b.id} value={b.id}>
-                            {b.nome} {reg ? `(${reg.name})` : ""}
-                          </SelectItem>
-                        );
-                      })}
-                    </SelectContent>
-                  </Select>
+                  {(() => {
+                    const bairroSelecionado = bairros.find((b) => b.id === rota.bairroId);
+                    const isOpen = bairroPopoverOpenId === rota.id;
+                    return (
+                      <Popover open={isOpen} onOpenChange={(open) => setBairroPopoverOpenId(open ? rota.id : null)}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={isOpen}
+                            className={cn("w-full justify-between font-normal", !bairroSelecionado && "text-muted-foreground")}
+                          >
+                            <span className="truncate">{bairroSelecionado?.nome || "Selecione o bairro de destino"}</span>
+                            <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                          <Command>
+                            <CommandInput placeholder="Buscar bairro..." />
+                            <CommandList>
+                              <CommandEmpty>Nenhum bairro encontrado.</CommandEmpty>
+                              <CommandGroup>
+                                {bairros.map((b) => {
+                                  const reg = showRegiaoNoSelect ? regioes.find((r) => r.id === b.region_id) : null;
+                                  return (
+                                    <CommandItem
+                                      key={b.id}
+                                      value={b.nome}
+                                      onSelect={() => {
+                                        updateRota(rota.id, { bairroId: b.id });
+                                        setBairroPopoverOpenId(null);
+                                      }}
+                                    >
+                                      <Check className={cn("mr-2 h-3.5 w-3.5 shrink-0", rota.bairroId === b.id ? "opacity-100" : "opacity-0")} />
+                                      {b.nome} {reg ? `(${reg.name})` : ""}
+                                    </CommandItem>
+                                  );
+                                })}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                    );
+                  })()}
                   <div className="flex flex-wrap gap-4">
                     <div className="flex items-center gap-2">
                       <Switch
@@ -328,7 +375,12 @@ export function SimuladorOperacoes({ clienteId: fixedClienteId, showClienteSelec
           <CardTitle className="text-lg">Resultado da Simulação</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {!resultado.temRotas ? (
+          {precisaEscolherCliente ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Calculator className="h-10 w-10 mx-auto mb-3 opacity-40" />
+              <p className="text-sm">Selecione um cliente para simular.</p>
+            </div>
+          ) : !resultado.temRotas ? (
             <div className="text-center py-8 text-muted-foreground">
               <Calculator className="h-10 w-10 mx-auto mb-3 opacity-40" />
               <p className="text-sm">Selecione ao menos um bairro de destino para simular.</p>
@@ -342,8 +394,11 @@ export function SimuladorOperacoes({ clienteId: fixedClienteId, showClienteSelec
                     <MapPin className="h-4 w-4 text-primary" />
                     <span className="text-sm font-semibold">{rota.bairroNome}</span>
                     {rota.encontrada ? (
-                      <Badge variant="outline" className="text-[10px] h-5">
-                        <Info className="h-3 w-3 mr-1" />
+                      <Badge
+                        variant="outline"
+                        className={`text-[10px] h-5 ${rota.fallback ? "border-amber-400 text-amber-600 dark:text-amber-400" : ""}`}
+                      >
+                        {rota.fallback ? <AlertTriangle className="h-3 w-3 mr-1" /> : <Info className="h-3 w-3 mr-1" />}
                         {rota.regraNome}
                       </Badge>
                     ) : (
@@ -375,6 +430,13 @@ export function SimuladorOperacoes({ clienteId: fixedClienteId, showClienteSelec
                         <span>Subtotal</span>
                         <span className="tabular-nums">{fmt(rota.subtotal)}</span>
                       </div>
+                    </div>
+                  )}
+                  {rota.fallback && (
+                    <div className="ml-6 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-2.5 py-1.5">
+                      <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                        ⚠ Usando taxa padrão do bairro. Configure uma regra na Tabela de Preços do cliente para tarifa personalizada.
+                      </p>
                     </div>
                   )}
                   {idx < resultado.rotas.length - 1 && <Separator className="mt-3" />}
