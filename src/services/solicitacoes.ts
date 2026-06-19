@@ -335,6 +335,35 @@ export async function updateRota(
   return data[0] as RotaRow;
 }
 
+/**
+ * Remove uma rota da solicitação. Se a rota já tem histórico financeiro
+ * (pagamento conciliado ou recebimento de caixa lançado), a exclusão física
+ * apagaria esse rastro — nesse caso a rota é cancelada (soft delete) em vez
+ * de removida. Sem histórico, a linha é apagada de verdade.
+ */
+export async function deleteOrCancelRota(rotaId: string): Promise<"excluida" | "cancelada"> {
+  const [pagamentos, recebimentos] = await Promise.all([
+    supabase.from("pagamentos_solicitacao").select("id", { count: "exact", head: true }).eq("rota_id", rotaId),
+    supabase.from("recebimentos_caixa").select("id", { count: "exact", head: true }).eq("rota_id", rotaId),
+  ]);
+  if (pagamentos.error) throw new Error(pagamentos.error.message);
+  if (recebimentos.error) throw new Error(recebimentos.error.message);
+
+  const temHistoricoFinanceiro = (pagamentos.count ?? 0) > 0 || (recebimentos.count ?? 0) > 0;
+  if (temHistoricoFinanceiro) {
+    const { error } = await supabase
+      .from("rotas")
+      .update({ status: "cancelada", taxa_resolvida: 0, valor_a_receber: null })
+      .eq("id", rotaId);
+    if (error) throw new Error(error.message);
+    return "cancelada";
+  }
+
+  const { error } = await supabase.from("rotas").delete().eq("id", rotaId);
+  if (error) throw new Error(error.message);
+  return "excluida";
+}
+
 export async function bulkUpdateRotasStatus(
   solicitacaoId: string,
   status: "concluida" | "cancelada"

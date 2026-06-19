@@ -403,7 +403,7 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
                   <div className="text-xs space-y-0.5">
                     {operacaoErro && (
                       <p className="text-amber-700 dark:text-amber-400">
-                        <strong>Operação:</strong> registrado <strong>{fmt(pagRotaOperacaoTotal)}</strong>, esperado <strong>{fmt(expectedOperacao!)}</strong>
+                        <strong>Leva e Traz:</strong> registrado <strong>{fmt(pagRotaOperacaoTotal)}</strong>, esperado <strong>{fmt(expectedOperacao!)}</strong>
                       </p>
                     )}
                     {lojaErro && (

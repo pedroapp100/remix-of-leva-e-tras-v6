@@ -260,7 +260,9 @@ function RotaConciliationCard({ rota, taxasExtras, pagamentos, isFaturado, getBa
 /* ── Main Dialog ── */
 
 export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = false }: ViewSolicitacaoDialogProps) {
-  const { data: rotas = [] } = useRotasBySolicitacao(solicitacao?.id ?? "");
+  const { data: rotasRaw = [] } = useRotasBySolicitacao(solicitacao?.id ?? "");
+  // Rotas canceladas (excluídas pelo usuário mas com histórico financeiro) não aparecem aqui
+  const rotas = rotasRaw.filter((r) => r.status !== "cancelada");
   const { data: allPagamentos = [] } = usePagamentosBySolicitacao(solicitacao?.id ?? "");
   const { data: historicoRows = [] } = useHistoricoBySolicitacao(solicitacao?.id ?? "");
   const rotaIds = rotas.map((r) => r.id);

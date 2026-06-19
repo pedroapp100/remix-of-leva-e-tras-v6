@@ -50,7 +50,9 @@ export function AdminConciliacaoDialog({
   onConfirm,
 }: AdminConciliacaoDialogProps) {
   const { user } = useAuth();
-  const { data: rotas = [] } = useRotasBySolicitacao(solicitacao.id);
+  const { data: rotasRaw = [] } = useRotasBySolicitacao(solicitacao.id);
+  // Rotas canceladas (excluídas pelo usuário mas com histórico financeiro) não entram na conciliação
+  const rotas = useMemo(() => rotasRaw.filter((r) => r.status !== "cancelada"), [rotasRaw]);
   const rotaIds = useMemo(() => rotas.map((r) => r.id), [rotas]);
   const { data: taxasExtrasMap = new Map() } = useTaxasExtrasByRotaIds(rotaIds);
   const getExtrasForRota = (rotaId: string): number =>
@@ -638,7 +640,7 @@ export function AdminConciliacaoDialog({
                     <div className="text-xs space-y-0.5">
                       {rotaOperacaoErro && (
                         <p className="text-amber-700 dark:text-amber-400">
-                          <strong>Operação:</strong> registrado <strong>{fmt(pagRotaOperacaoTotal)}</strong>, esperado <strong>{fmt(expectedRotaOperacao!)}</strong>
+                          <strong>Leva e Traz:</strong> registrado <strong>{fmt(pagRotaOperacaoTotal)}</strong>, esperado <strong>{fmt(expectedRotaOperacao!)}</strong>
                         </p>
                       )}
                       {rotaLojaErro && (

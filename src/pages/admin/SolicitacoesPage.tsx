@@ -7,7 +7,7 @@ import type { Column } from "@/components/shared/DataTable";
 import type { Solicitacao, StatusSolicitacao, Rota } from "@/types/database";
 import { STATUS_SOLICITACAO_LABELS } from "@/types/database";
 import { TipoOperacaoBadge } from "@/components/shared/TipoOperacaoBadge";
-import { useSolicitacoes, useSolicitacoesPageable, useUpdateSolicitacao, useCreateSolicitacaoWithRotas, useRotasBySolicitacaoIds, useAppendHistorico, useTaxasExtrasByRotaIds, useCreateRota, useUpdateRota, useReabrirSolicitacao, useDeleteSolicitacao } from "@/hooks/useSolicitacoes";
+import { useSolicitacoes, useSolicitacoesPageable, useUpdateSolicitacao, useCreateSolicitacaoWithRotas, useRotasBySolicitacaoIds, useAppendHistorico, useTaxasExtrasByRotaIds, useCreateRota, useUpdateRota, useDeleteOrCancelRota, useReabrirSolicitacao, useDeleteSolicitacao } from "@/hooks/useSolicitacoes";
 import { useClientes } from "@/hooks/useClientes";
 import { useEntregadores } from "@/hooks/useEntregadores";
 import { useConcluirComCaixa } from "@/hooks/useConcluirComCaixa";
@@ -62,6 +62,7 @@ export default function SolicitacoesPage() {
   const concluirComCaixa = useConcluirComCaixa();
   const createRotaMut = useCreateRota();
   const updateRotaMut = useUpdateRota();
+  const deleteOrCancelRotaMut = useDeleteOrCancelRota();
   const { user } = useAuth();
 
   const getClienteNome = (id: string) => clientes.find((c) => c.id === id)?.nome ?? id;
@@ -125,7 +126,8 @@ export default function SolicitacoesPage() {
   // Rotas scoped to current page's solicitation IDs (max 25 at a time)
   const pagedSolIds = useMemo(() => pagedResult?.data.map((s) => s.id) ?? [], [pagedResult?.data]);
   const { data: pagedRotas = [] } = useRotasBySolicitacaoIds(pagedSolIds);
-  const getRotasBySolicitacao = (solId: string) => pagedRotas.filter(r => r.solicitacao_id === solId);
+  // Rotas canceladas (excluídas pelo usuário mas com histórico financeiro) não contam como rotas ativas
+  const getRotasBySolicitacao = (solId: string) => pagedRotas.filter(r => r.solicitacao_id === solId && r.status !== "cancelada");
 
   // Fetch taxas extras for all rotas in the current page
   const pagedRotaIds = useMemo(() => pagedRotas.map(r => r.id), [pagedRotas]);
@@ -150,7 +152,7 @@ export default function SolicitacoesPage() {
   // editInitialData must be declared AFTER editTarget and taxasExtrasMap
   const editInitialData: EditInitialData | undefined = useMemo(() => {
     if (!editTarget) return undefined;
-    const rotas = pagedRotas.filter(r => r.solicitacao_id === editTarget.id);
+    const rotas = pagedRotas.filter(r => r.solicitacao_id === editTarget.id && r.status !== "cancelada");
     return {
       sol: editTarget,
       rotas: rotas.map(r => ({
@@ -313,12 +315,16 @@ export default function SolicitacoesPage() {
       const sol = pagedResult?.data.find(s => s.id === data.solicitacaoId) ?? editTarget;
       const isEmAndamento = sol?.status === "em_andamento";
 
-      // Soft-cancel routes removed from the form
+      // Rotas removidas do formulário: exclui de verdade quando não há histórico financeiro, senão cancela
+      let rotasExcluidas = 0;
+      let rotasCanceladas = 0;
       if (editInitialData) {
         const formRotaDbIds = new Set(data.rotas.map(r => r.rotaDbId).filter(Boolean));
         const removedRotas = editInitialData.rotas.filter(r => !formRotaDbIds.has(r.id));
         for (const removed of removedRotas) {
-          await updateRotaMut.mutateAsync({ id: removed.id, patch: { status: "cancelada", taxa_resolvida: 0, valor_a_receber: null } });
+          const resultado = await deleteOrCancelRotaMut.mutateAsync({ rotaId: removed.id, solicitacaoId: data.solicitacaoId });
+          if (resultado === "excluida") rotasExcluidas++;
+          else rotasCanceladas++;
         }
       }
 
@@ -382,13 +388,15 @@ export default function SolicitacoesPage() {
       queryClient.invalidateQueries({ queryKey: ["taxas_extras_rotas"] });
 
       const newRotasCount = data.rotas.filter(r => !r.rotaDbId).length;
-      const removedCount = editInitialData ? editInitialData.rotas.filter(r => !new Set(data.rotas.map(f => f.rotaDbId).filter(Boolean)).has(r.id)).length : 0;
       let descricao = "Solicitação editada pelo administrador";
       if (newRotasCount > 0) {
         descricao += ` — ${newRotasCount} nova${newRotasCount > 1 ? "s" : ""} rota${newRotasCount > 1 ? "s" : ""} adicionada${newRotasCount > 1 ? "s" : ""}`;
       }
-      if (removedCount > 0) {
-        descricao += ` — ${removedCount} rota${removedCount > 1 ? "s" : ""} cancelada${removedCount > 1 ? "s" : ""}`;
+      if (rotasExcluidas > 0) {
+        descricao += ` — ${rotasExcluidas} rota${rotasExcluidas > 1 ? "s" : ""} excluída${rotasExcluidas > 1 ? "s" : ""}`;
+      }
+      if (rotasCanceladas > 0) {
+        descricao += ` — ${rotasCanceladas} rota${rotasCanceladas > 1 ? "s" : ""} cancelada${rotasCanceladas > 1 ? "s" : ""} (histórico financeiro preservado)`;
       }
       appendHistoricoMut.mutate({
         solId: data.solicitacaoId,

@@ -20,6 +20,7 @@ import {
   createRota,
   createRotas,
   updateRota,
+  deleteOrCancelRota,
   bulkUpdateRotasStatus,
   bulkReativarRotas,
   deleteRecebimentosByRotaIds,
@@ -314,6 +315,23 @@ export function useUpdateRota() {
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["rotas", data.solicitacao_id] });
       qc.invalidateQueries({ queryKey: ["rotas", "by-ids"] });
+    },
+  });
+}
+
+/**
+ * Remove uma rota: exclui de verdade se não houver histórico financeiro
+ * (pagamentos_solicitacao / recebimentos_caixa), senão cancela (soft delete).
+ */
+export function useDeleteOrCancelRota() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ rotaId }: { rotaId: string; solicitacaoId: string }) => deleteOrCancelRota(rotaId),
+    onSuccess: (_, { solicitacaoId }) => {
+      qc.invalidateQueries({ queryKey: ["rotas", solicitacaoId] });
+      qc.invalidateQueries({ queryKey: ["rotas", "windowed"] });
+      qc.invalidateQueries({ queryKey: ["rotas", "by-ids"] });
+      qc.invalidateQueries({ queryKey: ["taxas_extras_rotas"] });
     },
   });
 }
