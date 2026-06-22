@@ -24,6 +24,39 @@ const MODALIDADE_LABELS: Record<string, string> = {
   faturado: "Faturado",
 };
 
+async function extractFunctionError(
+  fnData: { error?: string } | null | undefined,
+  error: { message?: string; context?: unknown } | null
+): Promise<string> {
+  if (fnData?.error) return fnData.error;
+  if (error) {
+    try {
+      const ctx = (error as { context?: { json?: () => Promise<{ error?: string }> } })?.context;
+      const body = ctx && typeof ctx.json === "function" ? await ctx.json() : null;
+      return body?.error ?? error.message ?? "Erro desconhecido.";
+    } catch {
+      return error.message ?? "Erro desconhecido.";
+    }
+  }
+  return "Erro desconhecido.";
+}
+
+/** Cria o acesso ao portal (auth.users + profiles) para um cliente via Edge Function create-user. */
+async function createClienteAccess(
+  data: Cliente,
+  senha: string
+): Promise<{ success: true; profileId?: string } | { success: false; error: string }> {
+  const docDigits = data.documento?.replace(/\D/g, "") || undefined;
+  const { data: fnData, error } = await supabase.functions.invoke("create-user", {
+    body: { email: data.email, password: senha, nome: data.nome, role: "cliente", documento: docDigits, telefone: data.telefone },
+  });
+  if (error || fnData?.error) {
+    return { success: false, error: await extractFunctionError(fnData, error) };
+  }
+  const profileId = (fnData as { user?: { id: string } })?.user?.id;
+  return { success: true, profileId };
+}
+
 export default function ClientesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -79,42 +112,69 @@ export default function ClientesPage() {
   const handleSave = async (data: Cliente, senha?: string) => {
     if (editing) {
       await updateClienteMutation.mutateAsync({ id: editing.id, patch: data });
-      toast.success("Cliente atualizado com sucesso!");
+
+      if (!senha) {
+        toast.success("Cliente atualizado com sucesso!");
+      } else if (editing.profile_id) {
+        // Cliente já tem acesso ao portal — só trocar a senha (mesmo padrão de UsuariosTab.tsx)
+        const { data: fnData, error } = await supabase.functions.invoke("update-user", {
+          body: {
+            user_id: editing.profile_id,
+            email: data.email,
+            password: senha,
+            nome: data.nome,
+            ativo: data.status === "ativo",
+            // O formulário não tem campo de documento — preserva o valor que já existia
+            documento: data.documento ?? editing.documento ?? null,
+          },
+        });
+        if (error || fnData?.error) {
+          const msg = await extractFunctionError(fnData, error);
+          toast.warning(`Cliente atualizado, mas erro ao alterar senha: ${msg}`);
+        } else {
+          toast.success("Cliente atualizado e senha alterada com sucesso!");
+        }
+      } else {
+        // Cliente nunca teve acesso ao portal — criar agora, igual ao cadastro novo
+        const result = await createClienteAccess(
+          { ...data, documento: data.documento ?? editing.documento },
+          senha
+        );
+        if (!result.success) {
+          toast.warning(`Cliente atualizado, mas erro ao criar acesso: ${result.error}`);
+        } else {
+          if (result.profileId) {
+            try {
+              await updateClienteMutation.mutateAsync({ id: editing.id, patch: { profile_id: result.profileId } });
+            } catch {
+              toast.warning("Acesso criado, mas erro ao vincular perfil. Contate o suporte.");
+            }
+          }
+          toast.success(`Cliente atualizado! Acesso criado para ${data.email}`, { duration: 10000 });
+        }
+      }
     } else {
       const { id: _id, created_at: _ca, updated_at: _ua, ...insertData } = data;
       const payload = insertData as unknown as ClienteInsert;
       const created = await createCliente.mutateAsync({ ...payload, profile_id: null, documento: null });
 
       // Auto-criar conta de acesso via Admin API (Edge Function)
-      if (senha) {
-        const docDigits = data.documento?.replace(/\D/g, "") || undefined;
-        const { data: fnData, error } = await supabase.functions.invoke("create-user", {
-          body: { email: data.email, password: senha, nome: data.nome, role: "cliente", documento: docDigits },
-        });
-        if (error || fnData?.error) {
-          let msg = fnData?.error ?? "Erro ao criar acesso.";
-          if (!fnData?.error && error) {
-            try {
-              const ctx = (error as any)?.context;
-              const body = ctx && typeof ctx.json === "function" ? await ctx.json() : null;
-              msg = body?.error ?? error.message ?? msg;
-            } catch { /* ignora */ }
-          }
-          toast.warning(`Cliente cadastrado, mas erro ao criar acesso: ${msg}`);
+      if (!senha) {
+        toast.success("Cliente cadastrado com sucesso!");
+      } else {
+        const result = await createClienteAccess(data, senha);
+        if (!result.success) {
+          toast.warning(`Cliente cadastrado, mas erro ao criar acesso: ${result.error}`);
         } else {
-          // Vincular o profile_id ao registro do cliente
-          const profileId = (fnData as { user: { id: string; email: string } })?.user?.id;
-          if (profileId) {
+          if (result.profileId) {
             try {
-              await updateClienteMutation.mutateAsync({ id: created.id, patch: { profile_id: profileId } });
+              await updateClienteMutation.mutateAsync({ id: created.id, patch: { profile_id: result.profileId } });
             } catch {
               toast.warning("Cliente criado, mas erro ao vincular perfil. Contate o suporte.");
             }
           }
           toast.success(`Cliente cadastrado! Acesso criado para ${data.email}`, { duration: 10000 });
         }
-      } else {
-        toast.success("Cliente cadastrado com sucesso!");
       }
     }
     setFormOpen(false);

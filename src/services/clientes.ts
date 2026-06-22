@@ -58,7 +58,24 @@ export async function updateCliente(
     .select();
   if (error) throw new Error(error.message);
   if (!data || data.length === 0) throw new Error("Cliente não encontrado ou sem permissão para atualizar.");
-  return data[0] as ClienteRow;
+  const updated = data[0] as ClienteRow;
+
+  // Mantém o telefone de login (profiles.telefone) sincronizado com o telefone
+  // de contato do cliente — mesmo padrão usado para profile_id/documento.
+  if (patch.telefone !== undefined && updated.profile_id) {
+    const { error: profileError } = await supabase
+      .from("profiles")
+      .update({ telefone: patch.telefone })
+      .eq("id", updated.profile_id);
+    if (profileError) {
+      if (profileError.code === "23505") {
+        throw new Error("Este telefone já está em uso por outra conta. Use um número diferente.");
+      }
+      throw new Error(`Cliente atualizado, mas falha ao sincronizar telefone de acesso: ${profileError.message}`);
+    }
+  }
+
+  return updated;
 }
 
 export async function deleteCliente(id: string): Promise<void> {

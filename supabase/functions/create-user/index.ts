@@ -11,6 +11,7 @@
  *     nome: string,
  *     role: 'admin' | 'cliente' | 'entregador',
  *     documento?: string,   // CPF/CNPJ — só dígitos
+ *     telefone?: string,    // login alternativo para clientes — só dígitos
  *     cargo_id?: string,    // UUID — apenas para admins
  *   }
  */
@@ -71,7 +72,7 @@ serve(async (req) => {
 
     // ── 2. Validar o body da requisição ─────────────────────────────────────
     const body = await req.json();
-    const { email, password, nome, role, documento, cargo_id } = body;
+    const { email, password, nome, role, documento, cargo_id, telefone } = body;
 
     if (!email || !password || !nome || !role) {
       return new Response(
@@ -104,6 +105,7 @@ serve(async (req) => {
         nome: nome.trim(),
         role,
         documento: documento || null,
+        telefone: telefone || null,
       },
     });
 

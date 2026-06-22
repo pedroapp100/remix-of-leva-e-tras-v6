@@ -106,9 +106,11 @@ export interface Cargo {
 
 export interface Cliente {
   id: string;
+  profile_id?: string | null;
   nome: string;
   tipo: "pessoa_fisica" | "pessoa_juridica";
   email: string;
+  documento?: string | null;
   telefone: string;
   endereco: string;
   bairro: string;

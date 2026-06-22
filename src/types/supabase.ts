@@ -1190,6 +1190,7 @@ export type Database = {
           id: string
           nome: string
           role: Database["public"]["Enums"]["role"]
+          telefone: string | null
         }
         Insert: {
           ativo?: boolean
@@ -1201,6 +1202,7 @@ export type Database = {
           id: string
           nome: string
           role?: Database["public"]["Enums"]["role"]
+          telefone?: string | null
         }
         Update: {
           ativo?: boolean
@@ -1212,6 +1214,7 @@ export type Database = {
           id?: string
           nome?: string
           role?: Database["public"]["Enums"]["role"]
+          telefone?: string | null
         }
         Relationships: [
           {
@@ -1860,12 +1863,43 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      admin_upsert_pagamentos_solicitacao: {
+      admin_corrigir_credito_loja:
+        | {
+            Args: {
+              p_fatura_id: string
+              p_novo_credito: number
+              p_sol_codigo: string
+              p_solicitacao_id: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_fatura_id: string
+              p_novo_credito: number
+              p_sol_codigo: string
+              p_solicitacao_id: string
+              p_usuario_id?: string
+            }
+            Returns: Json
+          }
+      admin_corrigir_pagamento_rota: {
         Args: {
+          p_motivo: string
+          p_novo_pagamento_operacao: string
+          p_novos_meios: string[]
+          p_rota_id: string
           p_sol_id: string
-          p_pagamentos: Json
-          p_usuario_id?: string | null
+          p_usuario_id: string
         }
+        Returns: Json
+      }
+      admin_reabrir_conciliacao: {
+        Args: { p_motivo: string; p_sol_id: string; p_usuario_id: string }
+        Returns: undefined
+      }
+      admin_upsert_pagamentos_solicitacao: {
+        Args: { p_pagamentos: Json; p_sol_id: string; p_usuario_id?: string }
         Returns: undefined
       }
       auth_role: { Args: never; Returns: string }
@@ -1909,6 +1943,10 @@ export type Database = {
       is_admin: { Args: never; Returns: boolean }
       lookup_email_by_documento: {
         Args: { doc_input: string }
+        Returns: string
+      }
+      lookup_email_by_telefone: {
+        Args: { telefone_input: string }
         Returns: string
       }
       marcar_faturas_vencidas: { Args: never; Returns: number }

@@ -8,8 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mail, Lock, AlertCircle, Package, MapPin, BarChart3, Shield, Sun, Moon, FileText } from "lucide-react";
+import { Mail, Lock, AlertCircle, Package, MapPin, BarChart3, Shield, Sun, Moon, FileText, Phone } from "lucide-react";
 import { ButtonSpinner } from "@/components/shared/BrandedLoader";
+import { PhoneInput } from "@/components/shared/PhoneInput";
 import { supabase } from "@/lib/supabase";
 import logoLevaTraz from "@/assets/logo-leva-e-traz.png";
 
@@ -23,6 +24,14 @@ const loginDocSchema = z.object({
     const digits = v.replace(/\D/g, "");
     return digits.length === 11 || digits.length === 14;
   }, "CPF (11 dígitos) ou CNPJ (14 dígitos) inválido"),
+  password: z.string().min(6, "Mínimo 6 caracteres"),
+});
+
+const loginTelefoneSchema = z.object({
+  telefone: z.string().refine((v) => {
+    const digits = v.replace(/\D/g, "");
+    return digits.length === 10 || digits.length === 11;
+  }, "Telefone inválido"),
   password: z.string().min(6, "Mínimo 6 caracteres"),
 });
 
@@ -41,7 +50,7 @@ function maskDocumento(value: string): string {
     .replace(/(\d{4})(\d{1,2})$/, "$1-$2");
 }
 
-type LoginMode = "email" | "documento";
+type LoginMode = "email" | "documento" | "telefone";
 
 const MAX_ATTEMPTS_DISPLAY = 5;
 
@@ -67,6 +76,7 @@ export default function LoginPage() {
   const [loginMode, setLoginMode] = useState<LoginMode>("email");
   const [email, setEmail] = useState("");
   const [documento, setDocumento] = useState("");
+  const [telefone, setTelefone] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
@@ -92,7 +102,7 @@ export default function LoginPage() {
         return;
       }
       resolvedEmail = normalizedEmail;
-    } else {
+    } else if (loginMode === "documento") {
       const result = loginDocSchema.safeParse({ documento, password });
       if (!result.success) {
         const errors: Record<string, string> = {};
@@ -112,6 +122,27 @@ export default function LoginPage() {
         resolvedEmail = foundEmail;
       } catch {
         setError("Erro ao buscar documento. Tente novamente.");
+        return;
+      }
+    } else {
+      const result = loginTelefoneSchema.safeParse({ telefone, password });
+      if (!result.success) {
+        const errors: Record<string, string> = {};
+        result.error.issues.forEach((issue) => {
+          errors[issue.path[0] as string] = issue.message;
+        });
+        setFieldErrors(errors);
+        return;
+      }
+      try {
+        const { data: foundEmail, error: rpcError } = await supabase.rpc("lookup_email_by_telefone", { telefone_input: telefone });
+        if (rpcError || !foundEmail) {
+          setError("Telefone não cadastrado. Verifique o número informado.");
+          return;
+        }
+        resolvedEmail = foundEmail;
+      } catch {
+        setError("Erro ao buscar telefone. Tente novamente.");
         return;
       }
     }
@@ -235,6 +266,18 @@ export default function LoginPage() {
                 <FileText className="h-4 w-4" />
                 CPF / CNPJ
               </button>
+              <button
+                type="button"
+                onClick={() => { setLoginMode("telefone"); setError(""); setFieldErrors({}); }}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-colors ${
+                  loginMode === "telefone"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted/40 dark:bg-[hsl(230_30%_8%)] text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Phone className="h-4 w-4" />
+                Telefone
+              </button>
             </div>
 
             {loginMode === "email" ? (
@@ -254,7 +297,7 @@ export default function LoginPage() {
                 </div>
                 {fieldErrors.email && <p className="text-sm text-destructive">{fieldErrors.email}</p>}
               </div>
-            ) : (
+            ) : loginMode === "documento" ? (
               <div className="space-y-1.5">
                 <Label htmlFor="documento" className="text-base font-medium">CPF ou CNPJ</Label>
                 <div className="relative group">
@@ -271,6 +314,21 @@ export default function LoginPage() {
                   />
                 </div>
                 {fieldErrors.documento && <p className="text-sm text-destructive">{fieldErrors.documento}</p>}
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Label htmlFor="telefone" className="text-base font-medium">Telefone</Label>
+                <div className="relative group">
+                  <Phone className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary z-10" />
+                  <PhoneInput
+                    id="telefone"
+                    value={telefone}
+                    onChange={setTelefone}
+                    className="pl-11 h-12 text-base rounded-xl border-border/60 bg-muted/40 dark:bg-[hsl(230_30%_8%)] dark:border-[hsl(230_25%_16%)] focus:bg-background dark:focus:bg-[hsl(230_30%_10%)] focus:border-primary/50 transition-all"
+                    disabled={isBlocked}
+                  />
+                </div>
+                {fieldErrors.telefone && <p className="text-sm text-destructive">{fieldErrors.telefone}</p>}
               </div>
             )}
 

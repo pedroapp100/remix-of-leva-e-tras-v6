@@ -128,7 +128,7 @@ export function ClientFormDialog({ open, onOpenChange, editing, onSave }: Client
       toast.error("Defina uma senha de acesso para o cliente.");
       return;
     }
-    if (!editing && senha.trim().length < 6) {
+    if (senha.trim() && senha.trim().length < 6) {
       toast.error("A senha deve ter no mínimo 6 caracteres.");
       return;
     }
@@ -169,7 +169,7 @@ export function ClientFormDialog({ open, onOpenChange, editing, onSave }: Client
       permite_saldo_negativo: modalidade === "pre_pago" ? permiteSaldoNegativo : false,
       created_at: editing?.created_at ?? now,
       updated_at: now,
-    }, !editing ? senha.trim() : undefined);
+    }, senha.trim() || undefined);
   };
 
   return (
@@ -479,39 +479,42 @@ export function ClientFormDialog({ open, onOpenChange, editing, onSave }: Client
             </div>
           </div>
 
-          {/* Seção 3: Acesso ao Portal (apenas novo cadastro) */}
-          {!editing && (
-            <>
-              <Separator />
-              <div>
-                <h3 className="text-base font-semibold mb-4">Acesso ao Portal</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="field-senha">Senha de acesso *</Label>
-                    <Input
-                      id="field-senha"
-                      name="senha"
-                      type="password"
-                      value={senha}
-                      onChange={(e) => setSenha(e.target.value)}
-                      placeholder="Mínimo 6 caracteres"
-                      minLength={6}
-                      className={senha && senha.length < 6 ? "border-destructive focus-visible:ring-destructive" : ""}
-                    />
-                    {senha && senha.length < 6 && (
-                      <p className="text-xs text-destructive">A senha deve ter no mínimo 6 caracteres.</p>
-                    )}
-                    {senha && senha.length >= 6 && (
-                      <p className="text-xs text-green-600 dark:text-green-400">✓ Senha válida</p>
-                    )}
-                    <p className="text-xs text-muted-foreground">
-                      O cliente usará o email cadastrado e esta senha para acessar o portal.
-                    </p>
-                  </div>
-                </div>
+          {/* Seção 3: Acesso ao Portal */}
+          <Separator />
+          <div>
+            <h3 className="text-base font-semibold mb-4">Acesso ao Portal</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="field-senha">{editing ? "Nova Senha (deixe em branco para manter)" : "Senha de acesso *"}</Label>
+                <Input
+                  id="field-senha"
+                  name="senha"
+                  type="password"
+                  value={senha}
+                  onChange={(e) => setSenha(e.target.value)}
+                  placeholder="Mínimo 6 caracteres"
+                  minLength={6}
+                  className={senha && senha.length < 6 ? "border-destructive focus-visible:ring-destructive" : ""}
+                />
+                {senha && senha.length < 6 && (
+                  <p className="text-xs text-destructive">A senha deve ter no mínimo 6 caracteres.</p>
+                )}
+                {senha && senha.length >= 6 && (
+                  <p className="text-xs text-green-600 dark:text-green-400">✓ Senha válida</p>
+                )}
+                {!editing && (
+                  <p className="text-xs text-muted-foreground">
+                    O cliente usará o email cadastrado e esta senha para acessar o portal.
+                  </p>
+                )}
+                {editing && !editing.profile_id && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    Este cliente ainda não tem conta de acesso. Definir uma senha aqui cria o acesso agora.
+                  </p>
+                )}
               </div>
-            </>
-          )}
+            </div>
+          </div>
         </div>
 
         <DialogFooter>
