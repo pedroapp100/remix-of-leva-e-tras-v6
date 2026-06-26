@@ -195,6 +195,7 @@ export interface ConcluirFaturaEntregaParams {
   p_total_recebido: number;
   p_sol_codigo: string;
   p_num_rotas: number;
+  p_usuario_id?: string | null;
 }
 
 export interface ConcluirFaturaEntregaResult {
@@ -204,6 +205,7 @@ export interface ConcluirFaturaEntregaResult {
   auto_fechada?: boolean;
   total_entregas?: number;
   already_processed?: boolean;
+  corrigido_pos_reabertura?: boolean;
   error?: string;
 }
 
@@ -213,4 +215,26 @@ export async function concluirFaturaEntrega(
   const { data, error } = await supabase.rpc("concluir_fatura_entrega", params);
   if (error) throw new Error(error.message);
   return data as unknown as ConcluirFaturaEntregaResult;
+}
+
+// ── RPC: Reabertura de entrega já faturada ───────────────────────────────────
+
+export interface ReabrirEntregaFaturadaParams {
+  p_solicitacao_id: string;
+  p_motivo: string;
+  p_usuario_id: string;
+}
+
+export interface ReabrirEntregaFaturadaResult {
+  success: boolean;
+  total_estornado?: number;
+  error?: string;
+}
+
+export async function reabrirEntregaFaturada(
+  params: ReabrirEntregaFaturadaParams
+): Promise<ReabrirEntregaFaturadaResult> {
+  const { data, error } = await supabase.rpc("reabrir_entrega_faturada", params);
+  if (error) throw new Error(error.message);
+  return data as unknown as ReabrirEntregaFaturadaResult;
 }

@@ -55,6 +55,7 @@ export type Database = {
           motivo: string
           solicitacao_id: string | null
           tipo: Database["public"]["Enums"]["tipo_ajuste"]
+          tipo_lancamento: Database["public"]["Enums"]["tipo_lancamento"] | null
           usuario_id: string
           valor: number
         }
@@ -65,6 +66,9 @@ export type Database = {
           motivo: string
           solicitacao_id?: string | null
           tipo: Database["public"]["Enums"]["tipo_ajuste"]
+          tipo_lancamento?:
+            | Database["public"]["Enums"]["tipo_lancamento"]
+            | null
           usuario_id: string
           valor: number
         }
@@ -75,6 +79,9 @@ export type Database = {
           motivo?: string
           solicitacao_id?: string | null
           tipo?: Database["public"]["Enums"]["tipo_ajuste"]
+          tipo_lancamento?:
+            | Database["public"]["Enums"]["tipo_lancamento"]
+            | null
           usuario_id?: string
           valor?: number
         }
@@ -1560,6 +1567,7 @@ export type Database = {
           id: string
           justificativa: string | null
           ponto_coleta: string
+          reaberta_em: string | null
           retroativo: boolean
           status: Database["public"]["Enums"]["status_solicitacao"]
           tipo_coleta: string
@@ -1579,6 +1587,7 @@ export type Database = {
           id?: string
           justificativa?: string | null
           ponto_coleta: string
+          reaberta_em?: string | null
           retroativo?: boolean
           status?: Database["public"]["Enums"]["status_solicitacao"]
           tipo_coleta?: string
@@ -1598,6 +1607,7 @@ export type Database = {
           id?: string
           justificativa?: string | null
           ponto_coleta?: string
+          reaberta_em?: string | null
           retroativo?: boolean
           status?: Database["public"]["Enums"]["status_solicitacao"]
           tipo_coleta?: string
@@ -1894,10 +1904,6 @@ export type Database = {
         }
         Returns: Json
       }
-      admin_reabrir_conciliacao: {
-        Args: { p_motivo: string; p_sol_id: string; p_usuario_id: string }
-        Returns: undefined
-      }
       admin_upsert_pagamentos_solicitacao: {
         Args: { p_pagamentos: Json; p_sol_id: string; p_usuario_id?: string }
         Returns: undefined
@@ -1923,6 +1929,7 @@ export type Database = {
           p_tipo_faturamento: string
           p_total_recebido: number
           p_total_taxas: number
+          p_usuario_id?: string
         }
         Returns: Json
       }
@@ -1959,6 +1966,14 @@ export type Database = {
           p_type: string
         }
         Returns: undefined
+      }
+      reabrir_entrega_faturada: {
+        Args: {
+          p_motivo: string
+          p_solicitacao_id: string
+          p_usuario_id?: string
+        }
+        Returns: Json
       }
     }
     Enums: {

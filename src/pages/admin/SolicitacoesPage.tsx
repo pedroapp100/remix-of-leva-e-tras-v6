@@ -456,7 +456,11 @@ export default function SolicitacoesPage() {
       return;
     }
     appendHistoricoMut.mutate({ solId: sol.id, tipo: "conclusao", descricao: "Entrega concluída pelo administrador", extra: { usuario_id: user?.id ?? null, status_anterior: sol.status, status_novo: "concluida" } });
-    toast.success("Solicitação concluída!");
+    if (result.error) {
+      toast.warning(result.error);
+    } else {
+      toast.success("Solicitação concluída!");
+    }
     if (sol.entregador_id) {
       const entregador = entregadores.find((e) => e.id === sol.entregador_id);
       if (entregador?.profile_id) {

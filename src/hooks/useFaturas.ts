@@ -20,6 +20,7 @@ import {
   createHistoricoFatura,
   fetchFaturaIdsComReceita,
   concluirFaturaEntrega,
+  reabrirEntregaFaturada,
   type FaturaRow,
   type FaturaInsert,
   type FaturaUpdate,
@@ -31,6 +32,8 @@ import {
   type HistoricoFaturaInsert,
   type ConcluirFaturaEntregaParams,
   type ConcluirFaturaEntregaResult,
+  type ReabrirEntregaFaturadaParams,
+  type ReabrirEntregaFaturadaResult,
 } from "@/services/faturas";
 import {
   fetchSolicitacoesByIds,
@@ -178,6 +181,23 @@ export function useConcluirFaturaEntrega() {
       qc.invalidateQueries({ queryKey: ["saldo_pre_pago", params.p_cliente_id] });
       // Refresh solicitacoes table so admin_conciliada_at is always up-to-date after fatura creation
       qc.invalidateQueries({ queryKey: ["solicitacoes"] });
+    },
+  });
+}
+
+export function useReabrirEntregaFaturada() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (params: ReabrirEntregaFaturadaParams) => reabrirEntregaFaturada(params),
+    onSuccess: (_result: ReabrirEntregaFaturadaResult, params) => {
+      qc.invalidateQueries({ queryKey: ["faturas"] });
+      qc.invalidateQueries({ queryKey: ["lancamentos"] });
+      qc.invalidateQueries({ queryKey: ["ajustes"] });
+      qc.invalidateQueries({ queryKey: ["historico_fat"] });
+      qc.invalidateQueries({ queryKey: ["entregas_fatura"] });
+      qc.invalidateQueries({ queryKey: ["solicitacoes"] });
+      qc.invalidateQueries({ queryKey: ["rotas", params.p_solicitacao_id] });
+      qc.invalidateQueries({ queryKey: ["pagamentos", params.p_solicitacao_id] });
     },
   });
 }

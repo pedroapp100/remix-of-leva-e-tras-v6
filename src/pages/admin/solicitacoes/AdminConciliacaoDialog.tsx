@@ -351,6 +351,7 @@ export function AdminConciliacaoDialog({
           p_total_recebido: totalRecebido,
           p_sol_codigo: solicitacao.codigo,
           p_num_rotas: rotas.filter(isFaturavelRota).length,
+          p_usuario_id: user?.id ?? null,
         });
         if (!result.success) {
           toast.error(result.error ?? "Erro ao gerar/atualizar fatura.");

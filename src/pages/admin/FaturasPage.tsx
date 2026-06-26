@@ -1,11 +1,13 @@
 import { useState, useMemo, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { PageContainer, MetricCard, DataTable, SearchInput, StatusBadge } from "@/components/shared";
+import { PageContainer, MetricCard, DataTable, SearchInput, StatusBadge, ConfirmDialog, PermissionGuard } from "@/components/shared";
 import type { Column } from "@/components/shared/DataTable";
 import type { Fatura, StatusGeral } from "@/types/database";
 import { STATUS_GERAL_LABELS } from "@/types/database";
 import { TIPO_FATURAMENTO_LABELS, formatCurrency, formatDateBR } from "@/lib/formatters";
-import { useFaturas, useFaturaIdsComReceita } from "@/hooks/useFaturas";
+import { useFaturas, useFaturaIdsComReceita, useUpdateFatura, useCreateHistoricoFatura } from "@/hooks/useFaturas";
+import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
 import { DatePickerWithRange } from "@/components/shared/DatePickerWithRange";
 import type { DateRange } from "react-day-picker";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
-import { FileText, AlertTriangle, CheckCircle, Clock, Eye, Pencil, DollarSign, X, ListFilter, ChevronDown } from "lucide-react";
+import { FileText, AlertTriangle, CheckCircle, Clock, Eye, Pencil, DollarSign, X, ListFilter, ChevronDown, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExportDropdown } from "@/components/shared/ExportDropdown";
 import { exportCSV, exportPDF } from "@/lib/exportTable";
@@ -46,6 +48,16 @@ function getEffectiveStatus(f: Fatura, todayIso: string): StatusGeral {
   return f.status_geral;
 }
 
+/** Soma dias a uma data ISO (YYYY-MM-DD) em horário local, evitando o off-by-one de UTC. */
+function addDaysIso(isoDate: string, days: number): string {
+  const d = new Date(isoDate + "T00:00:00");
+  d.setDate(d.getDate() + days);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export default function FaturasPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { data: faturas = [] } = useFaturas();
@@ -58,6 +70,10 @@ export default function FaturasPage() {
   const [tipoFilter, setTipoFilter] = useState<string>("todos");
   const [statusFilter, setStatusFilter] = useState<StatusFilterOption[]>([]);
   const [selectedFatura, setSelectedFatura] = useState<Fatura | null>(null);
+  const [reabrirTarget, setReabrirTarget] = useState<Fatura | null>(null);
+  const { user } = useAuth();
+  const updateFatura = useUpdateFatura();
+  const createHistorico = useCreateHistoricoFatura();
 
   function toggleStatusFilter(value: StatusFilterOption) {
     setStatusFilter((prev) =>
@@ -74,6 +90,32 @@ export default function FaturasPage() {
     const d = String(now.getDate()).padStart(2, "0");
     return `${y}-${m}-${d}`;
   }, []);
+
+  const handleReabrirFatura = async () => {
+    if (!reabrirTarget) return;
+    // Empurra o vencimento 7 dias para não cair na varredura diária de faturas vencidas
+    // assim que reabre — mesma regra usada em reabrir_entrega_faturada (migration 52).
+    const novaDataVencimento = addDaysIso(todayIso, 7);
+    try {
+      await updateFatura.mutateAsync({
+        id: reabrirTarget.id,
+        patch: { status_geral: "Aberta", data_vencimento: novaDataVencimento },
+      });
+      await createHistorico.mutateAsync({
+        fatura_id: reabrirTarget.id,
+        tipo: "reaberta",
+        descricao: `Fatura reaberta manualmente — voltou para Aberta (vencimento ajustado para ${formatDateBR(novaDataVencimento)})`,
+        usuario_id: user?.id ?? null,
+        valor_anterior: null,
+        valor_novo: null,
+        metadata: null,
+      });
+      toast.success(`Fatura ${reabrirTarget.numero} reaberta com sucesso`);
+      setReabrirTarget(null);
+    } catch {
+      toast.error("Erro ao reabrir fatura. Tente novamente.");
+    }
+  };
 
   // Sync state → URL
   useEffect(() => {
@@ -229,6 +271,23 @@ export default function FaturasPage() {
               </TooltipTrigger>
               <TooltipContent>Editar fatura</TooltipContent>
             </Tooltip>
+            {f.status_geral === "Fechada" && (
+              <PermissionGuard permission="financeiro.edit">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 rounded-full text-muted-foreground hover:text-emerald-500 hover:bg-emerald-500/10 transition-colors"
+                      onClick={(e) => { e.stopPropagation(); setReabrirTarget(f); }}
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Reabrir fatura</TooltipContent>
+                </Tooltip>
+              </PermissionGuard>
+            )}
           </div>
         </TooltipProvider>
       ),
@@ -277,6 +336,18 @@ export default function FaturasPage() {
           >
             <Pencil className="h-3.5 w-3.5" />
           </Button>
+          {f.status_geral === "Fechada" && (
+            <PermissionGuard permission="financeiro.edit">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-muted-foreground hover:text-emerald-500"
+                onClick={() => setReabrirTarget(f)}
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+              </Button>
+            </PermissionGuard>
+          )}
         </div>
       </Card>
     );
@@ -462,8 +533,23 @@ export default function FaturasPage() {
           fatura={selectedFatura}
           open={!!selectedFatura}
           onOpenChange={(open) => !open && setSelectedFatura(null)}
+          onFaturaFechada={(novoStatus) => setActiveTab(novoStatus === "Finalizada" ? "finalizadas" : "fechadas")}
         />
       </Suspense>
+
+      <ConfirmDialog
+        open={!!reabrirTarget}
+        onOpenChange={(open) => !open && setReabrirTarget(null)}
+        title="Reabrir Fatura"
+        description={
+          reabrirTarget
+            ? `A fatura ${reabrirTarget.numero} voltará para "Aberta" e o vencimento será ajustado para ${formatDateBR(addDaysIso(todayIso, 7))}. Use esta ação apenas se o fechamento foi feito por engano.`
+            : ""
+        }
+        confirmLabel="Reabrir Fatura"
+        loading={updateFatura.isPending || createHistorico.isPending}
+        onConfirm={handleReabrirFatura}
+      />
     </PageContainer>
   );
 }
