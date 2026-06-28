@@ -1,17 +1,21 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Package, Truck, TrendingDown, TrendingUp, Wallet } from "lucide-react";
+import { Calculator, Package, Truck, TrendingDown, TrendingUp, Wallet } from "lucide-react";
 import { MetricCard } from "@/components/shared/MetricCard";
 import { PageContainer } from "@/components/shared/PageContainer";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/shared/StatusBadge";
+import { SimuladorOperacoes } from "@/components/shared/SimuladorOperacoes";
 import { formatCurrency, formatDateBR } from "@/lib/formatters";
 import { useSolicitacoes } from "@/hooks/useSolicitacoes";
 import { useFaturas } from "@/hooks/useFaturas";
 import { useClienteSaldoMap } from "@/hooks/useClientes";
 import { useEntregadores } from "@/hooks/useEntregadores";
 import { useClienteId } from "@/hooks/useClienteId";
+import { useSettingsStore } from "@/contexts/SettingsStore";
 
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.1 } } };
 const fadeUp = {
@@ -28,6 +32,9 @@ export default function ClienteDashboard() {
   const { clienteId, cliente } = useClienteId();
   const CLIENTE_ID = clienteId;
   const isPrePago = cliente?.modalidade === "pre_pago";
+  const [simuladorOpen, setSimuladorOpen] = useState(false);
+  const { cliente_pages_enabled } = useSettingsStore();
+  const simuladorHabilitado = cliente_pages_enabled.includes("simulador");
 
   // Single-pass: solicitações metrics + recent list + faturas metrics
   const { metrics, recentSolicitacoes } = useMemo(() => {
@@ -65,7 +72,17 @@ export default function ClienteDashboard() {
   const saldoPrePago = isPrePago && CLIENTE_ID ? getClienteSaldo(CLIENTE_ID) : 0;
 
   return (
-    <PageContainer title="Dashboard" subtitle="Visão geral das suas entregas e financeiro.">
+    <PageContainer
+      title="Dashboard"
+      subtitle="Visão geral das suas entregas e financeiro."
+      actions={
+        simuladorHabilitado && (
+          <Button onClick={() => setSimuladorOpen(true)}>
+            <Calculator className="h-4 w-4 mr-2" /> Simulador
+          </Button>
+        )
+      }
+    >
       <motion.div data-onboarding="client-metrics" variants={stagger} initial="hidden" animate="show" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <motion.div variants={fadeUp}>
           <MetricCard title="Pedidos do Mês" value={metrics.pedidosDoMes} icon={Package} subtitle="Solicitações criadas" />
@@ -139,6 +156,18 @@ export default function ClienteDashboard() {
           </CardContent>
         </Card>
       </motion.div>
+
+      {simuladorHabilitado && (
+        <Dialog open={simuladorOpen} onOpenChange={setSimuladorOpen}>
+          <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Simulador de Operações</DialogTitle>
+              <DialogDescription className="sr-only">.</DialogDescription>
+            </DialogHeader>
+            <SimuladorOperacoes clienteId={CLIENTE_ID ?? undefined} showRegiaoNoSelect={false} />
+          </DialogContent>
+        </Dialog>
+      )}
     </PageContainer>
   );
 }

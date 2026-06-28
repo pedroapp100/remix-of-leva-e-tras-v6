@@ -21,6 +21,7 @@ import {
   fetchFaturaIdsComReceita,
   concluirFaturaEntrega,
   reabrirEntregaFaturada,
+  excluirEntregaFaturada,
   type FaturaRow,
   type FaturaInsert,
   type FaturaUpdate,
@@ -34,6 +35,8 @@ import {
   type ConcluirFaturaEntregaResult,
   type ReabrirEntregaFaturadaParams,
   type ReabrirEntregaFaturadaResult,
+  type ExcluirEntregaFaturadaParams,
+  type ExcluirEntregaFaturadaResult,
 } from "@/services/faturas";
 import {
   fetchSolicitacoesByIds,
@@ -202,6 +205,23 @@ export function useReabrirEntregaFaturada() {
   });
 }
 
+export function useExcluirEntregaFaturada() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (params: ExcluirEntregaFaturadaParams) => excluirEntregaFaturada(params),
+    onSuccess: (_result: ExcluirEntregaFaturadaResult, params) => {
+      qc.invalidateQueries({ queryKey: ["faturas"] });
+      qc.invalidateQueries({ queryKey: ["lancamentos"] });
+      qc.invalidateQueries({ queryKey: ["ajustes"] });
+      qc.invalidateQueries({ queryKey: ["historico_fat"] });
+      qc.invalidateQueries({ queryKey: ["entregas_fatura"] });
+      qc.invalidateQueries({ queryKey: ["solicitacoes"] });
+      qc.invalidateQueries({ queryKey: ["rotas", params.p_solicitacao_id] });
+      qc.invalidateQueries({ queryKey: ["pagamentos", params.p_solicitacao_id] });
+    },
+  });
+}
+
 /**
  * Derives EntregaFatura[] from lancamentos_financeiros + historico_faturas → solicitacoes → rotas.
  * Covers both faturado (lançamentos) and pago_na_hora (sem lançamento, só histórico) deliveries.
@@ -237,6 +257,17 @@ export function useEntregasByFatura(faturaId: string) {
         const extraSols = await fetchSolicitacoesByCodigos(codigosFromHistorico);
         for (const s of extraSols) solIdSet.add(s.id);
       }
+
+      // 4b. Entregas excluídas via lixeira ficam marcadas em historico_faturas
+      // (lancamentos_financeiros é imutável — nunca pode ser apagado), então
+      // precisam ser removidas aqui, por último, para sumir de fato da lista.
+      const excluidoSet = new Set(
+        historico
+          .filter((h) => h.tipo === "entrega_excluida")
+          .map((h) => (h.metadata as { solicitacao_id?: string } | null)?.solicitacao_id)
+          .filter((id): id is string => id != null)
+      );
+      for (const id of excluidoSet) solIdSet.delete(id);
 
       const solIds = [...solIdSet];
       if (solIds.length === 0) return [];
@@ -280,14 +311,19 @@ export function useEntregasByFatura(faturaId: string) {
           })
           .reduce((s, r) => s + (r.valor_a_receber ?? 0), 0);
 
-        const mappedRotas: RotaEntregaFatura[] = solRotas.map((r) => ({
+        // Rotas canceladas (corrigidas via deleteOrCancelRota após uma reabertura) já têm
+        // taxa_resolvida/valor_a_receber zerados — não entram mais nos totais acima, mas sem
+        // esse filtro continuariam aparecendo na lista expandida como um registro fantasma.
+        const rotasVisiveis = solRotas.filter((r) => r.status !== "cancelada");
+
+        const mappedRotas: RotaEntregaFatura[] = rotasVisiveis.map((r) => ({
           bairro_destino: bairroMap.get(r.bairro_destino_id) ?? r.bairro_destino_id,
           responsavel: r.responsavel,
           telefone: r.telefone,
           taxa: r.taxa_resolvida ?? 0,
           taxas_extras: taxasExtrasMap.get(r.id) ?? [],
           valor_receber: r.receber_do_cliente ? (r.valor_a_receber ?? null) : null,
-          status: r.status === "cancelada" ? "cancelada" : "concluida",
+          status: "concluida",
           pagamento_operacao: r.pagamento_operacao,
           meio_cobranca_destino: r.meio_cobranca_destino ?? null,
           destino_dinheiro: (r.destino_dinheiro as "devolver_loja" | "repassar_empresa" | null) ?? null,
@@ -300,7 +336,7 @@ export function useEntregasByFatura(faturaId: string) {
             ? (entregadorMap.get(sol.entregador_id) ?? "—")
             : "—",
           data_conclusao: sol.data_conclusao ?? sol.updated_at,
-          total_rotas: solRotas.length,
+          total_rotas: rotasVisiveis.length,
           valor_taxas: totalTaxasFaturadas,
           valor_recebido_cliente: totalRecebido,
           status: sol.status === "cancelada" ? "cancelada" : "concluida",

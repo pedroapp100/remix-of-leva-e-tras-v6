@@ -4,7 +4,7 @@ import type { Column } from "@/components/shared/DataTable";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useReceitas } from "@/hooks/useFinanceiro";
-import { useSolicitacoesAll, useRotasBySolicitacaoIds } from "@/hooks/useSolicitacoes";
+import { useSolicitacoesAll, useRotasConcluidas } from "@/hooks/useSolicitacoes";
 import { useClientes } from "@/hooks/useClientes";
 import { formatCurrency } from "@/lib/formatters";
 import { DollarSign, Target, TrendingUp, Zap } from "lucide-react";
@@ -30,17 +30,12 @@ export function ReceitasReportTab({ dateRange }: ReceitasReportTabProps) {
   const { data: solicitacoes = [] } = useSolicitacoesAll();
   const { data: clientes = [] } = useClientes();
 
-  const solicitacoesConcluidasIds = useMemo(
-    () => solicitacoes.filter((s) => s.status === "concluida").map((s) => s.id),
-    [solicitacoes]
-  );
-  const { data: rotasConcluidas = [] } = useRotasBySolicitacaoIds(solicitacoesConcluidasIds);
+  const { data: rotasConcluidas = [] } = useRotasConcluidas();
 
   const metrics = useMemo(() => {
     const totalRealizado = receitas.reduce((s, r) => s + r.valor, 0);
-    const rotasEfetivas = rotasConcluidas.filter((r) => r.status === "concluida");
-    const totalRotasConcluidas = rotasEfetivas.length;
-    const totalTaxasRotas = rotasEfetivas.reduce((s, r) => s + (r.taxa_resolvida ?? 0), 0);
+    const totalRotasConcluidas = rotasConcluidas.length;
+    const totalTaxasRotas = rotasConcluidas.reduce((s, r) => s + (r.taxa_resolvida ?? 0), 0);
     const ticketMedio = totalRotasConcluidas > 0 ? totalTaxasRotas / totalRotasConcluidas : 0;
     return { totalRealizado, ticketMedio, metaAtual: 0, percentualMeta: 0, totalPrevistoProximoMes: 0 };
   }, [receitas, rotasConcluidas]);

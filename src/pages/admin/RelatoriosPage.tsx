@@ -218,7 +218,7 @@ export default function RelatoriosPage() {
               <ComissoesTab dateRange={dateRange} />
             </TabsContent>
             <TabsContent value="entregas" className="mt-4">
-              <EntregasTab />
+              <EntregasTab dateRange={dateRange} />
             </TabsContent>
             <TabsContent value="ciclos_meta" className="mt-4">
               <CiclosMetaTab />

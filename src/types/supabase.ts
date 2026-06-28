@@ -663,6 +663,7 @@ export type Database = {
           id: string
           numero: string
           observacoes: string | null
+          ocultada_em: string | null
           saldo_liquido: number
           status_cobranca: Database["public"]["Enums"]["status_cobranca"]
           status_geral: Database["public"]["Enums"]["status_geral"]
@@ -684,6 +685,7 @@ export type Database = {
           id?: string
           numero: string
           observacoes?: string | null
+          ocultada_em?: string | null
           saldo_liquido?: number
           status_cobranca?: Database["public"]["Enums"]["status_cobranca"]
           status_geral?: Database["public"]["Enums"]["status_geral"]
@@ -705,6 +707,7 @@ export type Database = {
           id?: string
           numero?: string
           observacoes?: string | null
+          ocultada_em?: string | null
           saldo_liquido?: number
           status_cobranca?: Database["public"]["Enums"]["status_cobranca"]
           status_geral?: Database["public"]["Enums"]["status_geral"]
@@ -1564,6 +1567,7 @@ export type Database = {
           data_inicio: string | null
           data_solicitacao: string
           entregador_id: string | null
+          excluida_em: string | null
           id: string
           justificativa: string | null
           ponto_coleta: string
@@ -1584,6 +1588,7 @@ export type Database = {
           data_inicio?: string | null
           data_solicitacao?: string
           entregador_id?: string | null
+          excluida_em?: string | null
           id?: string
           justificativa?: string | null
           ponto_coleta: string
@@ -1604,6 +1609,7 @@ export type Database = {
           data_inicio?: string | null
           data_solicitacao?: string
           entregador_id?: string | null
+          excluida_em?: string | null
           id?: string
           justificativa?: string | null
           ponto_coleta?: string
@@ -1938,6 +1944,14 @@ export type Database = {
         Returns: undefined
       }
       entregador_id_atual: { Args: never; Returns: string }
+      excluir_entrega_faturada: {
+        Args: {
+          p_motivo: string
+          p_solicitacao_id: string
+          p_usuario_id?: string
+        }
+        Returns: Json
+      }
       fechar_ciclos_comissao_meta: {
         Args: { p_criado_por?: string }
         Returns: number
@@ -1993,7 +2007,13 @@ export type Database = {
       status_caixa: "aberto" | "fechado" | "divergente"
       status_cobranca: "Nao_aplicavel" | "Pendente" | "Cobrado" | "Inadimplente"
       status_despesa: "Pendente" | "Atrasado" | "Pago"
-      status_geral: "Aberta" | "Fechada" | "Paga" | "Finalizada" | "Vencida"
+      status_geral:
+        | "Aberta"
+        | "Fechada"
+        | "Paga"
+        | "Finalizada"
+        | "Vencida"
+        | "Cancelada"
       status_liquidacao: "pendente" | "liquidado" | "estornado"
       status_repasse: "Pendente" | "Repassado"
       status_solicitacao:
@@ -2162,7 +2182,14 @@ export const Constants = {
       status_caixa: ["aberto", "fechado", "divergente"],
       status_cobranca: ["Nao_aplicavel", "Pendente", "Cobrado", "Inadimplente"],
       status_despesa: ["Pendente", "Atrasado", "Pago"],
-      status_geral: ["Aberta", "Fechada", "Paga", "Finalizada", "Vencida"],
+      status_geral: [
+        "Aberta",
+        "Fechada",
+        "Paga",
+        "Finalizada",
+        "Vencida",
+        "Cancelada",
+      ],
       status_liquidacao: ["pendente", "liquidado", "estornado"],
       status_repasse: ["Pendente", "Repassado"],
       status_solicitacao: [

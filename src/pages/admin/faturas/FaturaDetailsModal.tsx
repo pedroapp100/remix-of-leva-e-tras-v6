@@ -40,6 +40,7 @@ import {
   useEntregasByFatura,
   useFaturaById,
   useReabrirEntregaFaturada,
+  useExcluirEntregaFaturada,
 } from "@/hooks/useFaturas";
 import { useCreateReceita } from "@/hooks/useFinanceiro";
 import { buildReceitaFromFatura } from "@/lib/faturaReceita";
@@ -73,6 +74,7 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, viewOnly = fals
   const createHistorico = useCreateHistoricoFatura();
   const createReceita = useCreateReceita();
   const reabrirEntrega = useReabrirEntregaFaturada();
+  const excluirEntrega = useExcluirEntregaFaturada();
 
   const [repasseOpen, setRepasseOpen] = useState(false);
   const [pagamentoOpen, setPagamentoOpen] = useState(false);
@@ -84,6 +86,7 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, viewOnly = fals
   const [editingEntrega, setEditingEntrega] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Record<string, { valor_taxas: number; valor_recebido_cliente: number }>>({});
   const [reabrirTarget, setReabrirTarget] = useState<EntregaFatura | null>(null);
+  const [excluirTarget, setExcluirTarget] = useState<EntregaFatura | null>(null);
 
   if (!fatura) return null;
 
@@ -514,6 +517,29 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, viewOnly = fals
     }
   };
 
+  const handleExcluirEntrega = async (motivo: string) => {
+    if (!excluirTarget || !user) return;
+    const codigo = excluirTarget.codigo;
+    try {
+      const result = await excluirEntrega.mutateAsync({
+        p_solicitacao_id: excluirTarget.solicitacao_id,
+        p_motivo: motivo,
+        p_usuario_id: user.id,
+      });
+      if (!result.success) {
+        toast.error(result.error ?? `Não foi possível excluir a entrega ${codigo}.`);
+        return;
+      }
+      setExcluirTarget(null);
+      toast.success(`Entrega ${codigo} excluída da fatura`, {
+        description: "O valor foi revertido e a solicitação voltou para Em Andamento.",
+      });
+    } catch (err) {
+      console.error("handleExcluirEntrega:", err);
+      toast.error("Erro ao excluir a entrega");
+    }
+  };
+
   const handleGerarPDF = async () => {
     const entregasMap: Record<string, typeof entregas> = entregas.length > 0 ? { [fatura.id]: entregas } : {};
     try {
@@ -662,7 +688,9 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, viewOnly = fals
                               editValue={editValues[e.solicitacao_id]}
                               canEdit={fatura.status_geral !== "Finalizada" && !viewOnly}
                               canReabrir={fatura.status_geral !== "Paga" && fatura.status_geral !== "Finalizada" && !viewOnly}
+                              canExcluir={fatura.status_geral !== "Paga" && fatura.status_geral !== "Finalizada" && !viewOnly}
                               onReabrir={() => setReabrirTarget(e)}
+                              onExcluir={() => setExcluirTarget(e)}
                               onStartEdit={() => {
                                 setEditingEntrega(e.solicitacao_id);
                                 setEditValues(prev => ({
@@ -678,9 +706,6 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, viewOnly = fals
                                   ...prev,
                                   [e.solicitacao_id]: { ...prev[e.solicitacao_id], [field]: val },
                                 }));
-                              }}
-                              onRemove={() => {
-                                toast.success(`Entrega ${e.codigo} removida da fatura`);
                               }}
                             />
                           ))}
@@ -934,7 +959,7 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, viewOnly = fals
               </Card>
 
               {/* ── 7. Ações ── */}
-              {!viewOnly && fatura.status_geral !== "Finalizada" && (
+              {!viewOnly && fatura.status_geral !== "Finalizada" && fatura.status_geral !== "Cancelada" && (
                 <>
                   <Separator />
                   <div className="flex flex-wrap gap-2">
@@ -1003,6 +1028,15 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, viewOnly = fals
         loading={reabrirEntrega.isPending}
         onConfirm={handleReabrirEntrega}
       />
+      <JustificationDialog
+        open={!!excluirTarget}
+        onOpenChange={(open) => { if (!open) setExcluirTarget(null); }}
+        title="Excluir Entrega da Fatura"
+        description={`A entrega ${excluirTarget?.codigo ?? ""} será removida desta fatura. O valor será revertido e a solicitação voltará para Em Andamento. Se esta for a última entrega da fatura, ela será cancelada automaticamente. Informe o motivo (mínimo 10 caracteres).`}
+        confirmLabel="Excluir Entrega"
+        loading={excluirEntrega.isPending}
+        onConfirm={handleExcluirEntrega}
+      />
     </>
   );
 }
@@ -1016,7 +1050,7 @@ function SummaryItem({ label, value, icon }: { label: string; value: number; ico
   );
 }
 
-function EntregaCard({ entrega, expanded, onToggle, isEditing, editValue, canEdit, onStartEdit, onCancelEdit, onSaveEdit, onEditChange, onRemove, canReabrir, onReabrir }: {
+function EntregaCard({ entrega, expanded, onToggle, isEditing, editValue, canEdit, onStartEdit, onCancelEdit, onSaveEdit, onEditChange, canExcluir, onExcluir, canReabrir, onReabrir }: {
   entrega: EntregaFatura;
   expanded: boolean;
   onToggle: () => void;
@@ -1027,7 +1061,8 @@ function EntregaCard({ entrega, expanded, onToggle, isEditing, editValue, canEdi
   onCancelEdit?: () => void;
   onSaveEdit?: () => void;
   onEditChange?: (field: "valor_taxas" | "valor_recebido_cliente", value: number) => void;
-  onRemove?: () => void;
+  canExcluir?: boolean;
+  onExcluir?: () => void;
   canReabrir?: boolean;
   onReabrir?: () => void;
 }) {
@@ -1066,9 +1101,19 @@ function EntregaCard({ entrega, expanded, onToggle, isEditing, editValue, canEdi
               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); onStartEdit?.(); }}>
                 <Pencil className="h-3.5 w-3.5" />
               </Button>
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={(e) => { e.stopPropagation(); onRemove?.(); }}>
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
+              {canExcluir && (
+                <PermissionGuard permission="financeiro.edit">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-destructive hover:text-destructive"
+                    title="Excluir entrega da fatura"
+                    onClick={(e) => { e.stopPropagation(); onExcluir?.(); }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </PermissionGuard>
+              )}
               {canReabrir && (
                 <PermissionGuard permission="financeiro.edit">
                   <Button

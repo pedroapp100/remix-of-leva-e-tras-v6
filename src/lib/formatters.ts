@@ -112,6 +112,7 @@ export const STATUS_GERAL_VARIANT: Record<StatusGeral, "default" | "secondary" |
   Paga: "default",
   Finalizada: "default",
   Vencida: "destructive",
+  Cancelada: "secondary",
 };
 
 export const STATUS_DESPESA_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {

@@ -16,6 +16,8 @@ import {
   updateSolicitacao,
   fetchRotasBySolicitacao,
   fetchRotasBySolicitacaoIds,
+  fetchRotasConcluidasNoPeriodo,
+  fetchRotasConcluidas,
   fetchRotasWindow,
   createRota,
   createRotas,
@@ -259,6 +261,37 @@ export function useRotasBySolicitacaoIds(solicitacaoIds: string[]) {
     queryFn: () => fetchRotasBySolicitacaoIds(solicitacaoIds),
     select: (data) => data.map(rowToRota),
     enabled: solicitacaoIds.length > 0,
+    staleTime: 2 * 60_000,
+  });
+}
+
+/**
+ * Rotas concluídas cuja solicitação concluiu dentro de [inicio, fim) — filtro
+ * via join embutido (solicitacoes.data_conclusao), sem lista de IDs na URL.
+ * Use para relatórios/comissões; para listas já paginadas de solicitações,
+ * prefira useRotasBySolicitacaoIds.
+ */
+export function useRotasConcluidasNoPeriodo(inicio: Date, fim: Date) {
+  const inicioISO = inicio.toISOString();
+  const fimISO = fim.toISOString();
+  return useQuery({
+    queryKey: ["rotas", "concluidas-periodo", inicioISO, fimISO],
+    queryFn: () => fetchRotasConcluidasNoPeriodo(inicioISO, fimISO),
+    select: (data) => data.map(rowToRota),
+    staleTime: 2 * 60_000,
+  });
+}
+
+/**
+ * Todas as rotas concluídas (sem recorte de período), via join embutido —
+ * sem lista de IDs na URL. Para métricas de histórico completo (ex.: ticket
+ * médio geral). Para um período específico, use useRotasConcluidasNoPeriodo.
+ */
+export function useRotasConcluidas() {
+  return useQuery({
+    queryKey: ["rotas", "concluidas-all"],
+    queryFn: fetchRotasConcluidas,
+    select: (data) => data.map(rowToRota),
     staleTime: 2 * 60_000,
   });
 }

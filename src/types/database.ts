@@ -31,7 +31,7 @@ export type MetaModoCalculo = "escalonado" | "faixa_maxima";
 
 export type TipoVeiculo = "moto" | "carro" | "bicicleta" | "a_pe";
 
-export type StatusGeral = "Aberta" | "Fechada" | "Paga" | "Finalizada" | "Vencida";
+export type StatusGeral = "Aberta" | "Fechada" | "Paga" | "Finalizada" | "Vencida" | "Cancelada";
 
 export type StatusTaxas = "Pendente" | "Paga" | "Vencida";
 
@@ -452,6 +452,7 @@ export const STATUS_GERAL_LABELS: Record<StatusGeral, string> = {
   Paga: "Paga",
   Finalizada: "Finalizada",
   Vencida: "Vencida",
+  Cancelada: "Cancelada",
 };
 
 // TIPO_OPERACAO_LABELS removed — use getTipoOperacaoLabel() from TipoOperacaoBadge instead

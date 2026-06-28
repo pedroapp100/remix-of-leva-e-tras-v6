@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { DateRange } from "react-day-picker";
-import { useSolicitacoesAll, useRotasWindow } from "@/hooks/useSolicitacoes";
+import { useSolicitacoesAll, useRotasConcluidasNoPeriodo } from "@/hooks/useSolicitacoes";
 import { useEntregadorById, useEntregadoresAtivos } from "@/hooks/useEntregadores";
 import { useComissaoFaixas, useAllComissaoFaixas, calcularComissaoMetaClient } from "@/hooks/useComissaoFaixas";
 import type { MetaModoCalculo, ComissaoFaixa } from "@/types/database";
@@ -38,26 +38,33 @@ export function useComissao(entregadorId: string | null): ComissaoCalculada | nu
   const { data: faixas = [] } = useComissaoFaixas(
     entregador?.tipo_comissao === "meta" ? entregadorId : null
   );
-  const { data: todasRotas = [] } = useRotasWindow();
+
+  const { inicio, fim } = getMesCorrenteRange();
+
+  // Busca rotas concluídas pela data_conclusao da solicitação (join no banco),
+  // não por created_at da rota nem por lista de IDs na URL: uma rota pode ter
+  // sido criada bem antes do mês corrente e só concluída agora, e uma lista de
+  // IDs cresce demais com muitas solicitações no período (gera Bad Request).
+  const { data: todasRotas = [] } = useRotasConcluidasNoPeriodo(inicio, fim);
+
+  const concluidas = useMemo(
+    () =>
+      solicitacoes.filter(
+        (s) =>
+          s.entregador_id === entregadorId &&
+          s.status === "concluida" &&
+          s.data_conclusao != null &&
+          new Date(s.data_conclusao) >= inicio &&
+          new Date(s.data_conclusao) < fim
+      ),
+    [solicitacoes, entregadorId, inicio, fim]
+  );
 
   return useMemo(() => {
     if (!entregador) return null;
 
-    const { inicio, fim } = getMesCorrenteRange();
-
-    const concluidas = solicitacoes.filter(
-      (s) =>
-        s.entregador_id === entregadorId &&
-        s.status === "concluida" &&
-        s.data_conclusao != null &&
-        new Date(s.data_conclusao) >= inicio &&
-        new Date(s.data_conclusao) < fim
-    );
-
     const solIds = new Set(concluidas.map((s) => s.id));
-    const rotasConcluidas = todasRotas.filter(
-      (r) => solIds.has(r.solicitacao_id) && r.status === "concluida"
-    );
+    const rotasConcluidas = todasRotas.filter((r) => solIds.has(r.solicitacao_id));
 
     const entregas = rotasConcluidas.length;
     const solicitacoes_count = concluidas.length;
@@ -89,7 +96,7 @@ export function useComissao(entregadorId: string | null): ComissaoCalculada | nu
       meta_modo_calculo: entregador.meta_modo_calculo ?? null,
       faixas: entregador.tipo_comissao === "meta" ? (faixas as ComissaoFaixa[]) : undefined,
     };
-  }, [solicitacoes, todasRotas, entregadorId, entregador, faixas]);
+  }, [concluidas, todasRotas, entregadorId, entregador, faixas]);
 }
 
 /**
@@ -98,37 +105,47 @@ export function useComissao(entregadorId: string | null): ComissaoCalculada | nu
  * entregas = rotas concluídas por entregador (not solicitações).
  */
 export function useAllComissoes(dateRange?: DateRange): ComissaoCalculada[] {
-  const sinceOverride = dateRange?.from
-    ? dateRange.from.toISOString().slice(0, 10)
-    : undefined;
-
   const { data: solicitacoes = [] } = useSolicitacoesAll();
   const { data: entregadores = [] } = useEntregadoresAtivos();
-  const { data: todasRotas = [] } = useRotasWindow(sinceOverride);
   const { data: todasFaixas = [] } = useAllComissaoFaixas();
 
-  return useMemo(() => {
+  const { inicio, fim } = useMemo(() => {
     const { inicio: mesInicio, fim: mesFim } = getMesCorrenteRange();
-    const inicio = dateRange?.from ?? mesInicio;
+    const inicioRange = dateRange?.from ?? mesInicio;
     // Set fim to start of the day after 'to' so the full 'to' day is included
-    const fim = dateRange?.to
+    const fimRange = dateRange?.to
       ? new Date(dateRange.to.getFullYear(), dateRange.to.getMonth(), dateRange.to.getDate() + 1)
       : mesFim;
+    return { inicio: inicioRange, fim: fimRange };
+  }, [dateRange]);
 
-    return entregadores.map((entregador) => {
-      const concluidas = solicitacoes.filter(
+  // Busca rotas concluídas pela data_conclusao da solicitação (join no banco),
+  // não por created_at da rota nem por lista de IDs na URL: uma solicitação
+  // pode ter sido criada antes do período e só concluída dentro dele, e uma
+  // lista de IDs cresce demais com muitas solicitações no período (era a causa
+  // da inversão no relatório e, depois, do Bad Request em "Mês atual").
+  const { data: todasRotas = [] } = useRotasConcluidasNoPeriodo(inicio, fim);
+
+  const concluidasNoPeriodo = useMemo(
+    () =>
+      solicitacoes.filter(
         (s) =>
-          s.entregador_id === entregador.id &&
           s.status === "concluida" &&
           s.data_conclusao != null &&
           new Date(s.data_conclusao) >= inicio &&
           new Date(s.data_conclusao) < fim
+      ),
+    [solicitacoes, inicio, fim]
+  );
+
+  return useMemo(() => {
+    return entregadores.map((entregador) => {
+      const concluidas = concluidasNoPeriodo.filter(
+        (s) => s.entregador_id === entregador.id
       );
 
       const solIds = new Set(concluidas.map((s) => s.id));
-      const rotasConcluidas = todasRotas.filter(
-        (r) => solIds.has(r.solicitacao_id) && r.status === "concluida"
-      );
+      const rotasConcluidas = todasRotas.filter((r) => solIds.has(r.solicitacao_id));
 
       const entregas = rotasConcluidas.length;
       const solicitacoes_count = concluidas.length;
@@ -162,5 +179,5 @@ export function useAllComissoes(dateRange?: DateRange): ComissaoCalculada[] {
         meta_modo_calculo: entregador.meta_modo_calculo ?? null,
       };
     });
-  }, [solicitacoes, entregadores, todasRotas, todasFaixas, dateRange]);
+  }, [concluidasNoPeriodo, entregadores, todasRotas, todasFaixas]);
 }

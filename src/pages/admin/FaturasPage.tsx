@@ -17,14 +17,14 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
-import { FileText, AlertTriangle, CheckCircle, Clock, Eye, Pencil, DollarSign, X, ListFilter, ChevronDown, RotateCcw } from "lucide-react";
+import { FileText, AlertTriangle, CheckCircle, Clock, Eye, Pencil, DollarSign, X, ListFilter, ChevronDown, RotateCcw, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExportDropdown } from "@/components/shared/ExportDropdown";
 import { exportCSV, exportPDF } from "@/lib/exportTable";
 import { lazy, Suspense } from "react";
 const FaturaDetailsModal = lazy(() => import("./faturas/FaturaDetailsModal").then(m => ({ default: m.FaturaDetailsModal })));
 
-type TabFilter = "todas" | "ativas" | "em_aberto" | "vencidas" | "fechadas" | "finalizadas" | "lancadas";
+type TabFilter = "todas" | "ativas" | "em_aberto" | "vencidas" | "fechadas" | "finalizadas" | "lancadas" | "canceladas";
 type StatusFilterOption = StatusGeral | "Lancada";
 
 const STATUS_FILTER_OPTIONS: { value: StatusFilterOption; label: string }[] = [
@@ -34,6 +34,7 @@ const STATUS_FILTER_OPTIONS: { value: StatusFilterOption; label: string }[] = [
   { value: "Paga",       label: "Paga" },
   { value: "Finalizada", label: "Finalizada" },
   { value: "Lancada",    label: "Lançada" },
+  { value: "Cancelada",  label: "Cancelada" },
 ];
 
 /** Retorna 'Vencida' quando o banco ainda não foi atualizado pelo cron mas o prazo já passou. */
@@ -71,6 +72,7 @@ export default function FaturasPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilterOption[]>([]);
   const [selectedFatura, setSelectedFatura] = useState<Fatura | null>(null);
   const [reabrirTarget, setReabrirTarget] = useState<Fatura | null>(null);
+  const [excluirTarget, setExcluirTarget] = useState<Fatura | null>(null);
   const { user } = useAuth();
   const updateFatura = useUpdateFatura();
   const createHistorico = useCreateHistoricoFatura();
@@ -117,6 +119,29 @@ export default function FaturasPage() {
     }
   };
 
+  const handleExcluirFatura = async () => {
+    if (!excluirTarget) return;
+    try {
+      await updateFatura.mutateAsync({
+        id: excluirTarget.id,
+        patch: { ocultada_em: new Date().toISOString() },
+      });
+      await createHistorico.mutateAsync({
+        fatura_id: excluirTarget.id,
+        tipo: "ocultada",
+        descricao: `Fatura ${excluirTarget.numero} excluída pelo administrador`,
+        usuario_id: user?.id ?? null,
+        valor_anterior: null,
+        valor_novo: null,
+        metadata: null,
+      });
+      toast.success(`Fatura ${excluirTarget.numero} excluída com sucesso`);
+      setExcluirTarget(null);
+    } catch {
+      toast.error("Erro ao excluir fatura. Tente novamente.");
+    }
+  };
+
   // Sync state → URL
   useEffect(() => {
     const params = new URLSearchParams();
@@ -127,7 +152,7 @@ export default function FaturasPage() {
 
   // ── Single-pass metrics ──
   const metrics = useMemo(() => {
-    let abertas = 0, vencidas = 0, valorVencido = 0, fechadas = 0, finalizadas = 0, lancadas = 0, saldoTotal = 0;
+    let abertas = 0, vencidas = 0, valorVencido = 0, fechadas = 0, finalizadas = 0, lancadas = 0, canceladas = 0, saldoTotal = 0;
 
     for (const f of faturas) {
       const st = getEffectiveStatus(f, todayIso);
@@ -135,10 +160,11 @@ export default function FaturasPage() {
       else if (st === "Vencida") { vencidas++; valorVencido += f.saldo_liquido ?? 0; }
       else if (st === "Fechada" || st === "Paga") { fechadas++; }
       else if (st === "Finalizada") { if (faturasComReceita.has(f.id)) lancadas++; else finalizadas++; continue; }
+      else if (st === "Cancelada") { canceladas++; continue; }
       saldoTotal += f.saldo_liquido ?? 0;
     }
 
-    return { abertas, vencidas, valorVencido, fechadas, finalizadas, lancadas, saldoTotal, ativas: abertas + vencidas, total: faturas.length };
+    return { abertas, vencidas, valorVencido, fechadas, finalizadas, lancadas, canceladas, saldoTotal, ativas: abertas + vencidas, total: faturas.length };
   }, [faturas, todayIso, faturasComReceita]);
 
   // ── Filtered data ──
@@ -146,13 +172,14 @@ export default function FaturasPage() {
     return faturas.filter((f) => {
       const effStatus = getEffectiveStatus(f, todayIso);
       const matchTab =
-        activeTab === "todas"     ? true :
-        activeTab === "ativas"    ? (effStatus === "Aberta" || effStatus === "Vencida") :
-        activeTab === "em_aberto" ? effStatus === "Aberta" :
-        activeTab === "vencidas"  ? effStatus === "Vencida" :
-        activeTab === "fechadas"  ? (effStatus === "Fechada" || effStatus === "Paga") :
+        activeTab === "todas"      ? true :
+        activeTab === "ativas"     ? (effStatus === "Aberta" || effStatus === "Vencida") :
+        activeTab === "em_aberto"  ? effStatus === "Aberta" :
+        activeTab === "vencidas"   ? effStatus === "Vencida" :
+        activeTab === "fechadas"   ? (effStatus === "Fechada" || effStatus === "Paga") :
         activeTab === "lancadas"   ? (effStatus === "Finalizada" && faturasComReceita.has(f.id)) :
-        /* finalizadas */            (effStatus === "Finalizada" && !faturasComReceita.has(f.id));
+        activeTab === "canceladas" ? effStatus === "Cancelada" :
+        /* finalizadas */             (effStatus === "Finalizada" && !faturasComReceita.has(f.id));
       const matchSearch =
         f.numero.toLowerCase().includes(search.toLowerCase()) ||
         f.cliente_nome.toLowerCase().includes(search.toLowerCase());
@@ -288,6 +315,23 @@ export default function FaturasPage() {
                 </Tooltip>
               </PermissionGuard>
             )}
+            {f.status_geral === "Cancelada" && (
+              <PermissionGuard permission="financeiro.edit">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                      onClick={(e) => { e.stopPropagation(); setExcluirTarget(f); }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Excluir fatura</TooltipContent>
+                </Tooltip>
+              </PermissionGuard>
+            )}
           </div>
         </TooltipProvider>
       ),
@@ -345,6 +389,18 @@ export default function FaturasPage() {
                 onClick={() => setReabrirTarget(f)}
               >
                 <RotateCcw className="h-3.5 w-3.5" />
+              </Button>
+            </PermissionGuard>
+          )}
+          {f.status_geral === "Cancelada" && (
+            <PermissionGuard permission="financeiro.edit">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-muted-foreground hover:text-destructive"
+                onClick={() => setExcluirTarget(f)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
               </Button>
             </PermissionGuard>
           )}
@@ -449,6 +505,12 @@ export default function FaturasPage() {
                   {metrics.lancadas}
                 </Badge>
               </TabsTrigger>
+              <TabsTrigger value="canceladas" className="gap-1.5">
+                <X className="h-4 w-4" /> Canceladas
+                <Badge variant="secondary" className="ml-1 text-xs h-5 px-1.5">
+                  {metrics.canceladas}
+                </Badge>
+              </TabsTrigger>
             </TabsList>
           </Tabs>
 
@@ -549,6 +611,21 @@ export default function FaturasPage() {
         confirmLabel="Reabrir Fatura"
         loading={updateFatura.isPending || createHistorico.isPending}
         onConfirm={handleReabrirFatura}
+      />
+
+      <ConfirmDialog
+        open={!!excluirTarget}
+        onOpenChange={(open) => !open && setExcluirTarget(null)}
+        title="Excluir Fatura"
+        description={
+          excluirTarget
+            ? `A fatura ${excluirTarget.numero} será excluída e não aparecerá mais em nenhuma lista. O registro continua no banco apenas para auditoria.`
+            : ""
+        }
+        confirmLabel="Excluir Fatura"
+        variant="destructive"
+        loading={updateFatura.isPending || createHistorico.isPending}
+        onConfirm={handleExcluirFatura}
       />
     </PageContainer>
   );

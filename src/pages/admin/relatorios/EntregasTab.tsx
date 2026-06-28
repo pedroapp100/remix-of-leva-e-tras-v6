@@ -1,8 +1,10 @@
 import { useMemo } from "react";
+import type { DateRange } from "react-day-picker";
 import { DataTable } from "@/components/shared";
 import type { Column } from "@/components/shared/DataTable";
 import { Card } from "@/components/ui/card";
 import { useAllComissoes, type ComissaoCalculada } from "@/hooks/useComissao";
+import { formatDateBR } from "@/lib/formatters";
 
 interface EntregaRow {
   entregador_id: string;
@@ -12,8 +14,12 @@ interface EntregaRow {
   media: string;
 }
 
-export function EntregasTab() {
-  const comissoes = useAllComissoes();
+interface EntregasTabProps {
+  dateRange?: DateRange;
+}
+
+export function EntregasTab({ dateRange }: EntregasTabProps) {
+  const comissoes = useAllComissoes(dateRange);
 
   const rows: EntregaRow[] = useMemo(
     () =>
@@ -100,7 +106,11 @@ export function EntregasTab() {
         </span>
       </div>
       <p className="text-xs text-muted-foreground">
-        ℹ️ Período: mês corrente. Contagem baseada em rotas com status{" "}
+        ℹ️ Período:{" "}
+        {dateRange?.from
+          ? `${formatDateBR(dateRange.from)} até ${formatDateBR(dateRange.to ?? dateRange.from)}`
+          : "mês corrente"}
+        . Contagem baseada em rotas com status{" "}
         <code className="bg-muted px-1 rounded">concluída</code> dentro de
         solicitações concluídas.
       </p>

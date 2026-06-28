@@ -17,6 +17,7 @@ const statusConfig: Record<string, { bg: string; text: string; border: string; d
   Paga: { bg: "bg-status-completed/10", text: "text-status-completed", border: "border-status-completed/25", dot: "bg-status-completed" },
   Finalizada: { bg: "bg-status-completed/10", text: "text-status-completed", border: "border-status-completed/25", dot: "bg-status-completed" },
   Vencida: { bg: "bg-status-overdue/10", text: "text-status-overdue", border: "border-status-overdue/25", dot: "bg-status-overdue" },
+  Cancelada: { bg: "bg-status-cancelled/10", text: "text-status-cancelled", border: "border-status-cancelled/25", dot: "bg-status-cancelled" },
   // Despesa
   Pendente: { bg: "bg-status-pending/10", text: "text-status-pending", border: "border-status-pending/25", dot: "bg-status-pending" },
   Atrasado: { bg: "bg-status-overdue/10", text: "text-status-overdue", border: "border-status-overdue/25", dot: "bg-status-overdue" },

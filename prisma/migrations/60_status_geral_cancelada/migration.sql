@@ -1,0 +1,21 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration: 60_status_geral_cancelada
+--
+-- PROBLEMA:
+--   Não existe forma de marcar uma fatura que ficou sem nenhuma entrega ativa
+--   (todas as entregas foram excluídas/revertidas) e sem saldo pendente. Apagar
+--   a linha de `faturas` é impossível: qualquer lançamento ligado a ela em
+--   `lancamentos_financeiros` é imutável por trigger (bloqueia DELETE sempre,
+--   inclusive em cascade), e não há ON DELETE CASCADE configurado nas FKs de
+--   `lancamentos_financeiros`/`ajustes_financeiros`/`historico_faturas` para
+--   `faturas`.
+--
+-- SOLUÇÃO:
+--   Novo valor de enum `status_geral.Cancelada`, isolado nesta migration
+--   (mesmo padrão já usado na migration 30_comissao_meta) porque o Postgres
+--   não permite referenciar um valor de enum recém-criado dentro da mesma
+--   transação em que ele foi adicionado. A função que efetivamente usa esse
+--   valor (excluir_entrega_faturada) vem na próxima migration.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+ALTER TYPE public.status_geral ADD VALUE IF NOT EXISTS 'Cancelada';

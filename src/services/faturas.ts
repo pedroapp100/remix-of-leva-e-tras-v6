@@ -23,6 +23,7 @@ export async function fetchFaturas(): Promise<FaturaRow[]> {
   const { data, error } = await supabase
     .from("faturas")
     .select("*")
+    .is("ocultada_em", null)
     .gte("data_emissao", since.toISOString())
     .order("data_emissao", { ascending: false });
   if (error) throw new Error(error.message);
@@ -34,6 +35,7 @@ export async function fetchFaturasVencidasCount(): Promise<number> {
   const { count, error } = await supabase
     .from("faturas")
     .select("*", { count: "exact", head: true })
+    .is("ocultada_em", null)
     .eq("status_geral", "Vencida");
   if (error) throw new Error(error.message);
   return count ?? 0;
@@ -45,6 +47,7 @@ export async function fetchFaturasByCliente(
   const { data, error } = await supabase
     .from("faturas")
     .select("*")
+    .is("ocultada_em", null)
     .eq("cliente_id", clienteId)
     .order("data_emissao", { ascending: false });
   if (error) throw new Error(error.message);
@@ -55,6 +58,7 @@ export async function fetchFaturaById(id: string): Promise<FaturaRow> {
   const { data, error } = await supabase
     .from("faturas")
     .select("*")
+    .is("ocultada_em", null)
     .eq("id", id)
     .single();
   if (error) throw new Error(error.message);
@@ -237,4 +241,26 @@ export async function reabrirEntregaFaturada(
   const { data, error } = await supabase.rpc("reabrir_entrega_faturada", params);
   if (error) throw new Error(error.message);
   return data as unknown as ReabrirEntregaFaturadaResult;
+}
+
+// ── RPC: Exclusão de entrega já faturada ─────────────────────────────────────
+
+export interface ExcluirEntregaFaturadaParams {
+  p_solicitacao_id: string;
+  p_motivo: string;
+  p_usuario_id: string;
+}
+
+export interface ExcluirEntregaFaturadaResult {
+  success: boolean;
+  total_estornado?: number;
+  error?: string;
+}
+
+export async function excluirEntregaFaturada(
+  params: ExcluirEntregaFaturadaParams
+): Promise<ExcluirEntregaFaturadaResult> {
+  const { data, error } = await supabase.rpc("excluir_entrega_faturada", params);
+  if (error) throw new Error(error.message);
+  return data as unknown as ExcluirEntregaFaturadaResult;
 }

@@ -42,6 +42,7 @@ export async function fetchSolicitacoes(since?: string, all?: boolean): Promise<
   let q = supabase
     .from("solicitacoes")
     .select("*")
+    .is("excluida_em", null)
     .order("data_solicitacao", { ascending: false });
 
   if (cutoff) q = q.gte("data_solicitacao", cutoff);
@@ -83,6 +84,7 @@ export async function fetchSolicitacoesPageable(
   let q = supabase
     .from("solicitacoes")
     .select("*", { count: "exact" })
+    .is("excluida_em", null)
     .order("data_solicitacao", { ascending: false })
     .range(from, to);
 
@@ -126,6 +128,7 @@ export async function fetchSolicitacoesPendentesCount(): Promise<number> {
   const { count, error } = await supabase
     .from("solicitacoes")
     .select("*", { count: "exact", head: true })
+    .is("excluida_em", null)
     .eq("status", "pendente");
   if (error) throw new Error(error.message);
   return count ?? 0;
@@ -137,6 +140,7 @@ export async function fetchSolicitacoesByCliente(
   const { data, error } = await supabase
     .from("solicitacoes")
     .select("*, entregadores!solicitacoes_entregador_id_fkey(nome)")
+    .is("excluida_em", null)
     .eq("cliente_id", clienteId)
     .order("data_solicitacao", { ascending: false });
   if (error) throw new Error(error.message);
@@ -149,6 +153,7 @@ export async function fetchSolicitacoesByEntregador(
   const { data, error } = await supabase
     .from("solicitacoes")
     .select("*, clientes!solicitacoes_cliente_id_fkey(nome)")
+    .is("excluida_em", null)
     .eq("entregador_id", entregadorId)
     .order("data_solicitacao", { ascending: false });
   if (error) throw new Error(error.message);
@@ -159,6 +164,7 @@ export async function fetchSolicitacaoById(id: string): Promise<SolicitacaoRow> 
   const { data, error } = await supabase
     .from("solicitacoes")
     .select("*")
+    .is("excluida_em", null)
     .eq("id", id)
     .single();
   if (error) throw new Error(error.message);
@@ -198,6 +204,7 @@ export async function fetchSolicitacoesByIds(ids: string[]): Promise<Solicitacao
   const { data, error } = await supabase
     .from("solicitacoes")
     .select("*")
+    .is("excluida_em", null)
     .in("id", ids);
   if (error) throw new Error(error.message);
   return data as SolicitacaoRow[];
@@ -208,6 +215,7 @@ export async function fetchSolicitacoesByCodigos(codigos: string[]): Promise<Sol
   const { data, error } = await supabase
     .from("solicitacoes")
     .select("*")
+    .is("excluida_em", null)
     .in("codigo", codigos);
   if (error) throw new Error(error.message);
   return data as SolicitacaoRow[];
@@ -219,6 +227,46 @@ export async function fetchRotasBySolicitacaoIds(ids: string[]): Promise<RotaRow
     .from("rotas")
     .select("*")
     .in("solicitacao_id", ids);
+  if (error) throw new Error(error.message);
+  return data as RotaRow[];
+}
+
+/**
+ * Rotas concluídas cuja solicitação também concluiu dentro do período — filtra
+ * pela data_conclusao da solicitação (join embutido), não pelo created_at da
+ * rota nem por uma lista de IDs. Evita o limite de tamanho de URL de
+ * fetchRotasBySolicitacaoIds quando o período tem centenas de solicitações
+ * (ex.: "Mês atual" com 800+ registros gerava Bad Request).
+ */
+export async function fetchRotasConcluidasNoPeriodo(
+  inicioISO: string,
+  fimISO: string
+): Promise<RotaRow[]> {
+  const { data, error } = await supabase
+    .from("rotas")
+    .select("*, solicitacoes!inner(status, data_conclusao, excluida_em)")
+    .eq("status", "concluida")
+    .eq("solicitacoes.status", "concluida")
+    .is("solicitacoes.excluida_em", null)
+    .gte("solicitacoes.data_conclusao", inicioISO)
+    .lt("solicitacoes.data_conclusao", fimISO);
+  if (error) throw new Error(error.message);
+  return data as RotaRow[];
+}
+
+/**
+ * Todas as rotas concluídas de solicitações concluídas, sem recorte de
+ * período — join embutido, sem lista de IDs na URL. Mesma técnica de
+ * fetchRotasConcluidasNoPeriodo, para métricas que somam o histórico todo
+ * (ex.: ticket médio em ReceitasReportTab).
+ */
+export async function fetchRotasConcluidas(): Promise<RotaRow[]> {
+  const { data, error } = await supabase
+    .from("rotas")
+    .select("*, solicitacoes!inner(status, excluida_em)")
+    .eq("status", "concluida")
+    .eq("solicitacoes.status", "concluida")
+    .is("solicitacoes.excluida_em", null);
   if (error) throw new Error(error.message);
   return data as RotaRow[];
 }
