@@ -346,7 +346,7 @@ export default function FaturasPage() {
         <div className="flex items-center justify-between">
           <span className="font-mono text-sm font-medium">{f.numero}</span>
           <StatusBadge
-            status={f.status_geral}
+            status={faturasComReceita.has(f.id) ? "Finalizada" : f.status_geral}
             label={faturasComReceita.has(f.id) ? "Lançada" : STATUS_GERAL_LABELS[f.status_geral]}
           />
         </div>
