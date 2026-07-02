@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/table";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import type { Fatura, TipoAjuste, EntregaFatura, RotaEntregaFatura, StatusGeral } from "@/types/database";
 import { STATUS_GERAL_VARIANT, TIPO_FATURAMENTO_LABELS } from "@/lib/formatters";
 import { formatCurrency, formatDateBR, formatDateTimeBR } from "@/lib/formatters";
@@ -23,13 +24,14 @@ import {
   FileText, Calendar, Receipt, ArrowDownUp, Pencil, History,
   Banknote, ArrowUpRight, ArrowDownRight, Download, Package,
   ChevronDown, ChevronRight, User, MapPin, Truck, Phone, DollarSign,
-  Lock, Trash2, Save, X, CheckCircle, RotateCcw,
+  Lock, Trash2, Save, X, CheckCircle, RotateCcw, CalendarRange,
 } from "lucide-react";
 import { toast } from "sonner";
 import { generateFaturaPDF } from "@/lib/generateFaturaPDF";
 import { RegistrarRepasseDialog } from "./RegistrarRepasseDialog";
 import { RegistrarPagamentoDialog } from "./RegistrarPagamentoDialog";
 import { AdicionarAjusteDialog } from "./AdicionarAjusteDialog";
+import { FecharFaturaPeriodoDialog } from "./FecharFaturaPeriodoDialog";
 import {
   useLancamentosByFatura,
   useAjustesByFatura,
@@ -41,6 +43,7 @@ import {
   useFaturaById,
   useReabrirEntregaFaturada,
   useExcluirEntregaFaturada,
+  useFecharFaturaPorPeriodo,
 } from "@/hooks/useFaturas";
 import { useCreateReceita } from "@/hooks/useFinanceiro";
 import { buildReceitaFromFatura } from "@/lib/faturaReceita";
@@ -75,6 +78,7 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, viewOnly = fals
   const createReceita = useCreateReceita();
   const reabrirEntrega = useReabrirEntregaFaturada();
   const excluirEntrega = useExcluirEntregaFaturada();
+  const fecharPorPeriodo = useFecharFaturaPorPeriodo();
 
   const [repasseOpen, setRepasseOpen] = useState(false);
   const [pagamentoOpen, setPagamentoOpen] = useState(false);
@@ -83,6 +87,7 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, viewOnly = fals
   const [entregasExpanded, setEntregasExpanded] = useState(false);
   const [expandedEntrega, setExpandedEntrega] = useState<string | null>(null);
   const [fecharConfirmOpen, setFecharConfirmOpen] = useState(false);
+  const [fecharPeriodoOpen, setFecharPeriodoOpen] = useState(false);
   const [editingEntrega, setEditingEntrega] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Record<string, { valor_taxas: number; valor_recebido_cliente: number }>>({});
   const [reabrirTarget, setReabrirTarget] = useState<EntregaFatura | null>(null);
@@ -340,6 +345,29 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, viewOnly = fals
       onOpenChange(false);
     } catch (err) {
       toast.error("Erro ao fechar fatura");
+    }
+  };
+
+  const handleFecharPorPeriodo = async (dataInicio: Date, dataFim: Date) => {
+    if (!user) return;
+    try {
+      const result = await fecharPorPeriodo.mutateAsync({
+        p_fatura_id: fatura.id,
+        p_data_inicio: dataInicio.toISOString().slice(0, 10),
+        p_data_fim: dataFim.toISOString().slice(0, 10),
+        p_usuario_id: user.id,
+      });
+      if (!result.success) {
+        toast.error(result.error ?? "Não foi possível fechar a fatura por período.");
+        return;
+      }
+      setFecharPeriodoOpen(false);
+      toast.success(`Fatura ${result.fatura_nova_numero} criada`, {
+        description: `${result.total_entregas} solicitações fechadas — ${formatCurrency(result.saldo_liquido ?? 0)}. A fatura ${fatura.numero} continua aberta.`,
+        duration: 6000,
+      });
+    } catch (err) {
+      toast.error("Erro ao fechar fatura por período");
     }
   };
 
@@ -980,9 +1008,22 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, viewOnly = fals
                       <Download className="h-4 w-4 mr-1.5" /> Gerar PDF
                     </Button>
                     {fatura.status_geral === "Aberta" && (
-                      <Button variant="outline" onClick={() => setFecharConfirmOpen(true)}>
-                        <Lock className="h-4 w-4 mr-1.5" /> Fechar Fatura
-                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline">
+                            <Lock className="h-4 w-4 mr-1.5" /> Fechar Fatura
+                            <ChevronDown className="h-3.5 w-3.5 ml-1.5 text-muted-foreground" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start">
+                          <DropdownMenuItem onClick={() => setFecharConfirmOpen(true)}>
+                            <Lock className="h-4 w-4 mr-2" /> Fechar tudo
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setFecharPeriodoOpen(true)}>
+                            <CalendarRange className="h-4 w-4 mr-2" /> Fechar por período...
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     )}
                   </div>
                 </>
@@ -1018,6 +1059,14 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, viewOnly = fals
         description={`Tem certeza que deseja fechar a fatura ${fatura.numero}? O saldo atual é ${formatCurrency(saldo)}. Após o fechamento, a fatura não poderá mais receber novas entregas.`}
         confirmLabel="Fechar Fatura"
         onConfirm={handleFechar}
+      />
+      <FecharFaturaPeriodoDialog
+        fatura={fatura}
+        entregas={entregas}
+        open={fecharPeriodoOpen}
+        onOpenChange={setFecharPeriodoOpen}
+        onConfirm={handleFecharPorPeriodo}
+        loading={fecharPorPeriodo.isPending}
       />
       <JustificationDialog
         open={!!reabrirTarget}

@@ -21,6 +21,15 @@ import { useSidebar } from "@/components/ui/sidebar";
 
 const ROLE_PREFIXES = ["/admin/", "/cliente/", "/entregador/"] as const;
 
+/**
+ * Enquanto as faturas do cliente ainda estão em ajuste, clicar numa notificação
+ * não deve navegar para nenhuma página — evita dúvida e chamado de suporte com
+ * dados que ainda não estão corretos. A notificação continua sendo marcada como
+ * lida normalmente, só a navegação é desligada. Volte para `true` quando o
+ * financeiro do cliente estiver estável.
+ */
+const CLIENT_NOTIFICATION_NAVIGATION_ENABLED = false;
+
 function resolveNotifLink(link: string | undefined, role: string | undefined): string {
   const base = role ? `/${role}` : "/";
   if (!link) return `${base}/solicitacoes`;
@@ -189,7 +198,10 @@ export function AppHeader() {
                       e.stopPropagation();
                       e.preventDefault();
                       markAsRead(notif.id);
-                      navigate(resolveNotifLink(notif.link, user?.role));
+                      const isCliente = user?.role === "cliente";
+                      if (!isCliente || CLIENT_NOTIFICATION_NAVIGATION_ENABLED) {
+                        navigate(resolveNotifLink(notif.link, user?.role));
+                      }
                     }}
                   >
                     <div className={`mt-0.5 h-8 w-8 rounded-lg ${bgColor} flex items-center justify-center shrink-0`}>

@@ -1958,6 +1958,15 @@ export type Database = {
         }
         Returns: Json
       }
+      fechar_fatura_por_periodo: {
+        Args: {
+          p_fatura_id: string
+          p_data_inicio: string
+          p_data_fim: string
+          p_usuario_id?: string
+        }
+        Returns: Json
+      }
       fechar_ciclos_comissao_meta: {
         Args: { p_criado_por?: string }
         Returns: number

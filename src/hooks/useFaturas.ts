@@ -22,6 +22,8 @@ import {
   concluirFaturaEntrega,
   reabrirEntregaFaturada,
   excluirEntregaFaturada,
+  fecharFaturaPorPeriodo,
+  fetchEntregasTransferidasParaFatura,
   type FaturaRow,
   type FaturaInsert,
   type FaturaUpdate,
@@ -37,6 +39,8 @@ import {
   type ReabrirEntregaFaturadaResult,
   type ExcluirEntregaFaturadaParams,
   type ExcluirEntregaFaturadaResult,
+  type FecharFaturaPorPeriodoParams,
+  type FecharFaturaPorPeriodoResult,
 } from "@/services/faturas";
 import {
   fetchSolicitacoesByIds,
@@ -222,6 +226,27 @@ export function useExcluirEntregaFaturada() {
   });
 }
 
+export function useFecharFaturaPorPeriodo() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (params: FecharFaturaPorPeriodoParams) => fecharFaturaPorPeriodo(params),
+    onSuccess: (result: FecharFaturaPorPeriodoResult, params) => {
+      qc.invalidateQueries({ queryKey: ["faturas"] });
+      qc.invalidateQueries({ queryKey: ["faturas", params.p_fatura_id] });
+      qc.invalidateQueries({ queryKey: ["ajustes", params.p_fatura_id] });
+      qc.invalidateQueries({ queryKey: ["historico_fat", params.p_fatura_id] });
+      qc.invalidateQueries({ queryKey: ["entregas_fatura", params.p_fatura_id] });
+      if (result.fatura_nova_id) {
+        qc.invalidateQueries({ queryKey: ["faturas", result.fatura_nova_id] });
+        qc.invalidateQueries({ queryKey: ["ajustes", result.fatura_nova_id] });
+        qc.invalidateQueries({ queryKey: ["historico_fat", result.fatura_nova_id] });
+        qc.invalidateQueries({ queryKey: ["entregas_fatura", result.fatura_nova_id] });
+      }
+      qc.invalidateQueries({ queryKey: ["solicitacoes"] });
+    },
+  });
+}
+
 /**
  * Derives EntregaFatura[] from lancamentos_financeiros + historico_faturas → solicitacoes → rotas.
  * Covers both faturado (lançamentos) and pago_na_hora (sem lançamento, só histórico) deliveries.
@@ -230,10 +255,11 @@ export function useEntregasByFatura(faturaId: string) {
   return useQuery<EntregaFatura[]>({
     queryKey: ["entregas_fatura", faturaId],
     queryFn: async () => {
-      // 1. Fetch lancamentos + historico in parallel
-      const [lancamentos, historico] = await Promise.all([
+      // 1. Fetch lancamentos + historico + entregas transferidas PARA esta fatura, em paralelo
+      const [lancamentos, historico, transferidasParaCa] = await Promise.all([
         fetchLancamentosByFatura(faturaId),
         fetchHistoricoFatura(faturaId),
+        fetchEntregasTransferidasParaFatura(faturaId),
       ]);
 
       // 2. Collect sol IDs from lancamentos (faturado/descontar_saldo deliveries)
@@ -258,16 +284,22 @@ export function useEntregasByFatura(faturaId: string) {
         for (const s of extraSols) solIdSet.add(s.id);
       }
 
-      // 4b. Entregas excluídas via lixeira ficam marcadas em historico_faturas
-      // (lancamentos_financeiros é imutável — nunca pode ser apagado), então
-      // precisam ser removidas aqui, por último, para sumir de fato da lista.
+      // 4b. Entregas excluídas via lixeira ou transferidas para outra fatura (via
+      // fechamento por período) ficam marcadas em historico_faturas —
+      // lancamentos_financeiros é imutável, nunca pode ser apagado ou reapontado —
+      // então precisam ser removidas aqui, por último, para sumir de fato da lista.
       const excluidoSet = new Set(
         historico
-          .filter((h) => h.tipo === "entrega_excluida")
+          .filter((h) => h.tipo === "entrega_excluida" || h.tipo === "entrega_transferida")
           .map((h) => (h.metadata as { solicitacao_id?: string } | null)?.solicitacao_id)
           .filter((id): id is string => id != null)
       );
       for (const id of excluidoSet) solIdSet.delete(id);
+
+      // 4c. Entregas que vieram de outra fatura via fechamento por período —
+      // não têm lançamento apontando para esta fatura, mas passam a pertencer
+      // a ela a partir de agora.
+      for (const id of transferidasParaCa) solIdSet.add(id);
 
       const solIds = [...solIdSet];
       if (solIds.length === 0) return [];

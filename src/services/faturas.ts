@@ -264,3 +264,47 @@ export async function excluirEntregaFaturada(
   if (error) throw new Error(error.message);
   return data as unknown as ExcluirEntregaFaturadaResult;
 }
+
+// ── RPC: Fechamento de fatura por período ────────────────────────────────────
+
+export interface FecharFaturaPorPeriodoParams {
+  p_fatura_id: string;
+  p_data_inicio: string;
+  p_data_fim: string;
+  p_usuario_id: string;
+}
+
+export interface FecharFaturaPorPeriodoResult {
+  success: boolean;
+  fatura_nova_id?: string;
+  fatura_nova_numero?: string;
+  total_entregas?: number;
+  total_creditos_loja?: number;
+  total_debitos_loja?: number;
+  saldo_liquido?: number;
+  fatura_origem_total_entregas_restante?: number;
+  error?: string;
+}
+
+export async function fecharFaturaPorPeriodo(
+  params: FecharFaturaPorPeriodoParams
+): Promise<FecharFaturaPorPeriodoResult> {
+  const { data, error } = await supabase.rpc("fechar_fatura_por_periodo", params);
+  if (error) throw new Error(error.message);
+  return data as unknown as FecharFaturaPorPeriodoResult;
+}
+
+/** Solicitação ids transferidos PARA a fatura informada, vindos de outra fatura via fechamento por período. */
+export async function fetchEntregasTransferidasParaFatura(
+  faturaId: string
+): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("historico_faturas")
+    .select("metadata")
+    .eq("tipo", "entrega_transferida")
+    .eq("metadata->>fatura_destino_id", faturaId);
+  if (error) throw new Error(error.message);
+  return (data ?? [])
+    .map((r) => (r.metadata as { solicitacao_id?: string } | null)?.solicitacao_id)
+    .filter((id): id is string => Boolean(id));
+}
