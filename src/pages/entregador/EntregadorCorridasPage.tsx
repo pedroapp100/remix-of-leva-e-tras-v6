@@ -250,10 +250,10 @@ export default function EntregadorCorridasPage() {
                       {sol.status === "em_andamento" && (
                         <Button
                           size="sm"
-                          onClick={() => handleConcluir(sol)}
+                          onClick={() => setViewSol(sol)}
                           className="bg-status-completed hover:bg-status-completed/90 text-white"
                         >
-                          <CheckCheck className="h-4 w-4 mr-1.5" /> Concluir Corrida
+                          <CheckCheck className="h-4 w-4 mr-1.5" /> Concluir & Conciliar
                         </Button>
                       )}
                     </div>
@@ -270,6 +270,7 @@ export default function EntregadorCorridasPage() {
         solicitacao={viewSol}
         onClose={() => setViewSol(null)}
         isDriverView
+        onConcluir={viewSol?.status === "em_andamento" ? () => { handleConcluir(viewSol!); setViewSol(null); } : undefined}
       />
 
 

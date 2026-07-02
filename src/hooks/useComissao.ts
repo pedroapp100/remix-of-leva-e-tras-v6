@@ -30,16 +30,25 @@ function getMesCorrenteRange(): { inicio: Date; fim: Date } {
 /**
  * Calculates driver commission reactively from concluded solicitations.
  * entregas = rotas concluídas (not solicitações).
- * Filters by current month. Supports percentual, fixo, and meta types.
+ * Filters by current month, unless dateRange is provided. Supports percentual, fixo, and meta types.
  */
-export function useComissao(entregadorId: string | null): ComissaoCalculada | null {
+export function useComissao(entregadorId: string | null, dateRange?: DateRange): ComissaoCalculada | null {
   const { data: solicitacoes = [] } = useSolicitacoesAll();
   const { data: entregador } = useEntregadorById(entregadorId ?? "");
   const { data: faixas = [] } = useComissaoFaixas(
     entregador?.tipo_comissao === "meta" ? entregadorId : null
   );
 
-  const { inicio, fim } = getMesCorrenteRange();
+  const { inicio, fim } = useMemo(() => {
+    const { inicio: mesInicio, fim: mesFim } = getMesCorrenteRange();
+    if (!dateRange?.from) return { inicio: mesInicio, fim: mesFim };
+    const inicioRange = dateRange.from;
+    // Set fim to start of the day after 'to' so the full 'to' day is included
+    const fimRange = dateRange.to
+      ? new Date(dateRange.to.getFullYear(), dateRange.to.getMonth(), dateRange.to.getDate() + 1)
+      : new Date(inicioRange.getFullYear(), inicioRange.getMonth(), inicioRange.getDate() + 1);
+    return { inicio: inicioRange, fim: fimRange };
+  }, [dateRange]);
 
   // Busca rotas concluídas pela data_conclusao da solicitação (join no banco),
   // não por created_at da rota nem por lista de IDs na URL: uma rota pode ter

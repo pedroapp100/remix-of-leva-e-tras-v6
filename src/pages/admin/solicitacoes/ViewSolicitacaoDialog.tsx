@@ -1,8 +1,8 @@
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, lazy, Suspense } from "react";
 import type { Solicitacao, Rota, PagamentoSolicitacao } from "@/types/database";
 import { STATUS_SOLICITACAO_LABELS } from "@/types/database";
 import { TipoOperacaoBadge } from "@/components/shared/TipoOperacaoBadge";
-import { useRotasBySolicitacao, usePagamentosBySolicitacao, useHistoricoBySolicitacao, useTaxasExtrasByRotaIds } from "@/hooks/useSolicitacoes";
+import { useRotasBySolicitacao, usePagamentosBySolicitacao, useHistoricoBySolicitacao } from "@/hooks/useSolicitacoes";
 import { useClientes } from "@/hooks/useClientes";
 import { useEntregadores } from "@/hooks/useEntregadores";
 import { useAdminProfiles } from "@/hooks/useUsers";
@@ -12,9 +12,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { MapPin, Phone, User, Clock, DollarSign, MessageCircle, Store, Building2, Plus, Truck, CheckCircle, Receipt, X, XCircle, ArrowRight, CheckCircle2, ChevronDown } from "lucide-react";
+import { MapPin, Phone, User, Clock, DollarSign, MessageCircle, Store, Building2, Plus, Truck, CheckCircle, Receipt, X, XCircle, ArrowRight, Coins, CheckCircle2, CheckCheck, ChevronDown } from "lucide-react";
 
 const FATURAR_ID = "__faturar__";
+
+const ConciliacaoDialogLazy = lazy(() =>
+  import("@/pages/admin/solicitacoes/ConciliacaoDialog").then((m) => ({ default: m.ConciliacaoDialog }))
+);
 
 const HISTORICO_TIPO_CONFIG: Record<string, { icon: React.ElementType; color: string }> = {
   criacao:          { icon: Plus,         color: "text-emerald-500" },
@@ -40,6 +44,7 @@ interface ViewSolicitacaoDialogProps {
   solicitacao: Solicitacao | null;
   onClose: () => void;
   isDriverView?: boolean;
+  onConcluir?: () => void;
 }
 
 const fmt = (v: number | null | undefined) => v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
@@ -101,7 +106,7 @@ function RotaContactCard({ rota, clienteName, getBairroName, getRegiaoByBairro }
   );
 }
 
-function RotaPaymentPreview({ rota, taxasExtras, getFormaPagamentoName }: { rota: Rota; taxasExtras: { nome: string; valor: number }[]; getFormaPagamentoName: (id: string) => string }) {
+function RotaPaymentPreview({ rota, getFormaPagamentoName }: { rota: Rota; getFormaPagamentoName: (id: string) => string }) {
   const badge = PAGAMENTO_OPERACAO_BADGE[rota.pagamento_operacao] ?? { label: rota.pagamento_operacao, variant: "outline" as const };
   return (
     <div className="space-y-2">
@@ -125,18 +130,6 @@ function RotaPaymentPreview({ rota, taxasExtras, getFormaPagamentoName }: { rota
           <span className="text-muted-foreground">Taxa de Entrega</span>
           <span className="tabular-nums font-medium">{fmt(rota.taxa_resolvida)}</span>
         </div>
-        {taxasExtras.map((te, i) => (
-          <div key={i} className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">{te.nome}</span>
-            <span className="tabular-nums font-medium text-amber-600">{fmt(te.valor)}</span>
-          </div>
-        ))}
-        {taxasExtras.length > 0 && (
-          <div className="flex items-center justify-between text-sm font-semibold border-t border-border pt-1">
-            <span className="text-muted-foreground">Subtotal</span>
-            <span className="tabular-nums">{fmt((rota.taxa_resolvida ?? 0) + taxasExtras.reduce((s, t) => s + t.valor, 0))}</span>
-          </div>
-        )}
         {rota.meios_pagamento_operacao.length > 0 && (
           <div className="flex flex-wrap gap-1 pt-0.5">
             {rota.meios_pagamento_operacao.map((id) => (
@@ -151,17 +144,10 @@ function RotaPaymentPreview({ rota, taxasExtras, getFormaPagamentoName }: { rota
       {/* Card Loja */}
       {rota.receber_do_cliente && (
         <div className="rounded-md border border-border bg-muted/30 p-3 space-y-1.5">
-          <div className="flex items-center justify-between">
-            <span className="flex items-center gap-1.5 font-medium text-xs uppercase tracking-wide">
-              <Store className="h-3.5 w-3.5 text-status-pending" />
-              Loja
-            </span>
-            {rota.meio_cobranca_destino && (
-              <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                {({ dinheiro: "Dinheiro", maquina_loja: "Máquina da Loja", pix_loja: "PIX da Loja", pix_empresa: "PIX da Empresa" } as Record<string, string>)[rota.meio_cobranca_destino] ?? rota.meio_cobranca_destino}
-              </Badge>
-            )}
-          </div>
+          <span className="flex items-center gap-1.5 font-medium text-xs uppercase tracking-wide">
+            <Store className="h-3.5 w-3.5 text-status-pending" />
+            Loja
+          </span>
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Cobrar no destino</span>
             <span className="tabular-nums font-medium">{fmt(rota.valor_a_receber)}</span>
@@ -172,7 +158,7 @@ function RotaPaymentPreview({ rota, taxasExtras, getFormaPagamentoName }: { rota
   );
 }
 
-function RotaConciliationCard({ rota, taxasExtras, pagamentos, isFaturado, getBairroName, getRegiaoByBairro, getFormaPagamentoName }: { rota: Rota; taxasExtras: { nome: string; valor: number }[]; pagamentos: PagamentoSolicitacao[]; isFaturado: boolean; getBairroName: (id: string) => string; getRegiaoByBairro: (id: string) => string; getFormaPagamentoName: (id: string) => string }) {
+function RotaConciliationCard({ rota, pagamentos, isFaturado, getBairroName, getRegiaoByBairro, getFormaPagamentoName }: { rota: Rota; pagamentos: PagamentoSolicitacao[]; isFaturado: boolean; getBairroName: (id: string) => string; getRegiaoByBairro: (id: string) => string; getFormaPagamentoName: (id: string) => string }) {
   const pagOperacao = pagamentos.filter((p) => p.pertence_a === "operacao");
   const pagLoja = pagamentos.filter((p) => p.pertence_a === "loja");
 
@@ -201,21 +187,9 @@ function RotaConciliationCard({ rota, taxasExtras, pagamentos, isFaturado, getBa
           <span className="text-muted-foreground">Taxa de Entrega</span>
           <span className="tabular-nums font-medium">{fmt(rota.taxa_resolvida)}</span>
         </div>
-        {taxasExtras.map((te, i) => (
-          <div key={i} className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">{te.nome}</span>
-            <span className="tabular-nums font-medium text-amber-600">{fmt(te.valor)}</span>
-          </div>
-        ))}
-        {taxasExtras.length > 0 && (
-          <div className="flex items-center justify-between text-sm font-semibold border-t border-border pt-1">
-            <span className="text-muted-foreground">Subtotal taxas</span>
-            <span className="tabular-nums">{fmt((rota.taxa_resolvida ?? 0) + taxasExtras.reduce((s, t) => s + t.valor, 0))}</span>
-          </div>
-        )}
         {pagOperacao.length > 0 && (
           <div className="flex items-center justify-between text-sm border-t border-border pt-1.5">
-            <span className="text-muted-foreground">Subtotal pago</span>
+            <span className="text-muted-foreground">Subtotal</span>
             <span className="tabular-nums font-medium">{fmt(pagOperacao.reduce((s, p) => s + p.valor, 0))}</span>
           </div>
         )}
@@ -259,14 +233,10 @@ function RotaConciliationCard({ rota, taxasExtras, pagamentos, isFaturado, getBa
 
 /* ── Main Dialog ── */
 
-export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = false }: ViewSolicitacaoDialogProps) {
-  const { data: rotasRaw = [] } = useRotasBySolicitacao(solicitacao?.id ?? "");
-  // Rotas canceladas (excluídas pelo usuário mas com histórico financeiro) não aparecem aqui
-  const rotas = rotasRaw.filter((r) => r.status !== "cancelada");
+export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = false, onConcluir }: ViewSolicitacaoDialogProps) {
+  const { data: rotas = [] } = useRotasBySolicitacao(solicitacao?.id ?? "");
   const { data: allPagamentos = [] } = usePagamentosBySolicitacao(solicitacao?.id ?? "");
   const { data: historicoRows = [] } = useHistoricoBySolicitacao(solicitacao?.id ?? "");
-  const rotaIds = rotas.map((r) => r.id);
-  const { data: taxasExtrasMap = new Map() } = useTaxasExtrasByRotaIds(rotaIds);
   const { data: clientes = [] } = useClientes();
   const { data: entregadores = [] } = useEntregadores();
   const { data: adminProfiles = [] } = useAdminProfiles();
@@ -294,7 +264,6 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
     [solicitacao?.entregador_id, entregadores]
   );
   const isConcluida = solicitacao?.status === "concluida";
-  const isEmAndamento = solicitacao?.status === "em_andamento";
   const isFaturado = clienteData?.modalidade === "faturado";
   const isPrePago = clienteData?.modalidade === "pre_pago";
 
@@ -306,27 +275,28 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
   }, [isConcluida, rotas, allPagamentos]);
 
   const conciliacao = useMemo(() => {
-    if (!rotas.length) return null;
-    const totalTaxas = rotas.reduce((s, r) => {
-      const extras = taxasExtrasMap.get(r.id) ?? [];
-      return s + (r.taxa_resolvida ?? 0) + extras.reduce((a, t) => a + t.valor, 0);
-    }, 0);
+    if (!isConcluida || !rotas.length) return null;
+    const totalTaxas = rotas.reduce((s, r) => s + (r.taxa_resolvida ?? 0), 0);
     const totalLoja = rotas.filter((r) => r.receber_do_cliente).reduce((s, r) => s + (r.valor_a_receber ?? 0), 0);
-    // Para clientes faturados ou pré-pagos a taxa não é cobrada em mãos pelo entregador,
-    // então "total que o entregador recebe" é apenas o que ele coleta para repassar (totalLoja).
-    // Para operações sem modalidade faturada/pré-paga, o entregador coleta taxa + loja.
-    // totalColetadoParaRepassar = dinheiro que o entregador carrega fisicamente e entrega à empresa/loja
-    const totalColetadoParaRepassar = totalLoja;
-    const totalEntregadorRecebe = (!isFaturado && !isPrePago) ? totalTaxas + totalLoja : 0;
-    return { totalTaxas, totalLoja, totalColetadoParaRepassar, totalEntregadorRecebe };
-  }, [rotas, isFaturado, isPrePago, taxasExtrasMap]);
+    const totalEntregadorRecebe = (isFaturado || isPrePago) ? totalLoja : totalTaxas + totalLoja;
+    return { totalTaxas, totalLoja, totalEntregadorRecebe };
+  }, [isConcluida, rotas, isFaturado, isPrePago]);
 
+  // Per-rota registration state (driver view) — merged: BD real data + local session
+  const rotasComPagamentoBD = useMemo(
+    () => new Set(allPagamentos.map((p) => p.rota_id).filter((id): id is string => !!id)),
+    [allPagamentos]
+  );
+  const [rotasRegistradasLocal, setRotasRegistradasLocal] = useState<Set<string>>(new Set());
+  const rotasRegistradas = useMemo(
+    () => new Set([...rotasComPagamentoBD, ...rotasRegistradasLocal]),
+    [rotasComPagamentoBD, rotasRegistradasLocal]
+  );
+  const [rotaSelecionada, setRotaSelecionada] = useState<Rota | null>(null);
   const [expandedRotas, setExpandedRotas] = useState<Set<string>>(new Set());
-  const [adminExpandedRotas, setAdminExpandedRotas] = useState<Set<string>>(new Set());
   const [rotasFaturadaVisitadas, setRotasFaturadaVisitadas] = useState<Set<string>>(new Set());
-  const [historicoAberto, setHistoricoAberto] = useState(false);
+  const [historicoAberto, setHistoricoAberto] = useState(!isDriverView);
   const [cabecalhoAberto, setCabecalhoAberto] = useState(!isDriverView);
-  const [activeTab, setActiveTab] = useState<"detalhes" | "configuracao">("detalhes");
   const marcarRotaFaturadaConcluida = useCallback((rotaId: string) => {
     setRotasFaturadaVisitadas((prev) => new Set([...prev, rotaId]));
     setExpandedRotas((prev) => { const next = new Set(prev); next.delete(rotaId); return next; });
@@ -338,22 +308,26 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
       return next;
     });
   }, []);
-  const toggleAdminExpandRota = useCallback((rotaId: string) => {
-    setAdminExpandedRotas((prev) => {
-      const next = new Set(prev);
-      if (next.has(rotaId)) next.delete(rotaId); else next.add(rotaId);
-      return next;
-    });
+  const marcarRotaRegistrada = useCallback((rotaId: string) => {
+    setRotasRegistradasLocal((prev) => new Set([...prev, rotaId]));
+    setExpandedRotas((prev) => { const next = new Set(prev); next.delete(rotaId); return next; });
   }, []);
 
   if (!solicitacao) return null;
 
+  const rotasObrigatorias = rotas.filter(
+    (r) => r.pagamento_operacao === "pago_na_hora" || r.receber_do_cliente
+  );
+  const qtdRegistradas = rotasObrigatorias.filter((r) => rotasRegistradas.has(r.id)).length;
+  const todasRegistradas = rotasObrigatorias.length === 0 || qtdRegistradas === rotasObrigatorias.length;
+  const rotasFaltando = rotasObrigatorias.filter((r) => !rotasRegistradas.has(r.id));
+
   return (
     <>
       <Dialog open={!!solicitacao} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-[calc(100%-1rem)] sm:max-w-lg max-h-[90vh] flex flex-col p-0 gap-0">
-        <DialogHeader className="px-6 pt-5 pb-3 shrink-0 border-b border-border">
-          <DialogTitle className="flex flex-col gap-1 pr-8">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex flex-col gap-1">
             <span className="text-base font-semibold">Entrega {solicitacao.codigo}</span>
             <Badge variant={statusVariant(solicitacao.status)} className="w-fit">
               {STATUS_SOLICITACAO_LABELS[solicitacao.status]}
@@ -362,27 +336,7 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
         <DialogDescription className="sr-only">.</DialogDescription>
         </DialogHeader>
 
-        {!isDriverView && (
-          <div className="shrink-0 flex border-b border-border">
-            {(["detalhes", "configuracao"] as const).map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => setActiveTab(tab)}
-                className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
-                  activeTab === tab
-                    ? "border-b-2 border-primary text-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {tab === "detalhes" ? "Detalhes" : "Configuração"}
-              </button>
-            ))}
-          </div>
-        )}
-
-        <div className="flex-1 min-h-0 overflow-y-auto">
-        {activeTab === "detalhes" && <div className="space-y-4 px-6 py-4">
+        <div className="space-y-4 py-2">
           {/* Info Geral — sempre visível */}
           <div className="text-sm">
             <span className="text-muted-foreground">Cliente</span>
@@ -395,12 +349,21 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
 
           {/* Ponto de Coleta — sempre visível */}
           {solicitacao.tipo_coleta === "cliente_loja" ? (
-            <div className="text-sm">
-              <span className="text-muted-foreground">Destino de Entrega</span>
-              <p className="font-medium flex items-center gap-1.5 mt-0.5">
-                <Store className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                {solicitacao.ponto_coleta}
-              </p>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <span className="text-muted-foreground">Local de Coleta</span>
+                <p className="font-medium flex items-center gap-1.5 mt-0.5">
+                  <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  {solicitacao.ponto_coleta}
+                </p>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Local de Entrega</span>
+                <p className="font-medium flex items-center gap-1.5 mt-0.5">
+                  <Store className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  {clienteData ? `${clienteData.endereco}, ${clienteData.bairro}` : clienteName}
+                </p>
+              </div>
             </div>
           ) : (
             <div className="text-sm">
@@ -426,18 +389,18 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
           {/* Informações secundárias — retraídas para entregador */}
           {(!isDriverView || cabecalhoAberto) && (
             <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+              <div className="grid grid-cols-2 gap-3 text-sm">
                 <div><span className="text-muted-foreground">Entregador</span><p className="font-medium">{entregadorName}</p></div>
-                <div><span className="text-muted-foreground">Tipo</span><span className="block mt-0.5"><TipoOperacaoBadge tipoOperacao={solicitacao.tipo_operacao} /></span></div>
+                <div><span className="text-muted-foreground">Tipo</span><p><TipoOperacaoBadge tipoOperacao={solicitacao.tipo_operacao} /></p></div>
                 {!isDriverView && (
                   <div><span className="text-muted-foreground">Taxas</span><p className="font-medium tabular-nums">{fmt(solicitacao.valor_total_taxas)}</p></div>
                 )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-3 text-sm">
-                <div><span className="text-muted-foreground">Criação</span><p className="tabular-nums text-xs sm:text-sm">{fmtDate(solicitacao.data_solicitacao)}</p></div>
-                <div><span className="text-muted-foreground">Início</span><p className="tabular-nums text-xs sm:text-sm">{fmtDate(solicitacao.data_inicio)}</p></div>
-                <div><span className="text-muted-foreground">Conclusão</span><p className="tabular-nums text-xs sm:text-sm">{fmtDate(solicitacao.data_conclusao)}</p></div>
+              <div className="grid grid-cols-3 gap-3 text-sm">
+                <div><span className="text-muted-foreground">Criação</span><p className="tabular-nums">{fmtDate(solicitacao.data_solicitacao)}</p></div>
+                <div><span className="text-muted-foreground">Início</span><p className="tabular-nums">{fmtDate(solicitacao.data_inicio)}</p></div>
+                <div><span className="text-muted-foreground">Conclusão</span><p className="tabular-nums">{fmtDate(solicitacao.data_conclusao)}</p></div>
               </div>
 
               {solicitacao.justificativa && (
@@ -458,12 +421,11 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
               {rotas.map((rota, i) => {
                 const temCobranca = rota.pagamento_operacao !== "faturar" || rota.receber_do_cliente;
                 const isFaturadaSemCobrar = isDriverView && !temCobranca;
+                const isRegistrada = isDriverView && temCobranca && rotasRegistradas.has(rota.id);
                 const isMarcadaConcluida = isFaturadaSemCobrar && rotasFaturadaVisitadas.has(rota.id);
-                const isVerde = isMarcadaConcluida;
-                const isExpandable = temCobranca || isMarcadaConcluida;
-                const isExpanded = isDriverView
-                  ? (!isVerde || expandedRotas.has(rota.id))
-                  : adminExpandedRotas.has(rota.id);
+                const isVerde = isRegistrada || isMarcadaConcluida;
+                const isExpandable = true;
+                const isExpanded = !isVerde !== expandedRotas.has(rota.id);
                 return (
                 <div
                   key={rota.id}
@@ -473,27 +435,27 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                 >
                   {/* Header */}
                   <div
-                    className="flex items-center justify-between gap-2 cursor-pointer select-none"
-                    onClick={() => {
-                      if (isDriverView && isExpandable) toggleExpandRota(rota.id);
-                      else if (!isDriverView) toggleAdminExpandRota(rota.id);
-                    }}
+                    className={`flex items-center justify-between gap-2 ${isDriverView && isExpandable ? "cursor-pointer select-none" : ""}`}
+                    onClick={() => isDriverView && isExpandable && toggleExpandRota(rota.id)}
                   >
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <span className="font-medium truncate">
-                        {solicitacao.tipo_coleta === "cliente_loja"
-                          ? `Rota ${i + 1}: Buscar ${rota.responsavel} em ${getBairroName(rota.bairro_destino_id)}`
-                          : `Rota ${i + 1}: ${getBairroName(rota.bairro_destino_id)} → ${rota.responsavel}`}
+                        Rota {i + 1}: {getBairroName(rota.bairro_destino_id)} → {rota.responsavel}
                       </span>
                       {isMarcadaConcluida && (
                         <span className="inline-flex items-center gap-1 shrink-0 text-[10px] font-semibold text-emerald-500 bg-emerald-500/10 border border-emerald-500/25 rounded-full px-2 py-0.5">
                           <CheckCircle2 className="h-3 w-3" /> Concluída
                         </span>
                       )}
+                      {isRegistrada && (
+                        <span className="inline-flex items-center gap-1 shrink-0 text-[10px] font-semibold text-emerald-500 bg-emerald-500/10 border border-emerald-500/25 rounded-full px-2 py-0.5">
+                          <CheckCircle2 className="h-3 w-3" /> Recebido
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       {/* Botão marcar faturada como entregue */}
-                      {isFaturadaSemCobrar && isEmAndamento && (
+                      {isFaturadaSemCobrar && !isConcluida && (
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <button
@@ -514,11 +476,29 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                           </TooltipContent>
                         </Tooltip>
                       )}
-                      {(isDriverView ? isExpandable : true) && (
-                        <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />
+                      {/* Ícone de conciliação */}
+                      {isDriverView && temCobranca && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); setRotaSelecionada(rota); }}
+                              className={`inline-flex items-center justify-center rounded-full h-6 w-6 transition-colors ${
+                                isRegistrada
+                                  ? "text-emerald-500 hover:bg-emerald-500/10"
+                                  : "text-amber-500 hover:bg-amber-500/10 animate-pulse"
+                              }`}
+                            >
+                              <Coins className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">
+                            {isRegistrada ? "Visualizar / Corrigir recebimento" : "Registrar recebimento"}
+                          </TooltipContent>
+                        </Tooltip>
                       )}
-                      {rota.pagamento_operacao === "faturar" && (
-                        <Badge variant="default" className="text-[10px] px-1.5 py-0 h-5">Faturado</Badge>
+                      {isDriverView && isExpandable && (
+                        <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />
                       )}
                       {!isDriverView && (
                         <Badge variant={rota.status === "concluida" ? "default" : rota.status === "cancelada" ? "destructive" : "outline"}>
@@ -534,7 +514,7 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                   {!isConcluida && !isDriverView && (
                     <>
                       <RotaContactCard rota={rota} clienteName={clienteName} getBairroName={getBairroName} getRegiaoByBairro={getRegiaoByBairro} />
-                      <RotaPaymentPreview rota={rota} taxasExtras={taxasExtrasMap.get(rota.id) ?? []} getFormaPagamentoName={getFormaPagamentoName} />
+                      <RotaPaymentPreview rota={rota} getFormaPagamentoName={getFormaPagamentoName} />
                     </>
                   )}
                   {!isConcluida && isDriverView && (
@@ -556,31 +536,18 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                           <div className="flex items-center justify-between text-sm font-semibold">
                             <span className="text-muted-foreground">Total a cobrar</span>
                             <span className="tabular-nums">
-                              {fmt((rota.taxa_resolvida ?? 0) + (taxasExtrasMap.get(rota.id) ?? []).reduce((s, t) => s + t.valor, 0) + (rota.receber_do_cliente ? (rota.valor_a_receber ?? 0) : 0))}
+                              {fmt((rota.taxa_resolvida ?? 0) + (rota.receber_do_cliente ? (rota.valor_a_receber ?? 0) : 0))}
                             </span>
                           </div>
-                          <div className="border-t border-amber-500/20 pt-1.5 space-y-1.5">
-                            {(rota.taxa_resolvida ?? 0) > 0 && rota.meios_pagamento_operacao.length > 0 && (
-                              <div className="flex items-center justify-between text-sm">
-                                <div className="flex flex-wrap gap-1">
-                                  {rota.meios_pagamento_operacao.map((id) => (
-                                    <Badge key={id} variant="secondary" className="text-[10px] px-1.5 py-0">
-                                      {getFormaPagamentoName(id)}
-                                    </Badge>
-                                  ))}
-                                </div>
-                                <span className="tabular-nums font-medium">{fmt(rota.taxa_resolvida)}</span>
-                              </div>
-                            )}
-                            {rota.receber_do_cliente && rota.meio_cobranca_destino && (
-                              <div className="flex items-center justify-between text-sm">
-                                <Badge variant="secondary" className="text-[11px] px-2 py-0.5">
-                                  {({ dinheiro: "Dinheiro", maquina_loja: "Máquina da Loja", pix_loja: "PIX da Loja", pix_empresa: "PIX da Empresa" } as Record<string, string>)[rota.meio_cobranca_destino] ?? rota.meio_cobranca_destino}
+                          {rota.meios_pagamento_operacao.length > 0 && (
+                            <div className="flex flex-wrap gap-1 pt-0.5">
+                              {rota.meios_pagamento_operacao.map((id) => (
+                                <Badge key={id} variant="secondary" className="text-[10px] px-1.5 py-0">
+                                  {getFormaPagamentoName(id)}
                                 </Badge>
-                                <span className="tabular-nums font-medium">{fmt(rota.valor_a_receber)}</span>
-                              </div>
-                            )}
-                          </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -595,38 +562,26 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                             <span className="text-muted-foreground">Valor a receber</span>
                             <span className="tabular-nums">{fmt(rota.valor_a_receber)}</span>
                           </div>
-                          {rota.meio_cobranca_destino && (
-                            <div className="flex items-center gap-1.5 pt-0.5">
-                              <span className="text-xs text-muted-foreground">Receber via</span>
-                              <Badge variant="secondary" className="text-[11px] px-2 py-0.5">
-                                {({ dinheiro: "Dinheiro", maquina_loja: "Máquina da Loja", pix_loja: "PIX da Loja", pix_empresa: "PIX da Empresa" } as Record<string, string>)[rota.meio_cobranca_destino] ?? rota.meio_cobranca_destino}
-                              </Badge>
-                            </div>
-                          )}
                         </div>
                       )}
 
                       {/* faturada sem cobrança: card informativo + botão marcar entregue */}
-                      {isFaturadaSemCobrar && isEmAndamento && (
+                      {isFaturadaSemCobrar && (
                         <div className="rounded-md border border-border bg-muted/30 p-3 flex items-center justify-between gap-3">
                           <div className="flex items-center gap-2 text-xs text-muted-foreground">
                             <Receipt className="h-3.5 w-3.5 shrink-0" />
                             <span>Faturado — sem cobrança no destino</span>
                           </div>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={isMarcadaConcluida}
-                            className={`shrink-0 text-xs h-7 px-2 ${
-                              isMarcadaConcluida
-                                ? "border-emerald-500/50 text-emerald-600 bg-emerald-500/5"
-                                : "border-emerald-500/50 text-emerald-600 hover:bg-emerald-500/10"
-                            }`}
-                            onClick={() => marcarRotaFaturadaConcluida(rota.id)}
-                          >
-                            <CheckCircle2 className="h-3 w-3 mr-1" />
-                            {isMarcadaConcluida ? "Concluído" : "Concluir"}
-                          </Button>
+                          {!isMarcadaConcluida && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="shrink-0 border-emerald-500/50 text-emerald-600 hover:bg-emerald-500/10 text-xs h-7 px-2"
+                              onClick={() => marcarRotaFaturadaConcluida(rota.id)}
+                            >
+                              <CheckCircle2 className="h-3 w-3 mr-1" /> Marcar entregue
+                            </Button>
+                          )}
                         </div>
                       )}
                     </>
@@ -636,7 +591,6 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                   {isConcluida && !isDriverView && (
                     <RotaConciliationCard
                       rota={rota}
-                      taxasExtras={taxasExtrasMap.get(rota.id) ?? []}
                       pagamentos={pagamentosPorRota[rota.id] || []}
                       isFaturado={!!isFaturado}
                       getBairroName={getBairroName}
@@ -644,6 +598,47 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
                       getFormaPagamentoName={getFormaPagamentoName}
                     />
                   )}
+                  {isConcluida && isDriverView && (rota.receber_do_cliente || rota.pagamento_operacao === "pago_na_hora") && (
+                    <div className="rounded-md border border-border bg-muted/30 p-3 space-y-1.5">
+                      <span className="flex items-center gap-1.5 font-medium text-xs uppercase tracking-wide">
+                        <Store className="h-3.5 w-3.5 text-status-pending" />
+                        {rota.pagamento_operacao === "pago_na_hora" ? "Cobrado no Destino" : "Cobrado do Cliente"}
+                      </span>
+                      <div className="flex items-center justify-between text-sm font-semibold">
+                        <span className="text-muted-foreground">
+                          {rota.pagamento_operacao === "pago_na_hora" ? "Total cobrado" : "Valor cobrado"}
+                        </span>
+                        <span className="tabular-nums">
+                          {fmt(
+                            rota.pagamento_operacao === "pago_na_hora"
+                              ? (rota.taxa_resolvida ?? 0) + (rota.receber_do_cliente ? (rota.valor_a_receber ?? 0) : 0)
+                              : (rota.valor_a_receber ?? 0)
+                          )}
+                        </span>
+                      </div>
+                      {/* Pagamentos registrados */}
+                      {(pagamentosPorRota[rota.id] || []).length > 0 && (
+                        <div className="flex flex-wrap gap-1 pt-0.5">
+                          {(pagamentosPorRota[rota.id] || []).map((p) => (
+                            <Badge key={p.id} variant="secondary" className="text-[10px] px-1.5 py-0">
+                              {getFormaPagamentoName(p.forma_pagamento_id)}: {fmt(p.valor)}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                      {/* Botão editar/visualizar conciliação */}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full mt-1 border-amber-500/50 text-amber-600 hover:bg-amber-500/10"
+                        onClick={() => setRotaSelecionada(rota)}
+                      >
+                        <Coins className="h-3.5 w-3.5 mr-1.5" />
+                        {(pagamentosPorRota[rota.id] || []).length > 0 ? "Visualizar / Corrigir conciliação" : "Registrar recebimento"}
+                      </Button>
+                    </div>
+                  )}
+
                   {rota.observacoes && <p className="text-xs text-muted-foreground italic">{rota.observacoes}</p>}
                   </>
                   )}
@@ -653,59 +648,66 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
             </div>
           </div>
 
-          {/* Resumo — visível para admin em qualquer status */}
-          {conciliacao && !isDriverView && (
+          {/* Progresso + botão concluir — visão entregador, não concluída */}
+          {!isConcluida && isDriverView && onConcluir && (
+            <>
+              <Separator />
+              {rotasObrigatorias.length > 0 && (
+                <div className={`flex items-center gap-1.5 text-xs ${todasRegistradas ? "text-emerald-500" : "text-amber-500"}`}>
+                  {todasRegistradas ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Coins className="h-3.5 w-3.5" />}
+                  <span className="tabular-nums">
+                    {qtdRegistradas}/{rotasObrigatorias.length} rota{rotasObrigatorias.length !== 1 ? "s" : ""} com recebimento registrado
+                  </span>
+                </div>
+              )}
+              <div className="flex justify-end">
+                <Button
+                  onClick={onConcluir}
+                  disabled={!todasRegistradas}
+                  className="bg-status-completed hover:bg-status-completed/90 text-white w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <CheckCheck className="h-4 w-4 mr-1.5" /> Concluir Entrega
+                  {!todasRegistradas && rotasFaltando.length > 0 && (
+                    <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 h-4">
+                      {rotasFaltando.length} pendente{rotasFaltando.length !== 1 ? "s" : ""}
+                    </Badge>
+                  )}
+                </Button>
+              </div>
+            </>
+          )}
+
+          {/* Resumo de Conciliação (só para concluída) */}
+          {isConcluida && conciliacao && !isDriverView && (
             <>
               <Separator />
               <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-2">
-                <h4 className="text-sm font-semibold mb-2">
-                  {isConcluida ? "Resumo da Conciliação" : "Resumo da Operação"}
-                </h4>
-
-                {/* Taxa de operação — sempre visível */}
+                <h4 className="text-sm font-semibold mb-2">Resumo da Conciliação</h4>
                 <div className="flex items-center justify-between text-sm">
                   <span className="flex items-center gap-1.5 text-muted-foreground">
                     <Building2 className="h-3.5 w-3.5" />
-                    Taxa de Operação
+                    Total Operação
                   </span>
                   <span className="tabular-nums font-medium">{fmt(conciliacao.totalTaxas)}</span>
                 </div>
-
-                {/* Cobrança das lojas — separada com label claro */}
                 {conciliacao.totalLoja > 0 && (
                   <div className="flex items-center justify-between text-sm">
                     <span className="flex items-center gap-1.5 text-muted-foreground">
                       <Store className="h-3.5 w-3.5" />
-                      Cobrança das lojas (repasse)
+                      Total Loja (cobrar no destino)
                     </span>
                     <span className="tabular-nums font-medium">{fmt(conciliacao.totalLoja)}</span>
                   </div>
                 )}
-
                 <Separator />
-
-                {/* Para clientes faturados/pré-pagos: mostra o total que o entregador carrega para repassar */}
-                {(isFaturado || isPrePago) && conciliacao.totalColetadoParaRepassar > 0 && (
-                  <div className="flex items-center justify-between text-sm font-semibold text-amber-600 dark:text-amber-400">
-                    <span className="flex items-center gap-1.5">
-                      <Store className="h-3.5 w-3.5" />
-                      Total a repassar (lojas)
-                    </span>
-                    <span className="tabular-nums">{fmt(conciliacao.totalColetadoParaRepassar)}</span>
-                  </div>
-                )}
+                <div className="flex items-center justify-between text-sm font-semibold">
+                  <span>🏆 Total que o entregador recebe</span>
+                  <span className="tabular-nums text-primary">{fmt(conciliacao.totalEntregadorRecebe)}</span>
+                </div>
                 {(isFaturado || isPrePago) && (
                   <p className="text-xs text-muted-foreground italic">
-                    * {isFaturado ? "Operação faturada" : "Cliente pré-pago"} — taxa não cobrada em mãos pelo entregador.
+                    * {isFaturado ? "Operação faturada" : "Cliente pré-pago"} — taxa não somada ao total do entregador.
                   </p>
-                )}
-
-                {/* Para demais clientes: total que o entregador efetivamente recebe */}
-                {!isFaturado && !isPrePago && conciliacao.totalEntregadorRecebe > 0 && (
-                  <div className="flex items-center justify-between text-sm font-semibold">
-                    <span>Total que o entregador recebe</span>
-                    <span className="tabular-nums text-primary">{fmt(conciliacao.totalEntregadorRecebe)}</span>
-                  </div>
                 )}
               </div>
             </>
@@ -727,6 +729,8 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
             </>
           )}
 
+          {!isDriverView && (
+          <>
           <Separator />
 
           {/* Histórico */}
@@ -785,177 +789,30 @@ export function ViewSolicitacaoDialog({ solicitacao, onClose, isDriverView = fal
               </div>
             )}
           </div>
-        </div>}
-
-        {activeTab === "configuracao" && !isDriverView && (
-          <div className="px-4 sm:px-6 py-4 space-y-5">
-
-            {/* Etapa 1: Operação */}
-            <div className="space-y-2">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                <span className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">1</span>
-                Operação
-              </h4>
-              <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-3 text-sm">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <span className="text-muted-foreground text-xs">Tipo</span>
-                    <p className="font-medium mt-0.5">
-                      {solicitacao.tipo_coleta === "cliente_loja" ? "Loja → Destino" : "Coleta → Entrega"}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground text-xs">Prioridade</span>
-                    <p className="mt-0.5"><TipoOperacaoBadge tipoOperacao={solicitacao.tipo_operacao} /></p>
-                  </div>
-                </div>
-                <div>
-                  <span className="text-muted-foreground text-xs">
-                    {solicitacao.tipo_coleta === "cliente_loja" ? "Cliente / Lojista" : "Cliente"}
-                  </span>
-                  <p className="font-medium flex items-center gap-1.5 mt-0.5">
-                    {clienteName}
-                    {isFaturado && <Badge variant="default" className="text-[10px] px-1.5 py-0">Faturado</Badge>}
-                    {isPrePago && <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Pré-pago</Badge>}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground text-xs">
-                    {solicitacao.tipo_coleta === "cliente_loja" ? "Destino Final" : "Ponto de Coleta"}
-                  </span>
-                  <p className="font-medium flex items-center gap-1.5 mt-0.5">
-                    <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                    {solicitacao.ponto_coleta}
-                  </p>
-                </div>
-                {entregadorName !== "—" && (
-                  <div>
-                    <span className="text-muted-foreground text-xs">Entregador</span>
-                    <p className="font-medium flex items-center gap-1.5 mt-0.5">
-                      <Truck className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                      {entregadorName}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Etapa 2: Rotas */}
-            <div className="space-y-2">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                <span className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">2</span>
-                Rotas ({rotas.length})
-              </h4>
-              <div className="space-y-2">
-                {rotas.map((rota, i) => (
-                  <div key={rota.id} className="rounded-lg border border-border bg-muted/20 p-3 space-y-2 text-sm">
-                    <div className="flex items-center gap-2 font-medium">
-                      <MapPin className="h-3.5 w-3.5 text-primary shrink-0" />
-                      <span>Rota {i + 1} — {getBairroName(rota.bairro_destino_id)}</span>
-                      <span className="text-muted-foreground font-normal text-xs hidden sm:inline">({getRegiaoByBairro(rota.bairro_destino_id)})</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div>
-                        <span className="text-muted-foreground">Responsável</span>
-                        <p className="font-medium mt-0.5">{rota.responsavel}</p>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Telefone</span>
-                        <p className="font-medium mt-0.5">{rota.telefone}</p>
-                      </div>
-                    </div>
-                    {rota.observacoes && (
-                      <p className="text-xs text-muted-foreground italic">{rota.observacoes}</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Etapa 3: Configuração Financeira */}
-            <div className="space-y-2">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                <span className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">3</span>
-                Configuração Financeira
-              </h4>
-              <div className="space-y-2">
-                {rotas.map((rota, i) => {
-                  const badge = PAGAMENTO_OPERACAO_BADGE[rota.pagamento_operacao] ?? { label: rota.pagamento_operacao, variant: "outline" as const };
-                  const meioCobrancaLabel = ({"dinheiro": "Dinheiro Leva e Traz", "maquina_loja": "Máquina da Loja", "pix_loja": "PIX da Loja", "pix_empresa": "PIX da Empresa"} as Record<string, string>)[rota.meio_cobranca_destino ?? ""] ?? rota.meio_cobranca_destino;
-                  const taxasExtras = taxasExtrasMap.get(rota.id) ?? [];
-                  return (
-                    <div key={rota.id} className="rounded-lg border border-border bg-muted/20 p-3 space-y-2 text-sm">
-                      <p className="text-xs font-medium text-muted-foreground">
-                        Rota {i + 1} — {getBairroName(rota.bairro_destino_id)}
-                      </p>
-
-                      {/* Operação */}
-                      <div className="rounded-md bg-background/60 border border-border/50 p-2.5 space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <span className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-primary">
-                            <Building2 className="h-3 w-3 shrink-0" /> Operação
-                          </span>
-                          <Badge
-                            variant={badge.variant}
-                            className={`text-[10px] px-1.5 py-0${rota.pagamento_operacao === "pago_na_hora" ? " border-amber-500 text-amber-600" : ""}`}
-                          >
-                            {badge.label}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-muted-foreground">Taxa de Entrega</span>
-                          <span className="tabular-nums font-medium">{fmt(rota.taxa_resolvida)}</span>
-                        </div>
-                        {taxasExtras.map((te, idx) => (
-                          <div key={idx} className="flex items-center justify-between text-xs">
-                            <span className="text-muted-foreground">{te.nome}</span>
-                            <span className="tabular-nums font-medium text-amber-600">{fmt(te.valor)}</span>
-                          </div>
-                        ))}
-                        {rota.meios_pagamento_operacao.length > 0 && (
-                          <div className="flex flex-wrap gap-1 pt-0.5">
-                            {rota.meios_pagamento_operacao.map((id) => (
-                              <Badge key={id} variant="secondary" className="text-[10px] px-1.5 py-0">
-                                {getFormaPagamentoName(id)}
-                              </Badge>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Loja */}
-                      {rota.receber_do_cliente ? (
-                        <div className="rounded-md bg-background/60 border border-border/50 p-2.5 space-y-1.5">
-                          <span className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-amber-600">
-                            <Store className="h-3 w-3 shrink-0" /> Cobrança na Loja
-                          </span>
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="text-muted-foreground">Valor a cobrar</span>
-                            <span className="tabular-nums font-medium">{fmt(rota.valor_a_receber)}</span>
-                          </div>
-                          {rota.meio_cobranca_destino && (
-                            <div className="flex items-center justify-between text-xs">
-                              <span className="text-muted-foreground">Meio</span>
-                              <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{meioCobrancaLabel}</Badge>
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="rounded-md bg-background/60 border border-border/50 p-2.5">
-                          <span className="text-xs text-muted-foreground italic">Sem cobrança no destino</span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-          </div>
-        )}
+          </>
+          )}
         </div>
       </DialogContent>
     </Dialog>
+
+    {/* Single-rota mini-dialog */}
+    {rotaSelecionada && (
+      <Suspense fallback={null}>
+        <ConciliacaoDialogLazy
+          open={!!rotaSelecionada}
+          onOpenChange={(open) => !open && setRotaSelecionada(null)}
+          rotas={[rotaSelecionada]}
+          solicitacaoId={solicitacao?.id}
+          clienteId={solicitacao?.cliente_id}
+          isConcluding={false}
+          isDriverView
+          isEditing={rotasComPagamentoBD.has(rotaSelecionada.id)}
+          existingPagamentos={allPagamentos.filter((p) => p.rota_id === rotaSelecionada.id)}
+          onConcluir={() => { marcarRotaRegistrada(rotaSelecionada.id); setRotaSelecionada(null); }}
+        />
+      </Suspense>
+    )}
+
 
     </>
   );

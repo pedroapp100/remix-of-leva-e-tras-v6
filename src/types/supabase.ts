@@ -1570,6 +1570,8 @@ export type Database = {
           excluida_em: string | null
           id: string
           justificativa: string | null
+          observacao_divergencia: string | null
+          pagamento_divergente: boolean
           ponto_coleta: string
           reaberta_em: string | null
           retroativo: boolean
@@ -1591,6 +1593,8 @@ export type Database = {
           excluida_em?: string | null
           id?: string
           justificativa?: string | null
+          observacao_divergencia?: string | null
+          pagamento_divergente?: boolean
           ponto_coleta: string
           reaberta_em?: string | null
           retroativo?: boolean
@@ -1612,6 +1616,8 @@ export type Database = {
           excluida_em?: string | null
           id?: string
           justificativa?: string | null
+          observacao_divergencia?: string | null
+          pagamento_divergente?: boolean
           ponto_coleta?: string
           reaberta_em?: string | null
           retroativo?: boolean

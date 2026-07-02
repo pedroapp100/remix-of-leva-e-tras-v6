@@ -95,10 +95,66 @@ export default function EntregadoresPage() {
   const openCreate = () => { setEditing(null); setFormOpen(true); };
   const openEdit = (e: Entregador) => { setEditing(e); setFormOpen(true); };
 
+  // Extrai a mensagem de erro real de uma chamada supabase.functions.invoke() com falha
+  async function extractInvokeErrorMessage(fnData: { error?: string } | null, error: unknown, fallback: string): Promise<string> {
+    if (fnData?.error) return fnData.error;
+    if (error) {
+      try {
+        const ctx = (error as { context?: { json: () => Promise<{ error?: string }> } })?.context;
+        const body = ctx && typeof ctx.json === "function" ? await ctx.json() : null;
+        if (body?.error) return body.error;
+      } catch { /* ignora */ }
+      if (error instanceof Error) return error.message;
+    }
+    return fallback;
+  }
+
   const handleSave = async (data: Entregador, senha?: string, faixas?: { id: string; de: number; ate: number; valor_por_entrega: number }[]) => {
     if (editing) {
       await updateEntregadorMutation.mutateAsync({ id: editing.id, patch: data });
-      toast.success("Entregador atualizado com sucesso!");
+
+      if (senha && editing.profile_id) {
+        // Já tem conta de acesso — redefine a senha
+        const { data: fnData, error } = await supabase.functions.invoke("update-user", {
+          body: {
+            user_id: editing.profile_id,
+            email: data.email,
+            password: senha,
+            nome: data.nome,
+            role: "entregador",
+            ativo: data.status === "ativo",
+            documento: data.documento?.replace(/\D/g, "") || null,
+          },
+        });
+        if (error || fnData?.error) {
+          const msg = await extractInvokeErrorMessage(fnData, error, "Erro ao redefinir senha.");
+          toast.warning(`Entregador atualizado, mas erro ao redefinir senha: ${msg}`);
+        } else {
+          toast.success("Entregador atualizado e senha redefinida com sucesso!");
+        }
+      } else if (senha && !editing.profile_id) {
+        // Ainda não tem conta de acesso — cria agora, igual ao cadastro novo
+        const docDigits = data.documento?.replace(/\D/g, "") || undefined;
+        const { data: fnData, error } = await supabase.functions.invoke("create-user", {
+          body: { email: data.email, password: senha, nome: data.nome, role: "entregador", documento: docDigits },
+        });
+        if (error || fnData?.error) {
+          const msg = await extractInvokeErrorMessage(fnData, error, "Erro ao criar acesso.");
+          toast.warning(`Entregador atualizado, mas erro ao criar acesso: ${msg}`);
+        } else {
+          const profileId = (fnData as { user: { id: string; email: string } })?.user?.id;
+          if (profileId) {
+            try {
+              await updateEntregadorMutation.mutateAsync({ id: editing.id, patch: { profile_id: profileId } });
+            } catch {
+              toast.warning("Entregador atualizado, mas erro ao vincular perfil. Contate o suporte.");
+            }
+          }
+          toast.success(`Entregador atualizado! Acesso criado para ${data.email}`, { duration: 10000 });
+        }
+      } else {
+        toast.success("Entregador atualizado com sucesso!");
+      }
     } else {
       const { id: _id, created_at: _ca, updated_at: _ua, ...insertData } = data;
       const payload = insertData as unknown as EntregadorInsert;
@@ -120,14 +176,7 @@ export default function EntregadoresPage() {
           body: { email: data.email, password: senha, nome: data.nome, role: "entregador", documento: docDigits },
         });
         if (error || fnData?.error) {
-          let msg = fnData?.error ?? "Erro ao criar acesso.";
-          if (!fnData?.error && error) {
-            try {
-              const ctx = (error as any)?.context;
-              const body = ctx && typeof ctx.json === "function" ? await ctx.json() : null;
-              msg = body?.error ?? error.message ?? msg;
-            } catch { /* ignora */ }
-          }
+          const msg = await extractInvokeErrorMessage(fnData, error, "Erro ao criar acesso.");
           toast.warning(`Entregador cadastrado, mas erro ao criar acesso: ${msg}`);
         } else {
           // Vincular o profile_id ao registro do entregador

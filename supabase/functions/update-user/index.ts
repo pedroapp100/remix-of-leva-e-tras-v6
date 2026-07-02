@@ -1,9 +1,9 @@
 /**
  * Edge Function: update-user
  *
- * Atualiza senha e/ou dados de perfil de um usuário admin existente.
+ * Atualiza senha e/ou dados de perfil de um usuário existente (admin, cliente ou entregador).
  * Se a conta não existir em auth.users (mas existir em profiles), cria-a
- * com o mesmo UUID para manter o vínculo — resolve admins importados manualmente.
+ * com o mesmo UUID para manter o vínculo — resolve usuários importados manualmente.
  *
  * Só pode ser chamada por um usuário com role 'admin' autenticado.
  *
@@ -13,6 +13,7 @@
  *     email: string,           // email do usuário a ser atualizado
  *     password?: string,       // nova senha (mín. 6 chars) — obrigatória se conta não existe
  *     nome: string,
+ *     role?: 'admin' | 'cliente' | 'entregador',  // padrão 'admin' — usada só ao criar a conta
  *     cargo_id?: string | null,
  *     ativo: boolean,
  *     documento?: string | null,
@@ -71,11 +72,20 @@ serve(async (req) => {
 
     // ── 2. Validar body ──────────────────────────────────────────────────────
     const body = await req.json();
-    const { user_id, email, password, nome, cargo_id, ativo, documento } = body;
+    const { user_id, email, password, nome, cargo_id, ativo, documento, role } = body;
 
     if (!user_id || !email || !nome) {
       return new Response(
         JSON.stringify({ error: "Campos obrigatórios: user_id, email, nome." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const validRoles = ["admin", "cliente", "entregador"];
+    const targetRole = role ?? "admin";
+    if (!validRoles.includes(targetRole)) {
+      return new Response(
+        JSON.stringify({ error: `Role inválida. Use: ${validRoles.join(", ")}.` }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -108,7 +118,7 @@ serve(async (req) => {
         email: String(email).trim().toLowerCase(),
         password: trimmedPassword,
         email_confirm: true,
-        user_metadata: { nome: String(nome).trim(), role: "admin" },
+        user_metadata: { nome: String(nome).trim(), role: targetRole },
       });
 
       if (createError) {

@@ -121,7 +121,7 @@ export function EntregadorFormDialog({ open, onOpenChange, editing, onSave }: En
       toast.error("Defina uma senha de acesso para o entregador.");
       return;
     }
-    if (!editing && senha.trim().length < 6) {
+    if (senha.trim() && senha.trim().length < 6) {
       toast.error("A senha deve ter no mínimo 6 caracteres.");
       return;
     }
@@ -156,7 +156,7 @@ export function EntregadorFormDialog({ open, onOpenChange, editing, onSave }: En
 
     // Para novo entregador com meta: passa faixas pelo callback para o pai salvar após criação
     const faixasParaSalvar = tipoComissao === "meta" && !editing ? faixas : undefined;
-    onSave(entregadorData, !editing ? senha.trim() : undefined, faixasParaSalvar);
+    onSave(entregadorData, senha.trim() || undefined, faixasParaSalvar);
   };
 
   return (
@@ -388,32 +388,35 @@ export function EntregadorFormDialog({ open, onOpenChange, editing, onSave }: En
             </div>
           </div>
 
-          {/* Acesso ao Portal (apenas novo cadastro) */}
-          {!editing && (
-            <div className="space-y-4">
-              <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Acesso ao Portal</h4>
-              <div className="space-y-2">
-                <Label>Senha de acesso *</Label>
-                <Input
-                  type="password"
-                  value={senha}
-                  onChange={(e) => setSenha(e.target.value)}
-                  placeholder="Mínimo 6 caracteres"
-                  minLength={6}
-                  className={senha && senha.length < 6 ? "border-destructive focus-visible:ring-destructive" : ""}
-                />
-                {senha && senha.length < 6 && (
-                  <p className="text-xs text-destructive">A senha deve ter no mínimo 6 caracteres.</p>
-                )}
-                {senha && senha.length >= 6 && (
-                  <p className="text-xs text-green-600 dark:text-green-400">✓ Senha válida</p>
-                )}
-                <p className="text-xs text-muted-foreground">
-                  O entregador usará o email cadastrado e esta senha para acessar o portal.
+          {/* Acesso ao Portal */}
+          <div className="space-y-4">
+            <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Acesso ao Portal</h4>
+            <div className="space-y-2">
+              <Label>{editing ? "Nova senha (deixe em branco para manter)" : "Senha de acesso *"}</Label>
+              <Input
+                type="password"
+                value={senha}
+                onChange={(e) => setSenha(e.target.value)}
+                placeholder="Mínimo 6 caracteres"
+                minLength={6}
+                className={senha && senha.length < 6 ? "border-destructive focus-visible:ring-destructive" : ""}
+              />
+              {senha && senha.length < 6 && (
+                <p className="text-xs text-destructive">A senha deve ter no mínimo 6 caracteres.</p>
+              )}
+              {senha && senha.length >= 6 && (
+                <p className="text-xs text-green-600 dark:text-green-400">✓ Senha válida</p>
+              )}
+              {editing && !editing.profile_id && (
+                <p className="text-xs text-amber-500">
+                  Este entregador ainda não tem acesso ao portal — defina uma senha para criar o acesso agora.
                 </p>
-              </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                O entregador usa o email cadastrado{editing ? " e a senha atual" : " e esta senha"} para acessar o portal.
+              </p>
             </div>
-          )}
+          </div>
         </div>
 
         <DialogFooter>

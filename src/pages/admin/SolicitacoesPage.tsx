@@ -701,6 +701,12 @@ export default function SolicitacoesPage() {
       cell: (r) => (
         <div className="flex flex-col gap-1 items-start">
           <StatusBadge status={r.status} label={STATUS_SOLICITACAO_LABELS[r.status]} />
+          {r.pagamento_divergente && !r.admin_conciliada_at && (
+            <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-amber-500/50 text-amber-500 gap-1 w-fit">
+              <AlertTriangle className="h-3 w-3" />
+              Pgto. divergente
+            </Badge>
+          )}
         </div>
       ),
     },
@@ -874,6 +880,7 @@ export default function SolicitacoesPage() {
             onConcluir={() => { handleConcluir(conciliacaoTarget); setConciliacaoTarget(null); }}
             isEditing={conciliacaoTarget.status === "concluida"}
             isConcluding={conciliacaoTarget.status === "em_andamento"}
+            isDriverView={conciliacaoTarget.status === "em_andamento"}
           />
         )}
         {adminConciliacaoTarget && (

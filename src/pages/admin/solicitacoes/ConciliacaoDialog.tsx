@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo } from "react";
 import type { Rota, PagamentoSolicitacao } from "@/types/database";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFormasPagamento, useBairros } from "@/hooks/useSettings";
@@ -12,7 +12,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CurrencyInput } from "@/components/shared/CurrencyInput";
 import { Plus, Trash2, AlertTriangle, CheckCircle, Info, Store, User } from "lucide-react";
 import { toast } from "sonner";
-import { useCreatePagamentos, useAppendHistorico, useDeletePagamentosByRota, useTaxasExtrasByRotaIds } from "@/hooks/useSolicitacoes";
+import { useCreatePagamentos, useAppendHistorico, useDeletePagamentosByRota } from "@/hooks/useSolicitacoes";
 import { useClienteSaldoMap, useClientes } from "@/hooks/useClientes";
 
 interface PagamentoLinha {
@@ -34,12 +34,13 @@ interface ConciliacaoDialogProps {
   solicitacaoId?: string;
   isEditing?: boolean;
   isConcluding?: boolean;
+  isDriverView?: boolean;
   existingPagamentos?: PagamentoSolicitacao[];
 }
 
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clienteId, solicitacaoId, isEditing = false, isConcluding = false, existingPagamentos = [] }: ConciliacaoDialogProps) {
+export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clienteId, solicitacaoId, isEditing = false, isConcluding = false, isDriverView = false, existingPagamentos = [] }: ConciliacaoDialogProps) {
   const { user } = useAuth();
   const createPagamentosMut = useCreatePagamentos();
   const deletePagamentosByRotaMut = useDeletePagamentosByRota();
@@ -48,23 +49,8 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
   const { data: clientes = [] } = useClientes();
   const { data: formasPagamento = [] } = useFormasPagamento();
   const { data: bairros = [] } = useBairros();
-  const rotaIds = useMemo(() => rotas.map((r) => r.id), [rotas]);
-  const { data: taxasExtrasMap = new Map() } = useTaxasExtrasByRotaIds(rotaIds);
   const getBairroName = (id: string) => bairros.find((b) => b.id === id)?.nome ?? id;
-  const getExtrasForRota = (rotaId: string) =>
-    (taxasExtrasMap.get(rotaId) ?? []).reduce((s: number, e: { valor: number }) => s + e.valor, 0);
   const formasAtivas = formasPagamento.filter((f) => f.enabled);
-
-  // Helper to find a forma de pagamento by keyword(s) in its name
-  const findFormaByKeyword = (...keywords: string[]) => {
-    const lower = keywords.map((k) => k.toLowerCase());
-    return (
-      formasAtivas.find((f) => lower.some((k) => f.name.toLowerCase().includes(k)))?.id ??
-      formasAtivas[0]?.id ??
-      ""
-    );
-  };
-
   const cliente = useMemo(() => clienteId ? clientes.find((c) => c.id === clienteId) : null, [clienteId, clientes]);
   const isPrePago = cliente?.modalidade === "pre_pago";
   const isFaturado = cliente?.modalidade === "faturado";
@@ -94,74 +80,6 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
     });
     return initial;
   });
-
-  // Auto-fill payment lines based on rota configuration (runs when formasAtivas loads)
-  const hasAutoFilledRef = useRef(false);
-  useEffect(() => {
-    if (!open) { hasAutoFilledRef.current = false; return; }
-    if (hasAutoFilledRef.current || formasAtivas.length === 0) return;
-    hasAutoFilledRef.current = true;
-    setPagamentosPorRota((prev) => {
-      const updated = { ...prev };
-      rotas.forEach((r) => {
-        if ((prev[r.id] ?? []).length > 0) return; // already has lines — skip
-        const lines: PagamentoLinha[] = [];
-        // Operation fee paid in cash — only for pago_na_hora routes (faturar goes to invoice)
-        if (r.pagamento_operacao === "pago_na_hora" && (r.taxa_resolvida ?? 0) > 0) {
-          lines.push({
-            id: crypto.randomUUID(),
-            forma_pagamento_id: r.meios_pagamento_operacao?.[0] ?? findFormaByKeyword("dinheiro"),
-            valor: (r.taxa_resolvida ?? 0) + getExtrasForRota(r.id),
-            pertence_a: "operacao",
-          });
-        }
-        // Destination collection — money collected on behalf of the store belongs to "loja"
-        if (r.receber_do_cliente && (r.valor_a_receber ?? 0) > 0) {
-          const dest = r.meio_cobranca_destino;
-          if (dest === "maquina_loja") {
-            lines.push({
-              id: crypto.randomUUID(),
-              forma_pagamento_id: findFormaByKeyword("máquina", "maquina"),
-              valor: r.valor_a_receber ?? 0,
-              pertence_a: "loja",
-            });
-          } else if (dest === "pix_loja") {
-            lines.push({
-              id: crypto.randomUUID(),
-              forma_pagamento_id: findFormaByKeyword("pix"),
-              valor: r.valor_a_receber ?? 0,
-              pertence_a: "loja",
-            });
-          } else if (dest === "pix_empresa") {
-            // Company received via PIX on behalf of the store → loja credit
-            lines.push({
-              id: crypto.randomUUID(),
-              forma_pagamento_id: findFormaByKeyword("pix"),
-              valor: r.valor_a_receber ?? 0,
-              pertence_a: "loja",
-            });
-          } else if (dest === "dinheiro" && r.destino_dinheiro === "devolver_loja") {
-            lines.push({
-              id: crypto.randomUUID(),
-              forma_pagamento_id: DEVOLVER_LOJA_ID,
-              valor: r.valor_a_receber ?? 0,
-              pertence_a: "loja",
-            });
-          } else if (dest === "dinheiro" && r.destino_dinheiro === "repassar_empresa") {
-            // Driver collected cash, repassed to company on behalf of store → loja credit
-            lines.push({
-              id: crypto.randomUUID(),
-              forma_pagamento_id: findFormaByKeyword("dinheiro"),
-              valor: r.valor_a_receber ?? 0,
-              pertence_a: "loja",
-            });
-          }
-        }
-        if (lines.length > 0) updated[r.id] = lines;
-      });
-      return updated;
-    });
-  }, [open, formasAtivas, rotas, taxasExtrasMap]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addPagamento = (rotaId: string) => {
     setPagamentosPorRota((prev) => ({
@@ -193,27 +111,22 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
 
   // Resumo — use integer cents to avoid floating-point issues
   const allPagamentos = Object.values(pagamentosPorRota).flat();
+  const totalFaturarCents = allPagamentos.filter((p) => p.forma_pagamento_id === FATURAR_ID && p.pertence_a === "operacao").reduce((s, p) => s + Math.round(p.valor * 100), 0);
   const totalOperacaoCents = allPagamentos.filter((p) => p.pertence_a === "operacao").reduce((s, p) => s + Math.round(p.valor * 100), 0);
   const totalDevolvidoCents = allPagamentos.filter((p) => p.forma_pagamento_id === DEVOLVER_LOJA_ID).reduce((s, p) => s + Math.round(p.valor * 100), 0);
   const totalCreditoLojaCents = allPagamentos.filter((p) => p.pertence_a === "loja" && p.forma_pagamento_id !== DEVOLVER_LOJA_ID).reduce((s, p) => s + Math.round(p.valor * 100), 0);
   const totalLojaCents = totalCreditoLojaCents + totalDevolvidoCents;
   // Only faturar routes generate an expected taxa; pago_na_hora is collected in cash at destination
   const totalEsperadoTaxasCents = rotas
-    .filter((r) => r.status !== "cancelada" && r.pagamento_operacao === "faturar")
-    .reduce(
-      (s, r) => s + Math.round((r.taxa_resolvida ?? 0) * 100) + Math.round(getExtrasForRota(r.id) * 100),
-      0
-    );
-  const totalEsperadoReceberCents = rotas.filter((r) => r.status !== "cancelada" && r.receber_do_cliente).reduce((s, r) => s + Math.round((r.valor_a_receber ?? 0) * 100), 0);
+    .filter((r) => r.pagamento_operacao === "faturar")
+    .reduce((s, r) => s + Math.round((r.taxa_resolvida ?? 0) * 100), 0);
+  const totalEsperadoReceberCents = rotas.filter((r) => r.receber_do_cliente).reduce((s, r) => s + Math.round((r.valor_a_receber ?? 0) * 100), 0);
   // For pago_na_hora routes on faturado clients the driver also collects the operation fee
   const totalEsperadoPagoNaHoraCents = rotas
-    .filter((r) => r.status !== "cancelada" && r.pagamento_operacao === "pago_na_hora")
-    .reduce(
-      (s, r) => s + Math.round((r.taxa_resolvida ?? 0) * 100) + Math.round(getExtrasForRota(r.id) * 100),
-      0
-    );
+    .filter((r) => r.pagamento_operacao === "pago_na_hora")
+    .reduce((s, r) => s + Math.round((r.taxa_resolvida ?? 0) * 100), 0);
   
-  const diffOperacaoCents = totalOperacaoCents - totalEsperadoTaxasCents - totalEsperadoPagoNaHoraCents;
+  const diffOperacaoCents = totalOperacaoCents - totalEsperadoTaxasCents;
   const diffLojaCents = totalLojaCents - totalEsperadoReceberCents;
   // Faturado: skip faturar taxa balance (not cash), but require pago_na_hora taxa balance
   // Pre-pago: all operation fees are always required
@@ -224,10 +137,11 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
   ) && diffLojaCents === 0;
 
   const totalOperacao = totalOperacaoCents / 100;
+  const totalLoja = totalLojaCents / 100;
   const totalCreditoLoja = totalCreditoLojaCents / 100;
   const totalDevolvido = totalDevolvidoCents / 100;
+  const totalFaturar = totalFaturarCents / 100;
   const totalEsperadoTaxas = totalEsperadoTaxasCents / 100;
-  const totalEsperadoPagoNaHora = totalEsperadoPagoNaHoraCents / 100;
   const totalEsperadoReceber = totalEsperadoReceberCents / 100;
   const diffOperacao = diffOperacaoCents / 100;
   const diffLoja = diffLojaCents / 100;
@@ -235,9 +149,9 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
   const handleConcluir = async () => {
     // Pre-pago com saldo suficiente não exige pagamentos em dinheiro
     const isPagoViaSaldo = isPrePago && saldoPrePago?.suficiente;
-    if (!isPagoViaSaldo && allPagamentos.length === 0) { toast.error("Registre ao menos um pagamento."); return; }
+    if (!isDriverView && !isPagoViaSaldo && allPagamentos.length === 0) { toast.error("Registre ao menos um pagamento."); return; }
     if (allPagamentos.some((p) => p.valor <= 0)) { toast.error("Todos os pagamentos devem ter valor positivo."); return; }
-    if (!isPagoViaSaldo && !isBalanced) { toast.error("Os valores não estão balanceados. Verifique os pagamentos."); return; }
+    if (!isDriverView && !isPagoViaSaldo && !isBalanced) { toast.error("Os valores não estão balanceados. Verifique os pagamentos."); return; }
 
     // Persist payments to DB
     if (solicitacaoId) {
@@ -281,7 +195,7 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
     onConcluir();
     onOpenChange(false);
     if (solicitacaoId) {
-      appendHistoricoMut.mutate({ solId: solicitacaoId, tipo: "conciliacao", descricao: "Pagamentos registrados", extra: { usuario_id: user?.id ?? null } });
+      appendHistoricoMut.mutate({ solId: solicitacaoId, tipo: "conciliacao", descricao: "Pagamentos registrados pelo entregador", extra: { usuario_id: user?.id ?? null } });
     }
   };
 
@@ -290,7 +204,7 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            Conciliação de Pagamentos
+            {isDriverView ? "Registro de Recebimentos" : "Conciliação de Pagamentos"}
             {isEditing && <Badge variant="outline" className="text-xs">Editando</Badge>}
           </DialogTitle>
         <DialogDescription className="sr-only">.</DialogDescription>
@@ -298,7 +212,7 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
 
         <div className="space-y-6 py-2">
           {/* Info do Cliente */}
-          {cliente && (
+          {cliente && !isDriverView && (
             <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -355,67 +269,64 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
             </div>
           )}
 
-          {rotas.map((rota, i) => {
-            // Per-route validation
-            const pagRotaOperacaoTotal = (pagamentosPorRota[rota.id] || [])
-              .filter((p) => p.pertence_a === "operacao")
-              .reduce((s, p) => s + p.valor, 0);
-            const pagRotaLojaTotal = (pagamentosPorRota[rota.id] || [])
-              .filter((p) => p.pertence_a === "loja" && p.forma_pagamento_id !== DEVOLVER_LOJA_ID)
-              .reduce((s, p) => s + p.valor, 0);
-            // Only validate cash operação for pago_na_hora routes; faturar routes go to invoice
-            const expectedOperacao = rota.pagamento_operacao === "pago_na_hora" && rota.taxa_resolvida != null
-              ? rota.taxa_resolvida + getExtrasForRota(rota.id)
-              : null;
-            const expectedLoja = rota.receber_do_cliente ? (rota.valor_a_receber ?? 0) : null;
-            const operacaoErro = expectedOperacao !== null &&
-              Math.round(pagRotaOperacaoTotal * 100) !== Math.round(expectedOperacao * 100);
-            const lojaErro = expectedLoja !== null &&
-              Math.round(pagRotaLojaTotal * 100) !== Math.round(expectedLoja * 100);
+          {isDriverView && (
+            <Alert className="border-primary/30 bg-primary/5">
+              <Info className="h-4 w-4 text-primary" />
+              <AlertDescription className="text-xs">
+                Registre os valores que você recebeu em cada rota, separando por meio de pagamento (Dinheiro, PIX, Cartão).
+              </AlertDescription>
+            </Alert>
+          )}
 
+          {rotas.map((rota, i) => {
+            const totalAReceber =
+              (rota.pagamento_operacao === "pago_na_hora" ? (rota.taxa_resolvida ?? 0) : 0)
+              + (rota.receber_do_cliente ? (rota.valor_a_receber ?? 0) : 0);
+            const meiosNomes = (rota.meios_pagamento_operacao ?? [])
+              .map((id) => formasAtivas.find((f) => f.id === id)?.name)
+              .filter(Boolean) as string[];
+            const mostrarReferencia = isDriverView &&
+              (rota.pagamento_operacao === "pago_na_hora" || rota.receber_do_cliente);
+            const isRotaFaturada = isDriverView && rota.pagamento_operacao === "faturar";
+            const podeRegistrarPagamento = !isRotaFaturada || !!rota.receber_do_cliente;
             return (
-            <div key={rota.id} className={`rounded-lg border p-4 space-y-3 transition-colors ${
-              (operacaoErro || lojaErro) ? "border-amber-500/60 bg-amber-500/5" : "border-border bg-muted/20"
-            }`}>
+            <div key={rota.id} className="space-y-3">
               <div className="flex items-center justify-between">
-                <h4 className="text-sm font-semibold flex items-center gap-2">
-                  {(operacaoErro || lojaErro) && (
-                    <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
-                  )}
-                  Rota {i + 1} — {getBairroName(rota.bairro_destino_id)}
-                </h4>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
-                  <span>
-                    Taxa: {fmt(rota.taxa_resolvida ?? 0)}
-                    {getExtrasForRota(rota.id) > 0 && (
-                      <span className="text-amber-500 ml-1">
-                        + {fmt(getExtrasForRota(rota.id))} extra = {fmt((rota.taxa_resolvida ?? 0) + getExtrasForRota(rota.id))}
-                      </span>
-                    )}
-                  </span>
-                  {rota.receber_do_cliente && <span>| Receber: {fmt(rota.valor_a_receber ?? 0)}</span>}
-                </div>
+                <h4 className="text-sm font-semibold">Rota {i + 1} — {getBairroName(rota.bairro_destino_id)}</h4>
+                {isRotaFaturada && (
+                  <Badge variant="default" className="text-xs">Faturado</Badge>
+                )}
+                {!isDriverView && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span>Taxa: {fmt(rota.taxa_resolvida ?? 0)}</span>
+                    {rota.receber_do_cliente && <span>| Receber: {fmt(rota.valor_a_receber ?? 0)}</span>}
+                  </div>
+                )}
               </div>
 
-              {(operacaoErro || lojaErro) && (
-                <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 flex items-start gap-2">
-                  <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
-                  <div className="text-xs space-y-0.5">
-                    {operacaoErro && (
-                      <p className="text-amber-700 dark:text-amber-400">
-                        <strong>Leva e Traz:</strong> registrado <strong>{fmt(pagRotaOperacaoTotal)}</strong>, esperado <strong>{fmt(expectedOperacao!)}</strong>
-                      </p>
-                    )}
-                    {lojaErro && (
-                      <p className="text-amber-700 dark:text-amber-400">
-                        <strong>Loja:</strong> registrado <strong>{fmt(pagRotaLojaTotal)}</strong>, esperado <strong>{fmt(expectedLoja!)}</strong>
-                      </p>
+              {mostrarReferencia && (
+                <div className="rounded-md border border-primary/20 bg-primary/5 p-3 space-y-1.5">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <span className="text-sm font-semibold tabular-nums text-primary">
+                      Receber {fmt(totalAReceber)}
+                    </span>
+                    {meiosNomes.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {meiosNomes.map((nome, idx) => (
+                          <Badge key={idx} variant="secondary" className="text-[11px] px-2 py-0.5">
+                            {nome}
+                          </Badge>
+                        ))}
+                      </div>
                     )}
                   </div>
+                  {meiosNomes.length === 0 && (
+                    <p className="text-[11px] text-muted-foreground">Meio de pagamento não especificado.</p>
+                  )}
                 </div>
               )}
 
-              {rota.pagamento_operacao === "pago_na_hora" && (
+              {!isDriverView && rota.pagamento_operacao === "pago_na_hora" && (
                 <Alert className="border-emerald-500/30 bg-emerald-500/5">
                   <CheckCircle className="h-4 w-4 text-emerald-500" />
                   <AlertDescription className="text-xs">
@@ -426,97 +337,140 @@ export function ConciliacaoDialog({ open, onOpenChange, rotas, onConcluir, clien
                 </Alert>
               )}
 
+              {isRotaFaturada && !rota.receber_do_cliente && (
+                <p className="text-xs text-muted-foreground italic">
+                  Esta entrega será incluída no faturamento — nenhum valor a receber aqui.
+                </p>
+              )}
+
+              {podeRegistrarPagamento && (
+              <>
               <div className="space-y-2">
                 {(pagamentosPorRota[rota.id] || []).map((pag) => (
-                  <div key={pag.id} className="grid grid-cols-[1fr_100px_120px_auto] gap-2 items-end">
-                    <div className="space-y-1">
-                      <Label className="text-xs">Meio</Label>
-                      <Select value={pag.forma_pagamento_id} onValueChange={(v) => updatePagamento(rota.id, pag.id, "forma_pagamento_id", v)}>
-                        <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {formasAtivas.map((f) => (<SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>))}
-                          {isFaturado && <SelectItem value={FATURAR_ID}>Faturar</SelectItem>}
-                          <SelectItem value={DEVOLVER_LOJA_ID}>Dinheiro Devolvido à Loja</SelectItem>
-                        </SelectContent>
-                      </Select>
+                  isDriverView ? (
+                    <div key={pag.id} className="grid grid-cols-[1fr_100px_auto] gap-2 items-end">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Meio</Label>
+                        <Select value={pag.forma_pagamento_id} onValueChange={(v) => updatePagamento(rota.id, pag.id, "forma_pagamento_id", v)}>
+                          <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {formasAtivas.map((f) => (<SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Valor</Label>
+                        <CurrencyInput value={pag.valor} onChange={(v) => updatePagamento(rota.id, pag.id, "valor", v)} />
+                      </div>
+                      <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive" onClick={() => removePagamento(rota.id, pag.id)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Valor</Label>
-                      <CurrencyInput value={pag.valor} onChange={(v) => updatePagamento(rota.id, pag.id, "valor", v)} />
+                  ) : (
+                    <div key={pag.id} className="grid grid-cols-[1fr_100px_120px_auto] gap-2 items-end">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Meio</Label>
+                        <Select value={pag.forma_pagamento_id} onValueChange={(v) => updatePagamento(rota.id, pag.id, "forma_pagamento_id", v)}>
+                          <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {formasAtivas.map((f) => (<SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>))}
+                            {isFaturado && <SelectItem value={FATURAR_ID}>Faturar</SelectItem>}
+                            <SelectItem value={DEVOLVER_LOJA_ID}>Dinheiro Devolvido à Loja</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Valor</Label>
+                        <CurrencyInput value={pag.valor} onChange={(v) => updatePagamento(rota.id, pag.id, "valor", v)} />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Pertence a</Label>
+                        <Select value={pag.pertence_a} onValueChange={(v) => updatePagamento(rota.id, pag.id, "pertence_a", v)} disabled={pag.forma_pagamento_id === DEVOLVER_LOJA_ID}>
+                          <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="operacao">Operação</SelectItem>
+                            <SelectItem value="loja">Loja</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive" onClick={() => removePagamento(rota.id, pag.id)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Pertence a</Label>
-                      <Select value={pag.pertence_a} onValueChange={(v) => updatePagamento(rota.id, pag.id, "pertence_a", v)} disabled={pag.forma_pagamento_id === DEVOLVER_LOJA_ID}>
-                        <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="operacao">Leva e Traz</SelectItem>
-                          <SelectItem value="loja">Loja</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive" onClick={() => removePagamento(rota.id, pag.id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
+                  )
                 ))}
               </div>
 
               <Button variant="outline" size="sm" onClick={() => addPagamento(rota.id)}>
                 <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar pagamento
               </Button>
+              </>
+              )}
+
+              {i < rotas.length - 1 && <Separator />}
             </div>
             );
           })}
 
           {/* Resumo */}
-          <div className="rounded-lg border border-border p-4 space-y-2">
-            <h4 className="text-sm font-semibold">Resumo</h4>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              {isFaturado ? (
-                <>
-                  {totalEsperadoTaxasCents > 0 && (
-                    <>
-                      <span className="text-muted-foreground flex items-center gap-1">
-                        A Faturar
-                        <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded">taxa + extra</span>
-                      </span>
-                      <span className="tabular-nums text-right text-primary font-medium">{fmt(totalEsperadoTaxas)}</span>
-                    </>
-                  )}
-                  {totalEsperadoPagoNaHoraCents > 0 && (
-                    <>
-                      <span className="text-muted-foreground">Receita Operação (cash)</span>
-                      <span className="tabular-nums text-right">{fmt(totalOperacao)} <span className="text-xs text-muted-foreground">/ {fmt(totalEsperadoPagoNaHora)}</span></span>
-                    </>
-                  )}
-                </>
+          {isDriverView ? (
+            <div className="rounded-lg border border-border p-4 space-y-2">
+              <h4 className="text-sm font-semibold">Resumo dos Recebimentos</h4>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <span className="text-muted-foreground">Total Recebido</span>
+                <span className="tabular-nums text-right font-medium">{fmt(allPagamentos.reduce((s, p) => s + p.valor, 0))}</span>
+              </div>
+              {allPagamentos.length === 0 ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Info className="h-4 w-4" />
+                  Nenhum valor recebido — clique em Registrar para confirmar.
+                </div>
               ) : (
                 <>
-                  <span className="text-muted-foreground">Receita Operação</span>
-                  <span className="tabular-nums text-right">{fmt(totalOperacao)} <span className="text-xs text-muted-foreground">/ {fmt(totalEsperadoTaxas + totalEsperadoPagoNaHora)}</span></span>
-                </>
-              )}
-              <span className="text-muted-foreground">Crédito Loja</span>
-              <span className="tabular-nums text-right">{fmt(totalCreditoLoja)} <span className="text-xs text-muted-foreground">/ {fmt(totalEsperadoReceber)}</span></span>
-              {totalDevolvido > 0 && (
-                <>
-                  <span className="text-muted-foreground pl-4">↳ Devolvido à Loja</span>
-                  <span className="tabular-nums text-right">{fmt(totalDevolvido)}</span>
+                  <Separator />
+                  <div className="flex items-center gap-2 text-sm font-medium text-primary">
+                    <CheckCircle className="h-4 w-4" />
+                    {allPagamentos.length} pagamento(s) registrado(s)
+                  </div>
                 </>
               )}
             </div>
-            <Separator />
-            <div className={`flex items-center gap-2 text-sm font-medium ${isBalanced ? "text-emerald-500" : "text-amber-500"}`}>
-              {isBalanced ? <CheckCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
-              {isBalanced ? "Valores balanceados" : `Diferença: Operação ${fmt(diffOperacao)} | Loja ${fmt(diffLoja)}`}
+          ) : (
+            <div className="rounded-lg border border-border p-4 space-y-2">
+              <h4 className="text-sm font-semibold">Resumo</h4>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <span className="text-muted-foreground">Receita Operação</span>
+                <span className="tabular-nums text-right">{fmt(totalOperacao)} <span className="text-xs text-muted-foreground">/ {fmt(totalEsperadoTaxas)}</span></span>
+                {isFaturado && totalFaturar > 0 && (
+                  <>
+                    <span className="text-muted-foreground">A Faturar</span>
+                    <span className="tabular-nums text-right">{fmt(totalFaturar)}</span>
+                  </>
+                )}
+                <span className="text-muted-foreground">Crédito Loja</span>
+                <span className="tabular-nums text-right">{fmt(totalCreditoLoja)} <span className="text-xs text-muted-foreground">/ {fmt(totalEsperadoReceber)}</span></span>
+                {totalDevolvido > 0 && (
+                  <>
+                    <span className="text-muted-foreground pl-4">↳ Devolvido à Loja</span>
+                    <span className="tabular-nums text-right">{fmt(totalDevolvido)}</span>
+                  </>
+                )}
+              </div>
+              <Separator />
+              <div className={`flex items-center gap-2 text-sm font-medium ${isBalanced ? "text-emerald-500" : "text-amber-500"}`}>
+                {isBalanced ? <CheckCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+                {isBalanced ? "Valores balanceados" : `Diferença: Operação ${fmt(diffOperacao)} | Loja ${fmt(diffLoja)}`}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button onClick={handleConcluir} disabled={!isBalanced}>
-            {isConcluding ? "Concluir e Conciliar" : isEditing ? "Salvar Alterações" : "Concluir Conciliação"}
+          <Button onClick={handleConcluir} disabled={!isDriverView && !isBalanced}>
+            {isDriverView
+              ? "Registrar Recebimentos"
+              : isConcluding ? "Concluir e Conciliar" : isEditing ? "Salvar Alterações" : "Concluir Conciliação"}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -96,6 +96,7 @@ export function UsuariosTab() {
               email: targetProfile?.email ?? form.email.trim().toLowerCase(),
               password: form.password.trim(),
               nome: form.nome.trim(),
+              role: "admin",
               cargo_id: form.cargo_id || null,
               ativo: form.status === "ativo",
               documento: form.documento.replace(/\D/g, "") || null,
