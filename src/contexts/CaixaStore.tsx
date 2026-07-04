@@ -12,6 +12,7 @@ interface CaixaStoreContextType {
   abrirCaixa: (entregadorId: string, trocoInicial: number) => Promise<boolean>;
   fecharCaixa: (caixaId: string, valorDevolvido: number, observacoes: string) => Promise<boolean>;
   editarCaixa: (caixaId: string, trocoInicial: number, observacoes: string) => void;
+  deleteCaixa: (caixaId: string) => Promise<{ success: boolean; error?: string }>;
   justificarDivergencia: (caixaId: string, justificativa: string) => void;
   addRecebimentoAutomatico: (entregadorId: string, solicitacaoId: string, solicitacaoCodigo: string, clienteNome: string, valor: number) => void;
   removeRecebimento: (caixaId: string, recebimentoId: string) => Promise<void>;
@@ -198,6 +199,40 @@ export function CaixaStoreProvider({ children }: { children: ReactNode }) {
     return true;
   }, [addLog, caixas]);
 
+  const deleteCaixa = useCallback(async (caixaId: string): Promise<{ success: boolean; error?: string }> => {
+    const caixa = caixas.find((c) => c.id === caixaId);
+    if (!caixa) return { success: false, error: "Caixa não encontrado." };
+
+    // Só permite excluir caixas vazios — um caixa com recebimento já registrado
+    // não pode sumir sem deixar rastro do dinheiro recebido pelo entregador.
+    if (caixa.recebimentos.length > 0) {
+      return { success: false, error: "Este caixa tem recebimentos registrados e não pode ser excluído. Remova os recebimentos primeiro." };
+    }
+
+    const { error } = await supabase.from("caixas_entregadores").delete().eq("id", caixaId);
+
+    if (error) {
+      // Índice/FK do banco (recebimentos_caixa ON DELETE RESTRICT) pegou algo que o
+      // estado local não sabia — mesma mensagem amigável do guard acima.
+      if (error.code === "23503") {
+        return { success: false, error: "Este caixa tem recebimentos registrados e não pode ser excluído. Remova os recebimentos primeiro." };
+      }
+      return { success: false, error: error.message };
+    }
+
+    setCaixas((prev) => prev.filter((c) => c.id !== caixaId));
+
+    addLog({
+      categoria: "financeiro",
+      acao: "caixa_excluido",
+      entidade_id: caixa.entregador_id,
+      descricao: `Caixa de ${caixa.entregador_nome} (troco ${formatCurrency(caixa.troco_inicial)}) excluído`,
+      detalhes: { troco_inicial: caixa.troco_inicial, status_anterior: caixa.status },
+    });
+
+    return { success: true };
+  }, [addLog, caixas]);
+
   const editarCaixa = useCallback((caixaId: string, trocoInicial: number, observacoes: string) => {
     setCaixas((prev) =>
       prev.map((c) => {
@@ -248,95 +283,178 @@ export function CaixaStoreProvider({ children }: { children: ReactNode }) {
   // Auto-add recebimento when a solicitação with cash payment is concluded
   const addRecebimentoAutomatico = useCallback(
     (entregadorId: string, solicitacaoId: string, solicitacaoCodigo: string, clienteNome: string, valor: number) => {
+      // Registra o recebimento num caixa já aberto (existente ou recém-criado) —
+      // nunca desiste, para o dinheiro nunca ficar sem lugar pra cair
+      const registrarEm = (caixaId: string) => {
+        // Verifica duplicata antes de inserir — protege contra duplo clique no "Concluir"
+        supabase
+          .from("recebimentos_caixa")
+          .select("id")
+          .eq("caixa_id", caixaId)
+          .eq("solicitacao_id", solicitacaoId)
+          .maybeSingle()
+          .then(({ data: existing }) => {
+            if (existing) return;
+
+            supabase
+              .from("recebimentos_caixa")
+              .insert({
+                caixa_id: caixaId,
+                solicitacao_id: solicitacaoId,
+                rota_id: null,
+                forma_pagamento_id: null,
+                valor,
+                pertence_a: "operacao" as const,
+                observacao: `${solicitacaoCodigo} - ${clienteNome}`,
+              })
+              .select("id, created_at")
+              .then(({ data: rows, error }) => {
+                if (error) {
+                  // Insert falhou (RLS, índice único, rede) — avisa em vez de fingir sucesso
+                  addLog({
+                    categoria: "financeiro",
+                    acao: "recebimento_falhou",
+                    entidade_id: entregadorId,
+                    descricao: `Falha ao registrar recebimento de ${formatCurrency(valor)} (${solicitacaoCodigo}) no caixa — ${error.message}`,
+                    detalhes: { solicitacaoId, solicitacaoCodigo, clienteNome, valor, error: error.message },
+                  });
+                  window.dispatchEvent(
+                    new CustomEvent("recebimento-sem-caixa", {
+                      detail: {
+                        entregadorId,
+                        solicitacaoCodigo,
+                        clienteNome,
+                        valor,
+                        message: `Falha ao registrar ${formatCurrency(valor)} de ${solicitacaoCodigo} no caixa — verifique manualmente`,
+                      },
+                    })
+                  );
+                  return;
+                }
+
+                const inserted = rows?.[0];
+                const novoRecebimento: RecebimentoDinheiro = {
+                  id: inserted?.id ?? `rec-${Date.now()}`,
+                  solicitacao_codigo: solicitacaoCodigo,
+                  cliente_nome: clienteNome,
+                  valor_recebido: valor,
+                  hora: inserted
+                    ? new Date(inserted.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+                    : new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+                };
+
+                setCaixas((prev) => {
+                  const idx = prev.findIndex((c) => c.id === caixaId);
+                  if (idx === -1) return prev;
+                  const cur = prev[idx];
+                  const novoTotalRecebido = cur.total_recebido + valor;
+                  const updated: CaixaEntregador = {
+                    ...cur,
+                    recebimentos: [...cur.recebimentos, novoRecebimento],
+                    total_recebido: novoTotalRecebido,
+                    total_esperado: cur.troco_inicial + novoTotalRecebido,
+                  };
+                  const result = [...prev];
+                  result[idx] = updated;
+                  return result;
+                });
+
+                addLog({
+                  categoria: "financeiro",
+                  acao: "recebimento_caixa",
+                  entidade_id: entregadorId,
+                  descricao: `Recebimento de ${formatCurrency(valor)} registrado automaticamente no caixa (${solicitacaoCodigo})`,
+                  detalhes: { solicitacao: solicitacaoCodigo, cliente: clienteNome, valor },
+                });
+              });
+          });
+      };
+
       // Busca qualquer caixa aberto — sem restrição de data, pois o admin pode ter deixado
       // o caixa do dia anterior aberto e deve fechá-lo antes de abrir um novo
       const caixa = caixas.find(
         (c) => c.entregador_id === entregadorId && c.status === "aberto"
       );
-      if (!caixa) {
-        // Entregador sem caixa aberto: registra log e avisa o admin via evento global
-        addLog({
-          categoria: "financeiro",
-          acao: "recebimento_sem_caixa",
-          entidade_id: entregadorId,
-          descricao: `Recebimento de ${formatCurrency(valor)} (${solicitacaoCodigo}) não registrado — entregador sem caixa aberto`,
-          detalhes: { solicitacaoId, solicitacaoCodigo, clienteNome, valor },
-        });
-        window.dispatchEvent(
-          new CustomEvent("recebimento-sem-caixa", {
-            detail: {
-              entregadorId,
-              solicitacaoCodigo,
-              clienteNome,
-              valor,
-              message: `Entregador sem caixa aberto — ${formatCurrency(valor)} de ${solicitacaoCodigo} não registrado no caixa`,
-            },
-          })
-        );
+
+      if (caixa) {
+        registrarEm(caixa.id);
         return;
       }
 
-      // Verifica duplicata antes de inserir — protege contra duplo clique no "Concluir"
+      // Sem caixa aberto: abre um automaticamente com troco zero em vez de
+      // descartar o recebimento — o dinheiro nunca pode ficar sem registro
+      const entNome = entregadoresCache[entregadorId] ?? entregadorId;
+      const hoje = new Date().toISOString().split("T")[0];
+      const observacaoAutoAbertura = "Aberto automaticamente ao registrar recebimento sem caixa aberto";
+
       supabase
-        .from("recebimentos_caixa")
+        .from("caixas_entregadores")
+        .insert({
+          entregador_id: entregadorId,
+          data: hoje,
+          troco_inicial: 0,
+          valor_devolvido: null,
+          diferenca: null,
+          justificativa_divergencia: null,
+          observacoes: observacaoAutoAbertura,
+          status: "aberto",
+          aberto_por_id: null,
+          fechado_por_id: null,
+        })
         .select("id")
-        .eq("caixa_id", caixa.id)
-        .eq("solicitacao_id", solicitacaoId)
-        .maybeSingle()
-        .then(({ data: existing }) => {
-          if (existing) return;
-
-          supabase
-            .from("recebimentos_caixa")
-            .insert({
-              caixa_id: caixa.id,
-              solicitacao_id: solicitacaoId,
-              rota_id: null,
-              forma_pagamento_id: null,
-              valor,
-              pertence_a: "operacao" as const,
-              observacao: `${solicitacaoCodigo} - ${clienteNome}`,
-            })
-            .select("id, created_at")
-            .then(({ data: rows }) => {
-              const inserted = rows?.[0];
-              const novoRecebimento: RecebimentoDinheiro = {
-                id: inserted?.id ?? `rec-${Date.now()}`,
-                solicitacao_codigo: solicitacaoCodigo,
-                cliente_nome: clienteNome,
-                valor_recebido: valor,
-                hora: inserted
-                  ? new Date(inserted.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
-                  : new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
-              };
-
-              setCaixas((prev) => {
-                const idx = prev.findIndex((c) => c.id === caixa.id);
-                if (idx === -1) return prev;
-                const cur = prev[idx];
-                const novoTotalRecebido = cur.total_recebido + valor;
-                const updated: CaixaEntregador = {
-                  ...cur,
-                  recebimentos: [...cur.recebimentos, novoRecebimento],
-                  total_recebido: novoTotalRecebido,
-                  total_esperado: cur.troco_inicial + novoTotalRecebido,
-                };
-                const result = [...prev];
-                result[idx] = updated;
-                return result;
-              });
-
-              addLog({
-                categoria: "financeiro",
-                acao: "recebimento_caixa",
-                entidade_id: entregadorId,
-                descricao: `Recebimento de ${formatCurrency(valor)} registrado automaticamente no caixa (${solicitacaoCodigo})`,
-                detalhes: { solicitacao: solicitacaoCodigo, cliente: clienteNome, valor },
-              });
+        .then(({ data: rows, error }) => {
+          if (error || !rows?.[0]) {
+            addLog({
+              categoria: "financeiro",
+              acao: "recebimento_falhou",
+              entidade_id: entregadorId,
+              descricao: `Falha ao abrir caixa automático para registrar ${formatCurrency(valor)} (${solicitacaoCodigo})`,
+              detalhes: { solicitacaoId, solicitacaoCodigo, clienteNome, valor, error: error?.message },
             });
+            window.dispatchEvent(
+              new CustomEvent("recebimento-sem-caixa", {
+                detail: {
+                  entregadorId,
+                  solicitacaoCodigo,
+                  clienteNome,
+                  valor,
+                  message: `Falha ao abrir caixa automático para ${formatCurrency(valor)} de ${solicitacaoCodigo} — verifique manualmente`,
+                },
+              })
+            );
+            return;
+          }
+
+          const novoCaixaId = rows[0].id;
+          const novoCaixa: CaixaEntregador = {
+            id: novoCaixaId,
+            entregador_id: entregadorId,
+            entregador_nome: entNome,
+            data: hoje,
+            troco_inicial: 0,
+            recebimentos: [],
+            total_recebido: 0,
+            total_esperado: 0,
+            valor_devolvido: null,
+            diferenca: null,
+            status: "aberto",
+            observacoes: observacaoAutoAbertura,
+            created_at: new Date().toISOString(),
+            closed_at: null,
+          };
+          setCaixas((prev) => [novoCaixa, ...prev]);
+          addLog({
+            categoria: "financeiro",
+            acao: "caixa_aberto_automatico",
+            entidade_id: entregadorId,
+            descricao: `Caixa aberto automaticamente para ${entNome} — sem caixa aberto ao registrar recebimento de ${formatCurrency(valor)} (${solicitacaoCodigo})`,
+            detalhes: { solicitacaoId, solicitacaoCodigo, clienteNome, valor },
+          });
+
+          registrarEm(novoCaixaId);
         });
     },
-    [addLog, caixas]
+    [addLog, caixas, entregadoresCache]
   );
 
   const removeRecebimento = useCallback(async (caixaId: string, recebimentoId: string) => {
@@ -443,6 +561,7 @@ export function CaixaStoreProvider({ children }: { children: ReactNode }) {
       abrirCaixa,
       fecharCaixa,
       editarCaixa,
+      deleteCaixa,
       justificarDivergencia,
       addRecebimentoAutomatico,
       removeRecebimento,
@@ -451,7 +570,7 @@ export function CaixaStoreProvider({ children }: { children: ReactNode }) {
       getCaixaAberto,
       ensureLoaded,
     }),
-    [caixas, abrirCaixa, fecharCaixa, editarCaixa, justificarDivergencia, addRecebimentoAutomatico, removeRecebimento, recalcularCaixa, getCaixasByEntregador, getCaixaAberto, ensureLoaded]
+    [caixas, abrirCaixa, fecharCaixa, editarCaixa, deleteCaixa, justificarDivergencia, addRecebimentoAutomatico, removeRecebimento, recalcularCaixa, getCaixasByEntregador, getCaixaAberto, ensureLoaded]
   );
 
   return <CaixaStoreContext.Provider value={value}>{children}</CaixaStoreContext.Provider>;

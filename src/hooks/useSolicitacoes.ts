@@ -25,7 +25,7 @@ import {
   deleteOrCancelRota,
   bulkUpdateRotasStatus,
   bulkReativarRotas,
-  deleteRecebimentosByRotaIds,
+  deleteRecebimentosBySolicitacaoId,
   fetchPagamentosBySolicitacao,
   fetchAllPagamentos,
   createPagamentos,
@@ -398,11 +398,8 @@ export function useReabrirSolicitacao() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (solicitacaoId: string) => {
-      const rotas = await fetchRotasBySolicitacao(solicitacaoId);
-      const rotaIds = rotas.map((r) => r.id);
-
       await Promise.all([
-        deleteRecebimentosByRotaIds(rotaIds),
+        deleteRecebimentosBySolicitacaoId(solicitacaoId),
         deletePagamentosBySolicitacao(solicitacaoId),
       ]);
 

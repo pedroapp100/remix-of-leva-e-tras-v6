@@ -238,12 +238,9 @@ export default function EntregadorFinanceiroPage() {
         </CardContent>
       </Card>
 
-      <motion.div data-onboarding="driver-earnings" variants={stagger} initial="hidden" animate="show" className="grid gap-4 sm:grid-cols-3">
+      <motion.div data-onboarding="driver-earnings" variants={stagger} initial="hidden" animate="show" className="grid gap-4 sm:grid-cols-2">
         <motion.div variants={fadeUp}>
           <MetricCard title="Entregas Realizadas" value={comissao.entregas} icon={Hash} subtitle={isMesAtual ? "Este mês" : "No período"} />
-        </motion.div>
-        <motion.div variants={fadeUp}>
-          <MetricCard title="Valor Gerado" value={formatCurrency(comissao.valor_gerado)} icon={TrendingUp} subtitle="Receita operacional" />
         </motion.div>
         <motion.div variants={fadeUp}>
           <MetricCard title="Minha Comissão" value={formatCurrency(comissao.comissao)} icon={DollarSign} subtitle={taxaSubtitle} className="border-l-4 border-l-primary" />

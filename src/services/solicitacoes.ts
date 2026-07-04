@@ -433,12 +433,11 @@ export async function bulkReativarRotas(solicitacaoId: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-export async function deleteRecebimentosByRotaIds(rotaIds: string[]): Promise<void> {
-  if (rotaIds.length === 0) return;
+export async function deleteRecebimentosBySolicitacaoId(solicitacaoId: string): Promise<void> {
   const { error } = await supabase
     .from("recebimentos_caixa")
     .delete()
-    .in("rota_id", rotaIds);
+    .eq("solicitacao_id", solicitacaoId);
   if (error) throw new Error(error.message);
 }
 

@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Wallet, ArrowDownUp, AlertTriangle, CheckCircle, Plus, Eye, Pencil, Lock, FileWarning, ChevronDown, Calendar } from "lucide-react";
+import { Wallet, ArrowDownUp, AlertTriangle, CheckCircle, Plus, Eye, Pencil, Lock, FileWarning, ChevronDown, Calendar, Trash2 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { PageContainer } from "@/components/shared/PageContainer";
 import { MetricCard } from "@/components/shared/MetricCard";
@@ -23,6 +23,7 @@ import { FecharCaixaDialog } from "./caixas/FecharCaixaDialog";
 import { EditarCaixaDialog } from "./caixas/EditarCaixaDialog";
 import { JustificativaDivergenciaDialog } from "./caixas/JustificativaDivergenciaDialog";
 import { CaixaDetailsModal } from "./caixas/CaixaDetailsModal";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import type { DateRange } from "react-day-picker";
 
@@ -30,12 +31,13 @@ const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.08 } } };
 const fadeUp = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.35 } } };
 
 export default function CaixasEntregadoresPage() {
-  const { caixas, abrirCaixa, fecharCaixa, editarCaixa, justificarDivergencia } = useCaixaStore();
+  const { caixas, abrirCaixa, fecharCaixa, editarCaixa, deleteCaixa, justificarDivergencia } = useCaixaStore();
   const [abrirOpen, setAbrirOpen] = useState(false);
   const [fecharTarget, setFecharTarget] = useState<CaixaEntregador | null>(null);
   const [editarTarget, setEditarTarget] = useState<CaixaEntregador | null>(null);
   const [justificarTarget, setJustificarTarget] = useState<CaixaEntregador | null>(null);
   const [detailsTarget, setDetailsTarget] = useState<CaixaEntregador | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<CaixaEntregador | null>(null);
 
   const [activeTab, setActiveTab] = useState("hoje");
   const [search, setSearch] = useState("");
@@ -133,6 +135,17 @@ export default function CaixasEntregadoresPage() {
     toast.success("Justificativa registrada com sucesso");
   };
 
+  const handleDeleteCaixa = async () => {
+    if (!deleteTarget) return;
+    const result = await deleteCaixa(deleteTarget.id);
+    if (result.success) {
+      toast.success(`Caixa de ${deleteTarget.entregador_nome} excluído com sucesso.`);
+    } else {
+      toast.error(result.error ?? "Erro ao excluir caixa.");
+    }
+    setDeleteTarget(null);
+  };
+
   // --- Shared action buttons renderer ---
   const renderActions = (c: CaixaEntregador, includeEdit = true) => (
     <div className="flex items-center justify-center gap-1">
@@ -164,6 +177,14 @@ export default function CaixasEntregadoresPage() {
             <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive/80" onClick={(e) => { e.stopPropagation(); setJustificarTarget(c); }}><FileWarning className="h-4 w-4" /></Button>
           </TooltipTrigger>
           <TooltipContent>Relatar motivo da falta</TooltipContent>
+        </Tooltip>
+      )}
+      {c.recebimentos.length === 0 && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive/80" onClick={(e) => { e.stopPropagation(); setDeleteTarget(c); }}><Trash2 className="h-4 w-4" /></Button>
+          </TooltipTrigger>
+          <TooltipContent>Excluir caixa</TooltipContent>
         </Tooltip>
       )}
     </div>
@@ -394,6 +415,25 @@ export default function CaixasEntregadoresPage() {
       <EditarCaixaDialog open={!!editarTarget} onOpenChange={(o) => !o && setEditarTarget(null)} caixa={editarTarget} onConfirm={handleEditarCaixa} />
       <JustificativaDivergenciaDialog open={!!justificarTarget} onOpenChange={(o) => !o && setJustificarTarget(null)} caixa={justificarTarget} onConfirm={handleJustificar} />
       <CaixaDetailsModal open={!!detailsTarget} onOpenChange={(o) => !o && setDetailsTarget(null)} caixa={detailsTarget} />
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir caixa?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O caixa de <span className="font-semibold">{deleteTarget?.entregador_nome}</span> (troco {deleteTarget ? formatCurrency(deleteTarget.troco_inicial) : ""}) será removido permanentemente. Esta ação é <strong>irreversível</strong>.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={handleDeleteCaixa}
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </PageContainer>
   );
 }

@@ -11,6 +11,9 @@ import { useSolicitacoes, useSolicitacoesPageable, useUpdateSolicitacao, useCrea
 import { useClientes } from "@/hooks/useClientes";
 import { useEntregadores } from "@/hooks/useEntregadores";
 import { useConcluirComCaixa } from "@/hooks/useConcluirComCaixa";
+import { useCaixaStore } from "@/contexts/CaixaStore";
+import { useFormasPagamento } from "@/hooks/useSettings";
+import { calcTotalDinheiroNoCaixa } from "@/lib/rotasHelpers";
 import { useAuth } from "@/contexts/AuthContext";
 import { DatePickerWithRange } from "@/components/shared/DatePickerWithRange";
 import type { DateRange } from "react-day-picker";
@@ -60,6 +63,13 @@ export default function SolicitacoesPage() {
   const { data: clientes = [] } = useClientes();
   const { data: entregadores = [] } = useEntregadores();
   const concluirComCaixa = useConcluirComCaixa();
+  const { addRecebimentoAutomatico } = useCaixaStore();
+  const { data: formasPagamento = [] } = useFormasPagamento();
+  const dinheiroPagamentoIds = useMemo(() => new Set(
+    formasPagamento
+      .filter((f) => f.name.toLowerCase().includes("dinheiro"))
+      .map((f) => f.id)
+  ), [formasPagamento]);
   const createRotaMut = useCreateRota();
   const updateRotaMut = useUpdateRota();
   const deleteOrCancelRotaMut = useDeleteOrCancelRota();
@@ -207,7 +217,7 @@ export default function SolicitacoesPage() {
   }, [solicitacoes]);
 
   // Actions
-  const handleLaunch = async (data: { clienteId: string; tipoOperacao: string; tipoColeta?: string; pontoColeta: string; entregadorId?: string; dataRetroativa?: string; retroativoConcluida?: boolean; rotas: { id?: string; bairro_destino_id?: string; responsavel?: string; telefone?: string; observacoes?: string; receber_do_cliente?: boolean; valor_a_receber?: number; taxa_resolvida: number | null; taxas_extras?: { id: string; nome: string; valor: number }[] }[] }) => {
+  const handleLaunch = async (data: { clienteId: string; tipoOperacao: string; tipoColeta?: string; pontoColeta: string; entregadorId?: string; dataRetroativa?: string; retroativoConcluida?: boolean; rotas: RotaForm[] }) => {
     const now = data.dataRetroativa ?? new Date().toISOString();
     const dateForCode = data.dataRetroativa ? data.dataRetroativa.slice(0, 10) : new Date().toISOString().slice(0, 10);
     const { data: codigoGerado } = await supabase.rpc("gerar_codigo_solicitacao");
@@ -284,6 +294,16 @@ export default function SolicitacoesPage() {
       if (isRetroativoConcluida) {
         const entNome = data.entregadorId ? getEntregadorNome(data.entregadorId) : null;
         appendHistoricoMut.mutate({ solId: result.sol.id, tipo: "criacao", descricao: `Solicitação retroativa criada já como concluída para ${clienteNome} com ${nRotas} rota${nRotas > 1 ? "s" : ""}${entNome && entNome !== "—" ? ` — atribuída a ${entNome}` : ""}`, extra: { usuario_id: user?.id ?? null, status_novo: "concluida" } });
+
+        // Entrega retroativa já nasce concluída — não passa pelo fluxo normal de
+        // "Concluir" (useConcluirComCaixa), então o dinheiro precisa ser
+        // sincronizado com o caixa do entregador aqui, na criação.
+        if (data.entregadorId) {
+          const totalDinheiro = calcTotalDinheiroNoCaixa(rotaInserts as unknown as Rota[], dinheiroPagamentoIds);
+          if (totalDinheiro > 0) {
+            addRecebimentoAutomatico(data.entregadorId, result.sol.id, codigo, clienteNome, totalDinheiro);
+          }
+        }
       } else {
         appendHistoricoMut.mutate({ solId: result.sol.id, tipo: "criacao", descricao: `Solicitação criada para ${clienteNome} com ${nRotas} rota${nRotas > 1 ? "s" : ""}`, extra: { usuario_id: user?.id ?? null, status_novo: status } });
       }
