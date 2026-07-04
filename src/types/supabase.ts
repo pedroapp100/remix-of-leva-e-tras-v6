@@ -765,6 +765,7 @@ export type Database = {
           id: string
           name: string
           order: number
+          retido_pela_loja: boolean
         }
         Insert: {
           created_at?: string
@@ -773,6 +774,7 @@ export type Database = {
           id?: string
           name: string
           order?: number
+          retido_pela_loja?: boolean
         }
         Update: {
           created_at?: string
@@ -781,6 +783,7 @@ export type Database = {
           id?: string
           name?: string
           order?: number
+          retido_pela_loja?: boolean
         }
         Relationships: []
       }
@@ -1958,18 +1961,18 @@ export type Database = {
         }
         Returns: Json
       }
-      fechar_fatura_por_periodo: {
-        Args: {
-          p_fatura_id: string
-          p_data_inicio: string
-          p_data_fim: string
-          p_usuario_id?: string
-        }
-        Returns: Json
-      }
       fechar_ciclos_comissao_meta: {
         Args: { p_criado_por?: string }
         Returns: number
+      }
+      fechar_fatura_por_periodo: {
+        Args: {
+          p_data_fim: string
+          p_data_inicio: string
+          p_fatura_id: string
+          p_usuario_id?: string
+        }
+        Returns: Json
       }
       fechar_faturas_por_calendario: { Args: never; Returns: number }
       fn_current_user_nome: { Args: never; Returns: string }

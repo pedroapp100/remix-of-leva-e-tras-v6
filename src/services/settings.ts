@@ -79,7 +79,7 @@ export async function deleteBairro(id: string): Promise<void> {
 export async function fetchFormasPagamento(): Promise<FormaPagamento[]> {
   const { data, error } = await supabase
     .from("formas_pagamento")
-    .select("id, name, description, enabled, order")
+    .select("id, name, description, enabled, order, retido_pela_loja")
     .order("order");
   if (error) throw new Error(error.message);
   return data as FormaPagamento[];

@@ -20,6 +20,7 @@ import {
   Store, Building2, User, MapPin, Truck, ArrowRight, ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
+import { calcularCreditoLojaTotal } from "@/lib/rotasHelpers";
 
 interface PagamentoLinha {
   id: string;
@@ -157,6 +158,9 @@ export function AdminConciliacaoDialog({
 
   // Calculations with integer cents
   const allPagamentos = Object.values(pagamentosPorRota).flat();
+  const pagamentosComRotaId = Object.entries(pagamentosPorRota).flatMap(([rotaId, pags]) =>
+    pags.map((p) => ({ ...p, rota_id: rotaId }))
+  );
   const totalOperacaoCents = allPagamentos
     .filter((p) => p.pertence_a === "operacao")
     .reduce((s, p) => s + Math.round(p.valor * 100), 0);
@@ -245,7 +249,10 @@ export function AdminConciliacaoDialog({
 
     if (solicitacao.status === "em_andamento") {
       // em_andamento: conclude delivery + create fatura atomically via useConcluirComCaixa
-      const result = await concluirComCaixa(solicitacao.id);
+      // skipCaixa: true — os pagamentos acabaram de ser gravados acima e o trigger
+      // fn_sync_pagamento_to_caixa já sincroniza o dinheiro com o caixa; sem isso,
+      // addRecebimentoAutomatico duplicava o mesmo valor numa segunda linha.
+      const result = await concluirComCaixa(solicitacao.id, { skipCaixa: true });
       if (!result.success) {
         toast.error(result.error ?? "Erro ao concluir solicitação.");
         return;
@@ -260,16 +267,10 @@ export function AdminConciliacaoDialog({
       const totalTaxas = rotas
         .filter(isFaturavelRota)
         .reduce((s, r) => s + (r.taxa_resolvida ?? 0), 0);
-      // Apenas rotas onde o dinheiro passou pela empresa geram credito_loja.
-      // maquina_loja, pix_loja e dinheiro+devolver_loja → lojista já recebeu direto.
-      const totalRecebido = rotas
-        .filter((r) => {
-          if (!r.receber_do_cliente) return false;
-          if (r.meio_cobranca_destino === "pix_empresa") return true;
-          if (r.meio_cobranca_destino === "dinheiro" && r.destino_dinheiro === "repassar_empresa") return true;
-          return false;
-        })
-        .reduce((s, r) => s + (r.valor_a_receber ?? 0), 0);
+      // Crédito da loja: usa o que o admin acabou de conferir/salvar acima
+      // (pagamentosComRotaId), não o plano estático da rota — é exatamente
+      // essa troca que corrige o caso "Dinheiro → Empresa" indevido.
+      const totalRecebido = calcularCreditoLojaTotal(rotas, pagamentosComRotaId, formasPagamento, DEVOLVER_LOJA_ID);
       const activeFatura = faturas.find(
         (f) => f.cliente_id === solicitacao.cliente_id && f.status_geral === "Aberta"
       );

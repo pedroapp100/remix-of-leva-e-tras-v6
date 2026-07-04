@@ -271,26 +271,26 @@ export async function fetchRotasConcluidas(): Promise<RotaRow[]> {
   return data as RotaRow[];
 }
 
-export type RotaTaxaExtraRow = { rota_id: string; nome: string; valor: number };
+export type RotaTaxaExtraRow = { rota_id: string; taxa_extra_id: string; nome: string; valor: number };
 
 /**
  * Busca as taxas extras de uma lista de rotas (tabela rota_taxa_extra).
- * Retorna um map de rota_id → lista de { nome, valor }.
+ * Retorna um map de rota_id → lista de { id, nome, valor }.
  */
 export async function fetchTaxasExtrasByRotaIds(
   rotaIds: string[]
-): Promise<Map<string, { nome: string; valor: number }[]>> {
+): Promise<Map<string, { id: string; nome: string; valor: number }[]>> {
   if (rotaIds.length === 0) return new Map();
   const { data, error } = await supabase
     .from("rota_taxa_extra")
-    .select("rota_id, valor, taxas_extras_config(nome)")
+    .select("rota_id, taxa_extra_id, valor, taxas_extras_config(nome)")
     .in("rota_id", rotaIds);
   if (error) throw new Error(error.message);
-  const result = new Map<string, { nome: string; valor: number }[]>();
+  const result = new Map<string, { id: string; nome: string; valor: number }[]>();
   for (const row of data ?? []) {
     const nome = (row.taxas_extras_config as { nome: string } | null)?.nome ?? "Taxa extra";
     const arr = result.get(row.rota_id) ?? [];
-    arr.push({ nome, valor: row.valor });
+    arr.push({ id: row.taxa_extra_id, nome, valor: row.valor });
     result.set(row.rota_id, arr);
   }
   return result;
@@ -524,6 +524,18 @@ export async function fetchPagamentosBySolicitacao(
     .from("pagamentos_solicitacao")
     .select("*")
     .eq("solicitacao_id", solId);
+  if (error) throw new Error(error.message);
+  return data as PagamentoRow[];
+}
+
+export async function fetchPagamentosBySolicitacaoIds(
+  solIds: string[]
+): Promise<PagamentoRow[]> {
+  if (solIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from("pagamentos_solicitacao")
+    .select("*")
+    .in("solicitacao_id", solIds);
   if (error) throw new Error(error.message);
   return data as PagamentoRow[];
 }

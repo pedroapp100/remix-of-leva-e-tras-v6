@@ -43,6 +43,7 @@ vi.mock("@/contexts/SettingsStore", () => ({
 vi.mock("@/services/solicitacoes", () => ({
   fetchRotasBySolicitacao: vi.fn(() => Promise.resolve([])),
   fetchTaxasExtrasByRotaIds: vi.fn(() => Promise.resolve(new Map())),
+  fetchPagamentosBySolicitacao: vi.fn(() => Promise.resolve([])),
 }));
 
 vi.mock("@/hooks/useFinanceiro", () => ({

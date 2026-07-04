@@ -1,6 +1,6 @@
 ﻿import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { DollarSign, TrendingUp, Hash, ChevronDown, ChevronUp, Calendar, CalendarDays, X } from "lucide-react";
+import { DollarSign, Hash, ChevronDown, ChevronUp, Calendar, CalendarDays, X } from "lucide-react";
 import { PageContainer } from "@/components/shared/PageContainer";
 import { MetricCard } from "@/components/shared/MetricCard";
 import { EmptyState } from "@/components/shared/EmptyState";

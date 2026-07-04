@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/formatters";
-import { Trash2, RefreshCw, Eye, Loader2, CheckCircle2, MinusCircle } from "lucide-react";
+import { Trash2, Eye, Loader2, CheckCircle2, MinusCircle } from "lucide-react";
 import type { CaixaEntregador, Rota } from "@/types/database";
 import { useCaixaStore } from "@/contexts/CaixaStore";
 import { fetchRotasBySolicitacao } from "@/services/solicitacoes";
@@ -228,45 +228,21 @@ const statusMap: Record<string, { label: string; variant: "default" | "secondary
 };
 
 export function CaixaDetailsModal({ open, onOpenChange, caixa: caixaProp }: CaixaDetailsModalProps) {
-  const { caixas, removeRecebimento, recalcularCaixa } = useCaixaStore();
-  const [recalculando, setRecalculando] = useState(false);
+  const { caixas, removeRecebimento } = useCaixaStore();
   const [rotasView, setRotasView] = useState<{
     solicitacaoId: string;
     solicitacaoCodigo: string;
     clienteNome: string;
   } | null>(null);
-  const autoRecalcRef = useRef<string | null>(null);
 
-  // Deriva o caixa ao vivo do store para refletir deleções e recálculos em tempo real.
+  // Deriva o caixa ao vivo do store para refletir deleções em tempo real.
   // O prop caixaProp é apenas o identificador inicial.
   const caixa = caixaProp ? (caixas.find((c) => c.id === caixaProp.id) ?? caixaProp) : null;
-
-  // Auto-corrige entradas criadas pelo trigger fn_sync_pagamento_to_caixa quando o
-  // modal abre: o trigger insere sem filtrar por forma de pagamento em dinheiro,
-  // causando valores errados. recalcularCaixa usa calcTotalDinheiroNoCaixa que
-  // filtra corretamente e também retorna os nomes reais via JOIN.
-  useEffect(() => {
-    if (!open || !caixa || caixa.status !== "aberto") return;
-    if (autoRecalcRef.current === caixa.id) return;
-    const hasSyncAuto = caixa.recebimentos.some((r) =>
-      r.observacao?.startsWith("Sincronizado automaticamente")
-    );
-    if (!hasSyncAuto) return;
-    autoRecalcRef.current = caixa.id;
-    setRecalculando(true);
-    recalcularCaixa(caixa.id).finally(() => setRecalculando(false));
-  }, [open, caixa?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!caixa) return null;
 
   const st = statusMap[caixa.status] ?? statusMap.aberto;
   const podeEditar = caixa.status === "aberto";
-
-  const handleRecalcular = async () => {
-    setRecalculando(true);
-    await recalcularCaixa(caixa.id);
-    setRecalculando(false);
-  };
 
   return (
     <>
@@ -332,18 +308,6 @@ export function CaixaDetailsModal({ open, onOpenChange, caixa: caixaProp }: Caix
                 <h4 className="text-sm font-semibold">
                   Recebimentos em Dinheiro ({caixa.recebimentos.length})
                 </h4>
-                {podeEditar && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleRecalcular}
-                    disabled={recalculando}
-                    className="h-7 text-xs gap-1"
-                  >
-                    <RefreshCw className={`h-3.5 w-3.5 ${recalculando ? "animate-spin" : ""}`} />
-                    {recalculando ? "Recalculando..." : "Recalcular"}
-                  </Button>
-                )}
               </div>
 
               {caixa.recebimentos.length === 0 ? (

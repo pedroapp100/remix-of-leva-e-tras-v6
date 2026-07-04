@@ -39,6 +39,14 @@ export function FormasPagamentoTab() {
     toast.success("Status atualizado!");
   };
 
+  const toggleRetidoPelaLoja = async (id: string) => {
+    const f = formas.find((fp) => fp.id === id);
+    if (!f) return;
+    await updateForma.mutateAsync({ id, patch: { retido_pela_loja: !f.retido_pela_loja } });
+    addLog({ categoria: "configuracao", acao: "forma_pagamento_editada", entidade_id: id, descricao: `Forma de pagamento "${f.name}" — "retido pela loja" ${!f.retido_pela_loja ? "ativado" : "desativado"}`, detalhes: { retido_pela_loja: !f.retido_pela_loja } });
+    toast.success("Configuração atualizada!");
+  };
+
   const openCreate = () => { setEditing(null); setName(""); setDescription(""); setDialogOpen(true); };
   const openEdit = (f: FormaPagamento) => { setEditing(f); setName(f.name); setDescription(f.description ?? ""); setDialogOpen(true); };
 
@@ -76,6 +84,25 @@ export function FormasPagamentoTab() {
           />
           <Badge variant={r.enabled ? "default" : "secondary"}>{r.enabled ? "Ativa" : "Inativa"}</Badge>
         </div>
+      ),
+    },
+    {
+      key: "retido_pela_loja", header: "Retido pela loja",
+      cell: (r) => (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex items-center gap-2">
+                <Switch checked={r.retido_pela_loja} onCheckedChange={() => toggleRetidoPelaLoja(r.id)} />
+                <span className="text-xs text-muted-foreground">{r.retido_pela_loja ? "Sim" : "Não"}</span>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-64">
+              Marque quando o dinheiro fica direto com a loja nessa forma (ex: Máquina da Loja).
+              Isso evita que o valor entre como crédito indevido na fatura da empresa.
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       ),
     },
     {

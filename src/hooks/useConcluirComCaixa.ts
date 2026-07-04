@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { useSolicitacoes, useUpdateSolicitacao, useUpdateRotasBulk } from "@/hooks/useSolicitacoes";
-import { fetchRotasBySolicitacao, fetchTaxasExtrasByRotaIds } from "@/services/solicitacoes";
+import { fetchRotasBySolicitacao, fetchTaxasExtrasByRotaIds, fetchPagamentosBySolicitacao } from "@/services/solicitacoes";
 import { fetchClienteById } from "@/services/clientes";
 import { rowToRota } from "@/lib/mappers";
 import { useClientes, useClienteSaldoMap } from "@/hooks/useClientes";
@@ -14,7 +14,7 @@ import type { SolicitacaoUpdate } from "@/services/solicitacoes";
 import { useCreateReceita } from "@/hooks/useFinanceiro";
 import { useCreateHistoricoFatura } from "@/hooks/useFaturas";
 import { buildReceitaFromFatura } from "@/lib/faturaReceita";
-import { calcTotalDinheiroNoCaixa } from "@/lib/rotasHelpers";
+import { calcTotalDinheiroNoCaixa, calcularCreditoLojaTotal } from "@/lib/rotasHelpers";
 
 /**
  * Hook that concludes a solicitação, auto-creates/updates fatura for
@@ -62,11 +62,13 @@ export function useConcluirComCaixa() {
 
       // Fetch rotas fresh at action-time (never stale, uses idx_rotas_sol)
       let solRotas: ReturnType<typeof rowToRota>[];
-      let taxasExtrasMap: Map<string, { nome: string; valor: number }[]>;
+      let taxasExtrasMap: Map<string, { id: string; nome: string; valor: number }[]>;
+      let solPagamentos: Awaited<ReturnType<typeof fetchPagamentosBySolicitacao>>;
       try {
         const rawRotas = await fetchRotasBySolicitacao(solId);
         solRotas = rawRotas.map(rowToRota);
         taxasExtrasMap = await fetchTaxasExtrasByRotaIds(rawRotas.map((r) => r.id));
+        solPagamentos = await fetchPagamentosBySolicitacao(solId);
       } catch {
         return { success: false, error: "Erro ao carregar rotas da solicitação." };
       }
@@ -280,16 +282,10 @@ export function useConcluirComCaixa() {
 
       if (!cliente || cliente.modalidade !== "faturado") return { success: true };
 
-      // Apenas rotas onde o dinheiro passou pela empresa geram credito_loja.
-      // maquina_loja, pix_loja e dinheiro+devolver_loja → lojista já recebeu direto.
-      const totalRecebido = solRotas
-        .filter((r) => {
-          if (!r.receber_do_cliente) return false;
-          if (r.meio_cobranca_destino === "pix_empresa") return true;
-          if (r.meio_cobranca_destino === "dinheiro" && r.destino_dinheiro === "repassar_empresa") return true;
-          return false;
-        })
-        .reduce((s, r) => s + (r.valor_a_receber ?? 0), 0);
+      // Crédito da loja: usa o que foi realmente conciliado em pagamentos_solicitacao
+      // (cruzado com formas_pagamento.retido_pela_loja). Só cai no plano da rota
+      // (meio_cobranca_destino/destino_dinheiro) quando ainda não há conciliação.
+      const totalRecebido = calcularCreditoLojaTotal(solRotas, solPagamentos, formasPagamento);
 
       // Guard: skip fatura creation when nothing to invoice (all routes are pago_na_hora)
       if (totalTaxasFaturar === 0 && totalRecebido === 0) return { success: true };

@@ -3,9 +3,6 @@ import type { CaixaEntregador, StatusCaixa, RecebimentoDinheiro } from "@/types/
 import { formatCurrency } from "@/lib/formatters";
 import { useLogStore } from "@/contexts/LogStore";
 import { supabase } from "@/lib/supabase";
-import { fetchRotasBySolicitacao } from "@/services/solicitacoes";
-import { calcTotalDinheiroNoCaixa } from "@/lib/rotasHelpers";
-import { rowToRota } from "@/lib/mappers";
 
 interface CaixaStoreContextType {
   caixas: CaixaEntregador[];
@@ -16,7 +13,6 @@ interface CaixaStoreContextType {
   justificarDivergencia: (caixaId: string, justificativa: string) => void;
   addRecebimentoAutomatico: (entregadorId: string, solicitacaoId: string, solicitacaoCodigo: string, clienteNome: string, valor: number) => void;
   removeRecebimento: (caixaId: string, recebimentoId: string) => Promise<void>;
-  recalcularCaixa: (caixaId: string) => Promise<void>;
   getCaixasByEntregador: (entregadorId: string) => CaixaEntregador[];
   getCaixaAberto: (entregadorId: string) => CaixaEntregador | undefined;
   ensureLoaded: () => void;
@@ -469,80 +465,6 @@ export function CaixaStoreProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
-  const recalcularCaixa = useCallback(async (caixaId: string) => {
-    const { data: dbRows } = await supabase
-      .from("recebimentos_caixa")
-      .select("id, solicitacao_id, observacao")
-      .eq("caixa_id", caixaId);
-
-    if (!dbRows || dbRows.length === 0) return;
-
-    // Busca os IDs de formas de pagamento do tipo "dinheiro" para o helper
-    const { data: formasDinheiro } = await supabase
-      .from("formas_pagamento")
-      .select("id")
-      .ilike("name", "%dinheiro%");
-    const dinheiroPagamentoIds = new Set<string>(
-      (formasDinheiro ?? []).map((f: { id: string }) => f.id)
-    );
-
-    // Para cada recebimento recalcula o total em dinheiro a partir das rotas reais
-    const results = await Promise.all(
-      dbRows.map(async (row) => {
-        if (!row.solicitacao_id) return { id: row.id, valor: 0 };
-        const rawRotas = await fetchRotasBySolicitacao(row.solicitacao_id as string);
-        const rotas = rawRotas.map(rowToRota);
-        const cashTotal = calcTotalDinheiroNoCaixa(rotas, dinheiroPagamentoIds);
-        return { id: row.id as string, valor: cashTotal };
-      })
-    );
-
-    const toDelete = results.filter((r) => r.valor === 0).map((r) => r.id);
-    const toUpdate = results.filter((r) => r.valor > 0);
-
-    if (toDelete.length > 0) {
-      await supabase.from("recebimentos_caixa").delete().in("id", toDelete);
-    }
-    await Promise.all(
-      toUpdate.map((r) =>
-        supabase.from("recebimentos_caixa").update({ valor: r.valor }).eq("id", r.id)
-      )
-    );
-
-    // Reload recebimentos from DB and update state
-    const { data: reloaded } = await supabase
-      .from("recebimentos_caixa")
-      .select(`
-        id, solicitacao_id, valor, observacao, created_at,
-        solicitacoes!recebimentos_caixa_solicitacao_id_fkey (
-          codigo,
-          clientes!solicitacoes_cliente_id_fkey (nome)
-        )
-      `)
-      .eq("caixa_id", caixaId);
-
-    const recebimentos: RecebimentoDinheiro[] = (reloaded ?? []).map((r) => {
-      const obs = (r.observacao as string) ?? "";
-      const sol = (r as Record<string, unknown>).solicitacoes as { codigo: string; clientes: { nome: string } | null } | null;
-      return {
-        id: r.id as string,
-        solicitacao_id: r.solicitacao_id as string | null,
-        solicitacao_codigo: sol?.codigo ?? "",
-        cliente_nome: sol?.clientes?.nome ?? "",
-        valor_recebido: Number(r.valor),
-        hora: new Date(r.created_at as string).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
-        observacao: obs || null,
-      };
-    });
-    const novoTotal = recebimentos.reduce((s, r) => s + r.valor_recebido, 0);
-    setCaixas((prev) =>
-      prev.map((c) => {
-        if (c.id !== caixaId) return c;
-        return { ...c, recebimentos, total_recebido: novoTotal, total_esperado: c.troco_inicial + novoTotal };
-      })
-    );
-  }, []);
-
   const getCaixasByEntregador = useCallback(
     (entregadorId: string) =>
       caixas.filter((c) => c.entregador_id === entregadorId).sort((a, b) => b.data.localeCompare(a.data)),
@@ -565,12 +487,11 @@ export function CaixaStoreProvider({ children }: { children: ReactNode }) {
       justificarDivergencia,
       addRecebimentoAutomatico,
       removeRecebimento,
-      recalcularCaixa,
       getCaixasByEntregador,
       getCaixaAberto,
       ensureLoaded,
     }),
-    [caixas, abrirCaixa, fecharCaixa, editarCaixa, deleteCaixa, justificarDivergencia, addRecebimentoAutomatico, removeRecebimento, recalcularCaixa, getCaixasByEntregador, getCaixaAberto, ensureLoaded]
+    [caixas, abrirCaixa, fecharCaixa, editarCaixa, deleteCaixa, justificarDivergencia, addRecebimentoAutomatico, removeRecebimento, getCaixasByEntregador, getCaixaAberto, ensureLoaded]
   );
 
   return <CaixaStoreContext.Provider value={value}>{children}</CaixaStoreContext.Provider>;

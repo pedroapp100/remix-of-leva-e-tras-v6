@@ -1360,12 +1360,17 @@ function RotaCard({ rota, index }: { rota: RotaEntregaFatura; index: number }) {
             </span>
           )}
         </div>
-        {rota.valor_receber != null && (
-          <span className="flex items-center gap-1 text-xs text-emerald-500">
-            <DollarSign className="h-3 w-3" />
-            Recebido: {formatCurrency(rota.valor_receber)}
-          </span>
-        )}
+        {rota.valor_receber != null && (() => {
+          const chegouNaEmpresa =
+            rota.meio_cobranca_destino === "pix_empresa" ||
+            (rota.meio_cobranca_destino === "dinheiro" && rota.destino_dinheiro === "repassar_empresa");
+          return (
+            <span className={`flex items-center gap-1 text-xs ${chegouNaEmpresa ? "text-emerald-500" : "text-muted-foreground"}`}>
+              <DollarSign className="h-3 w-3" />
+              {chegouNaEmpresa ? "Recebido" : "Cobrado no destino"}: {formatCurrency(rota.valor_receber)}
+            </span>
+          );
+        })()}
       </div>
     </div>
   );

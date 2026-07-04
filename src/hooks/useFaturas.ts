@@ -47,11 +47,13 @@ import {
   fetchSolicitacoesByCodigos,
   fetchRotasBySolicitacaoIds,
   fetchTaxasExtrasByRotaIds,
+  fetchPagamentosBySolicitacaoIds,
   type SolicitacaoRow,
   type RotaRow,
 } from "@/services/solicitacoes";
 import { fetchEntregadores } from "@/services/entregadores";
-import { fetchBairros } from "@/services/settings";
+import { fetchBairros, fetchFormasPagamento } from "@/services/settings";
+import { calcularCreditoLojaTotal } from "@/lib/rotasHelpers";
 
 export function useFaturas() {
   return useQuery({
@@ -304,12 +306,14 @@ export function useEntregasByFatura(faturaId: string) {
       const solIds = [...solIdSet];
       if (solIds.length === 0) return [];
 
-      // 5. Fetch solicitacoes, rotas, entregadores, bairros in parallel
-      const [sols, rotas, entregadores, bairros] = await Promise.all([
+      // 5. Fetch solicitacoes, rotas, entregadores, bairros, pagamentos e formas in parallel
+      const [sols, rotas, entregadores, bairros, pagamentos, formasPagamento] = await Promise.all([
         fetchSolicitacoesByIds(solIds),
         fetchRotasBySolicitacaoIds(solIds),
         fetchEntregadores(),
         fetchBairros(),
+        fetchPagamentosBySolicitacaoIds(solIds),
+        fetchFormasPagamento(),
       ]);
 
       const entregadorMap = new Map(entregadores.map((e) => [e.id, e.nome]));
@@ -334,32 +338,46 @@ export function useEntregasByFatura(faturaId: string) {
             const extras = taxasExtrasMap.get(r.id) ?? [];
             return s + (r.taxa_resolvida ?? 0) + extras.reduce((a, t) => a + t.valor, 0);
           }, 0);
-        const totalRecebido = solRotas
-          .filter((r) => {
-            if (!r.receber_do_cliente) return false;
-            if (r.meio_cobranca_destino === "pix_empresa") return true;
-            if (r.meio_cobranca_destino === "dinheiro" && r.destino_dinheiro === "repassar_empresa") return true;
-            return false;
-          })
-          .reduce((s, r) => s + (r.valor_a_receber ?? 0), 0);
+        // Crédito da loja: usa o que foi realmente conciliado (pagamentos_solicitacao),
+        // só cai no plano estático da rota quando ainda não há conciliação registrada.
+        const totalRecebido = calcularCreditoLojaTotal(solRotas, pagamentos, formasPagamento);
 
         // Rotas canceladas (corrigidas via deleteOrCancelRota após uma reabertura) já têm
         // taxa_resolvida/valor_a_receber zerados — não entram mais nos totais acima, mas sem
         // esse filtro continuariam aparecendo na lista expandida como um registro fantasma.
         const rotasVisiveis = solRotas.filter((r) => r.status !== "cancelada");
 
-        const mappedRotas: RotaEntregaFatura[] = rotasVisiveis.map((r) => ({
-          bairro_destino: bairroMap.get(r.bairro_destino_id) ?? r.bairro_destino_id,
-          responsavel: r.responsavel,
-          telefone: r.telefone,
-          taxa: r.taxa_resolvida ?? 0,
-          taxas_extras: taxasExtrasMap.get(r.id) ?? [],
-          valor_receber: r.receber_do_cliente ? (r.valor_a_receber ?? null) : null,
-          status: "concluida",
-          pagamento_operacao: r.pagamento_operacao,
-          meio_cobranca_destino: r.meio_cobranca_destino ?? null,
-          destino_dinheiro: (r.destino_dinheiro as "devolver_loja" | "repassar_empresa" | null) ?? null,
-        }));
+        const mappedRotas: RotaEntregaFatura[] = rotasVisiveis.map((r) => {
+          // Se já existe conciliação real pra essa rota, o badge exibido reflete
+          // o pagamento de fato registrado — não o plano feito na criação da rota.
+          const pagamentosLoja = pagamentos.filter((p) => p.rota_id === r.id && p.pertence_a === "loja");
+          let meioCobranca = r.meio_cobranca_destino ?? null;
+          let destinoDinheiro = (r.destino_dinheiro as "devolver_loja" | "repassar_empresa" | null) ?? null;
+          if (pagamentosLoja.length > 0) {
+            const forma = formasPagamento.find((f) => f.id === pagamentosLoja[0].forma_pagamento_id);
+            if (forma?.retido_pela_loja) {
+              meioCobranca = "maquina_loja";
+              destinoDinheiro = null;
+            } else if (forma) {
+              const chegouViaPix = forma.name.toLowerCase().includes("pix");
+              meioCobranca = chegouViaPix ? "pix_empresa" : "dinheiro";
+              destinoDinheiro = chegouViaPix ? null : "repassar_empresa";
+            }
+          }
+
+          return {
+            bairro_destino: bairroMap.get(r.bairro_destino_id) ?? r.bairro_destino_id,
+            responsavel: r.responsavel,
+            telefone: r.telefone,
+            taxa: r.taxa_resolvida ?? 0,
+            taxas_extras: taxasExtrasMap.get(r.id) ?? [],
+            valor_receber: r.receber_do_cliente ? (r.valor_a_receber ?? null) : null,
+            status: "concluida",
+            pagamento_operacao: r.pagamento_operacao,
+            meio_cobranca_destino: meioCobranca,
+            destino_dinheiro: destinoDinheiro,
+          };
+        });
 
         return {
           solicitacao_id: sol.id,

@@ -192,6 +192,7 @@ export interface FormaPagamento {
   description?: string | null;
   enabled: boolean;
   order: number;
+  retido_pela_loja: boolean;
 }
 
 export interface TaxaExtraConfig {
