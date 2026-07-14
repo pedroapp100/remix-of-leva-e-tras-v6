@@ -96,24 +96,55 @@ export function AdminConciliacaoDialog({
   const hasSyncedRef = useRef(false);
 
   useEffect(() => {
-    if (hasSyncedRef.current || rotas.length === 0) return;
+    // Espera a query de pagamentos do entregador resolver — sincronizar antes disso
+    // (só com `rotas` carregado) trava o hasSyncedRef com arrays vazios e o admin
+    // precisa recriar as linhas manualmente mesmo quando o entregador já registrou.
+    if (hasSyncedRef.current || rotas.length === 0 || isLoadingPagamentos) return;
     hasSyncedRef.current = true;
     const initial: Record<string, PagamentoLinha[]> = {};
     rotas.forEach((r) => {
       const driverPags = driverByRota[r.id] || [];
-      if (driverPags.length > 0) {
+      if (driverPags.length === 0) {
+        initial[r.id] = [];
+        return;
+      }
+
+      // Classifica o recebimento em Operação/Loja usando a mesma configuração da
+      // rota que já define "Total Esperado" — em vez de herdar pertence_a do
+      // entregador (que sempre grava "operacao", pois não tem esse campo na tela dele).
+      const operacaoEsperado = r.pagamento_operacao === "pago_na_hora" ? (r.taxa_resolvida ?? 0) : 0;
+      const lojaEsperado = r.receber_do_cliente ? (r.valor_a_receber ?? 0) : 0;
+
+      if (operacaoEsperado > 0 && lojaEsperado > 0) {
+        // Rota cobra taxa de operação em dinheiro e valor do destinatário — separa
+        // o que o entregador registrou nos dois valores já balanceados.
+        const segunda = driverPags[1] ?? driverPags[0];
+        initial[r.id] = [
+          {
+            id: `admin-${driverPags[0].id}-operacao`,
+            forma_pagamento_id: driverPags[0].forma_pagamento_id,
+            valor: operacaoEsperado,
+            pertence_a: "operacao",
+          },
+          {
+            id: `admin-${segunda.id}-loja`,
+            forma_pagamento_id: segunda.forma_pagamento_id,
+            valor: lojaEsperado,
+            pertence_a: "loja",
+          },
+        ];
+      } else {
+        const pertenceA: "operacao" | "loja" = lojaEsperado > 0 ? "loja" : "operacao";
         initial[r.id] = driverPags.map((dp) => ({
           id: `admin-${dp.id}`,
           forma_pagamento_id: dp.forma_pagamento_id,
           valor: dp.valor,
-          pertence_a: dp.pertence_a ?? "operacao",
+          pertence_a: pertenceA,
         }));
-      } else {
-        initial[r.id] = [];
       }
     });
     setPagamentosPorRota(initial);
-  }, [rotas, driverByRota]);
+  }, [rotas, driverByRota, isLoadingPagamentos]);
 
   const addPagamento = (rotaId: string) => {
     setPagamentosPorRota((prev) => ({

@@ -22,6 +22,7 @@ import {
   concluirFaturaEntrega,
   reabrirEntregaFaturada,
   excluirEntregaFaturada,
+  recalcularTotaisFatura,
   fecharFaturaPorPeriodo,
   fetchEntregasTransferidasParaFatura,
   type FaturaRow,
@@ -39,6 +40,7 @@ import {
   type ReabrirEntregaFaturadaResult,
   type ExcluirEntregaFaturadaParams,
   type ExcluirEntregaFaturadaResult,
+  type RecalcularTotaisFaturaResult,
   type FecharFaturaPorPeriodoParams,
   type FecharFaturaPorPeriodoResult,
 } from "@/services/faturas";
@@ -224,6 +226,19 @@ export function useExcluirEntregaFaturada() {
       qc.invalidateQueries({ queryKey: ["solicitacoes"] });
       qc.invalidateQueries({ queryKey: ["rotas", params.p_solicitacao_id] });
       qc.invalidateQueries({ queryKey: ["pagamentos", params.p_solicitacao_id] });
+    },
+  });
+}
+
+export function useRecalcularTotaisFatura() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ faturaId, usuarioId }: { faturaId: string; usuarioId: string }) =>
+      recalcularTotaisFatura(faturaId, usuarioId),
+    onSuccess: (_result: RecalcularTotaisFaturaResult, { faturaId }) => {
+      qc.invalidateQueries({ queryKey: ["faturas"] });
+      qc.invalidateQueries({ queryKey: ["faturas", faturaId] });
+      qc.invalidateQueries({ queryKey: ["historico_fat", faturaId] });
     },
   });
 }

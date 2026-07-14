@@ -265,6 +265,29 @@ export async function excluirEntregaFaturada(
   return data as unknown as ExcluirEntregaFaturadaResult;
 }
 
+// ── RPC: Recálculo dos totais de uma fatura a partir do razão financeiro ────
+
+export interface RecalcularTotaisFaturaResult {
+  success: boolean;
+  total_creditos_loja?: number;
+  total_debitos_loja?: number;
+  saldo_liquido?: number;
+  alterado?: boolean;
+  error?: string;
+}
+
+export async function recalcularTotaisFatura(
+  faturaId: string,
+  usuarioId: string
+): Promise<RecalcularTotaisFaturaResult> {
+  const { data, error } = await supabase.rpc("recalcular_totais_fatura", {
+    p_fatura_id: faturaId,
+    p_usuario_id: usuarioId,
+  });
+  if (error) throw new Error(error.message);
+  return data as unknown as RecalcularTotaisFaturaResult;
+}
+
 // ── RPC: Fechamento de fatura por período ────────────────────────────────────
 
 export interface FecharFaturaPorPeriodoParams {

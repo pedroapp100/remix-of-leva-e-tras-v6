@@ -25,6 +25,7 @@ import {
   Banknote, ArrowUpRight, ArrowDownRight, Download, Package,
   ChevronDown, ChevronRight, User, MapPin, Truck, Phone, DollarSign,
   Lock, Trash2, Save, X, CheckCircle, RotateCcw, CalendarRange,
+  AlertTriangle, RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { generateFaturaPDF } from "@/lib/generateFaturaPDF";
@@ -43,6 +44,7 @@ import {
   useFaturaById,
   useReabrirEntregaFaturada,
   useExcluirEntregaFaturada,
+  useRecalcularTotaisFatura,
   useFecharFaturaPorPeriodo,
 } from "@/hooks/useFaturas";
 import { useCreateReceita } from "@/hooks/useFinanceiro";
@@ -78,6 +80,7 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, viewOnly = fals
   const createReceita = useCreateReceita();
   const reabrirEntrega = useReabrirEntregaFaturada();
   const excluirEntrega = useExcluirEntregaFaturada();
+  const recalcularTotais = useRecalcularTotaisFatura();
   const fecharPorPeriodo = useFecharFaturaPorPeriodo();
 
   const [repasseOpen, setRepasseOpen] = useState(false);
@@ -112,6 +115,32 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, viewOnly = fals
   }, {});
   const statusRepasse  = liveFatura?.status_repasse  ?? fatura.status_repasse;
   const statusCobranca = liveFatura?.status_cobranca ?? fatura.status_cobranca;
+
+  // Alarme de divergência: compara o total salvo (liveFatura) com a soma ao vivo das
+  // entregas (mesmos números já usados no rodapé "Totais" abaixo) — sem query nova.
+  // Detecta qualquer descompasso, inclusive de causas futuras não previstas hoje.
+  const debitoAoVivo = entregas.reduce((sum, e) => sum + e.valor_taxas, 0);
+  const creditoAoVivo = entregas.reduce((sum, e) => sum + e.valor_recebido_cliente, 0);
+  const debitoSalvo = liveFatura?.total_debitos_loja ?? fatura.total_debitos_loja ?? 0;
+  const creditoSalvo = liveFatura?.total_creditos_loja ?? fatura.total_creditos_loja ?? 0;
+  const totaisDivergentes =
+    Math.abs(debitoAoVivo - debitoSalvo) > 0.01 || Math.abs(creditoAoVivo - creditoSalvo) > 0.01;
+
+  const handleRecalcularTotais = async () => {
+    if (!user?.id) return;
+    try {
+      const result = await recalcularTotais.mutateAsync({ faturaId: fatura.id, usuarioId: user.id });
+      if (!result.success) {
+        toast.error(result.error ?? "Erro ao recalcular totais da fatura.");
+        return;
+      }
+      toast.success(
+        result.alterado ? "Totais recalculados — divergência corrigida." : "Totais já estavam corretos."
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao recalcular totais da fatura.");
+    }
+  };
 
   // Soma os pagamentos/repasses já registrados no histórico — não usa valorBaseOriginal
   // como base, pois total_creditos_loja/total_debitos_loja já podem conter o efeito de
@@ -634,7 +663,29 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, viewOnly = fals
               {/* ── 2. Resumo Financeiro ── */}
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-center gap-2"><Receipt className="h-4 w-4" /> Resumo Financeiro</CardTitle>
+                  <div className="flex items-center justify-between gap-2">
+                    <CardTitle className="text-base flex items-center gap-2"><Receipt className="h-4 w-4" /> Resumo Financeiro</CardTitle>
+                    {!viewOnly && totaisDivergentes && (
+                      <PermissionGuard permission="financeiro.edit">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleRecalcularTotais}
+                          disabled={recalcularTotais.isPending}
+                          className="h-7 text-xs gap-1 border-amber-500/50 text-amber-600 hover:text-amber-600"
+                        >
+                          <RefreshCw className={cn("h-3.5 w-3.5", recalcularTotais.isPending && "animate-spin")} />
+                          {recalcularTotais.isPending ? "Recalculando..." : "Recalcular"}
+                        </Button>
+                      </PermissionGuard>
+                    )}
+                  </div>
+                  {!viewOnly && totaisDivergentes && (
+                    <p className="flex items-center gap-1.5 text-xs text-amber-600 pt-1">
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                      Total salvo diverge do calculado agora a partir das entregas — clique em Recalcular.
+                    </p>
+                  )}
                 </CardHeader>
                 <CardContent className="px-3 pb-3 sm:px-6 sm:pb-6 pt-0">
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
