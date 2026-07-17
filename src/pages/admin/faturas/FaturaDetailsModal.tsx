@@ -134,9 +134,24 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, viewOnly = fals
         toast.error(result.error ?? "Erro ao recalcular totais da fatura.");
         return;
       }
-      toast.success(
-        result.alterado ? "Totais recalculados — divergência corrigida." : "Totais já estavam corretos."
-      );
+      // O recálculo re-agrega o razão (lancamentos + ajustes) — não lê as rotas.
+      // Se o razão em si estiver errado (ex.: rota reclassificada como "pago no
+      // ato" após o faturamento, sem reversão), o total continua divergindo do
+      // calculado pelas entregas — e o admin precisa saber disso.
+      const aindaDiverge =
+        Math.abs((result.total_debitos_loja ?? 0) - debitoAoVivo) > 0.01 ||
+        Math.abs((result.total_creditos_loja ?? 0) - creditoAoVivo) > 0.01;
+      if (aindaDiverge) {
+        toast.warning("Total salvo sincronizado com o razão financeiro, mas ainda diverge das entregas.", {
+          description:
+            "O lançamento de alguma entrega está desatualizado em relação às rotas atuais. Corrija pela própria entrega (Reabrir ↺ ou Excluir) na lista abaixo.",
+          duration: 8000,
+        });
+      } else {
+        toast.success(
+          result.alterado ? "Totais recalculados — divergência corrigida." : "Totais já estavam corretos."
+        );
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Erro ao recalcular totais da fatura.");
     }
@@ -683,7 +698,7 @@ export function FaturaDetailsModal({ fatura, open, onOpenChange, viewOnly = fals
                   {!viewOnly && totaisDivergentes && (
                     <p className="flex items-center gap-1.5 text-xs text-amber-600 pt-1">
                       <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                      Total salvo diverge do calculado agora a partir das entregas — clique em Recalcular.
+                      Total salvo diverge do calculado a partir das entregas. Recalcular sincroniza com o razão financeiro; se a divergência persistir, corrija a entrega específica (Reabrir ↺ ou Excluir).
                     </p>
                   )}
                 </CardHeader>

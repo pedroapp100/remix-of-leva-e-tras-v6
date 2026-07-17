@@ -441,6 +441,16 @@ export async function deleteRecebimentosBySolicitacaoId(solicitacaoId: string): 
   if (error) throw new Error(error.message);
 }
 
+export async function hasLancamentosFaturados(solicitacaoId: string): Promise<boolean> {
+  const { count, error } = await supabase
+    .from("lancamentos_financeiros")
+    .select("id", { count: "exact", head: true })
+    .eq("solicitacao_id", solicitacaoId)
+    .in("tipo", ["debito_loja", "credito_loja"]);
+  if (error) throw new Error(error.message);
+  return (count ?? 0) > 0;
+}
+
 export async function deleteSolicitacao(solicitacaoId: string): Promise<void> {
   // 1. Buscar IDs das rotas para limpar dependentes
   const { data: rotasData, error: rotasErr } = await supabase

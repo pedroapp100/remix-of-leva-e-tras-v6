@@ -29,7 +29,8 @@ import { SimuladorOperacoes } from "@/components/shared/SimuladorOperacoes";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { sendNotificationToUser, sendNotificationToRole } from "@/services/notifications";
-import { syncRotaTaxasExtras } from "@/services/solicitacoes";
+import { syncRotaTaxasExtras, hasLancamentosFaturados } from "@/services/solicitacoes";
+import { useReabrirEntregaFaturada } from "@/hooks/useFaturas";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { lazy, Suspense } from "react";
 const LaunchSolicitacaoDialog = lazy(() => import("./solicitacoes/LaunchSolicitacaoDialog").then(m => ({ default: m.LaunchSolicitacaoDialog })));
@@ -184,6 +185,7 @@ export default function SolicitacoesPage() {
   // Session-local set for instant icon feedback before server refetch completes
   const [sessionConciliadas, setSessionConciliadas] = useState<Set<string>>(new Set());
   const reabrirMut = useReabrirSolicitacao();
+  const reabrirFaturadaMut = useReabrirEntregaFaturada();
   const deleteSolMut = useDeleteSolicitacao();
   const [deleteTarget, setDeleteTarget] = useState<Solicitacao | null>(null);
 
@@ -555,6 +557,29 @@ export default function SolicitacoesPage() {
     if (!reabrirTarget) return;
     const sol = reabrirTarget;
     try {
+      // Entrega já faturada: reabrir SEM reverter a fatura deixa o lançamento
+      // antigo órfão nos totais (concluir_fatura_entrega trata a reconciliação
+      // seguinte como já processada). A RPC reverte o financeiro, grava
+      // reaberta_em e faz o mesmo reset operacional — inclusive o histórico.
+      if (await hasLancamentosFaturados(sol.id)) {
+        if (!user) {
+          toast.error("Sessão expirada — faça login novamente para reabrir esta entrega.");
+          return;
+        }
+        const result = await reabrirFaturadaMut.mutateAsync({
+          p_solicitacao_id: sol.id,
+          p_motivo: motivo,
+          p_usuario_id: user.id,
+        });
+        if (!result.success) {
+          toast.error(result.error ?? "Erro ao reabrir a solicitação.");
+          return;
+        }
+        const estornado = (result.total_estornado ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+        toast.success(`Solicitação reaberta — ${estornado} revertidos da fatura.`);
+        return;
+      }
+
       await reabrirMut.mutateAsync(sol.id);
       appendHistoricoMut.mutate({
         solId: sol.id,
